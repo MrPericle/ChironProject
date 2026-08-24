@@ -1,0 +1,34 @@
+.DS_Store
+
+# Environment files
+.env
+.env.*
+!.env.example
+!apps/api/.env.example
+!apps/web/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Docker and local data
+*.log
+docker-data/
+
+# IDE
+.idea/
+.vscode/
