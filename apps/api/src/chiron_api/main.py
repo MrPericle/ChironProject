@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from chiron_api.auth.router import router as auth_router
 from chiron_api.config import get_settings
+from chiron_api.courses.router import router as courses_router
 
 
 def create_app() -> FastAPI:
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "api"}
 
     app.include_router(auth_router)
+    app.include_router(courses_router)
 
     return app
 

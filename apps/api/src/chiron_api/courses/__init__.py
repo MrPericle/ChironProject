@@ -1,0 +1,2 @@
+"""Courses and locations package."""
+
