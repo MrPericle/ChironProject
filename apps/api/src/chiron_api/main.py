@@ -5,6 +5,7 @@ from chiron_api.auth.router import router as auth_router
 from chiron_api.bookings.router import router as bookings_router
 from chiron_api.config import get_settings
 from chiron_api.courses.router import router as courses_router
+from chiron_api.subscriptions.router import router as subscriptions_router
 
 
 def create_app() -> FastAPI:
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(bookings_router)
     app.include_router(courses_router)
+    app.include_router(subscriptions_router)
 
     return app
 
