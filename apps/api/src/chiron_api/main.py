@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from chiron_api.auth.router import router as auth_router
 from chiron_api.config import get_settings
 
 
@@ -25,6 +26,8 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:
         return {"status": "ok", "service": "api"}
+
+    app.include_router(auth_router)
 
     return app
 
