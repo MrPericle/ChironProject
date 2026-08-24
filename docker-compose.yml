@@ -32,6 +32,8 @@ services:
     volumes:
       - ./apps/api/src:/app/src
       - ./apps/api/tests:/app/tests
+      - ./apps/api/alembic.ini:/app/alembic.ini
+      - ./apps/api/migrations:/app/migrations
     depends_on:
       db:
         condition: service_healthy
