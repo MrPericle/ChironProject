@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
     auth_token_issuer: str = Field(default="chiron-api", alias="AUTH_TOKEN_ISSUER")
+    waitlist_enabled: bool = Field(default=False, alias="WAITLIST_ENABLED")
 
     model_config = SettingsConfigDict(
         env_file=".env",
