@@ -1,8 +1,10 @@
 import {
   Activity,
+  Archive,
   ArrowRight,
   Bell,
   CalendarCheck,
+  CalendarPlus,
   CheckCircle2,
   Clock3,
   Dumbbell,
@@ -10,12 +12,17 @@ import {
   ListChecks,
   LogOut,
   MapPin,
+  Pencil,
+  Plus,
   RotateCcw,
+  Save,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   UserRound,
+  UserX,
   XCircle,
 } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
@@ -486,101 +493,96 @@ function BackofficeScreen({
           </div>
         </header>
 
-        <nav className="admin-tabs" aria-label="Sezioni backoffice">
-          <button
-            aria-current={activeTab === "dashboard" ? "page" : undefined}
-            onClick={() => setActiveTab("dashboard")}
-            type="button"
-          >
-            Dashboard
-          </button>
-          <button
-            aria-current={activeTab === "users" ? "page" : undefined}
-            onClick={() => setActiveTab("users")}
-            type="button"
-          >
-            Utenti
-          </button>
-          <button
-            aria-current={activeTab === "courses" ? "page" : undefined}
-            onClick={() => setActiveTab("courses")}
-            type="button"
-          >
-            Corsi
-          </button>
-          <button
-            aria-current={activeTab === "locations" ? "page" : undefined}
-            onClick={() => setActiveTab("locations")}
-            type="button"
-          >
-            Sedi
-          </button>
-        </nav>
-
-        {loadState === "ready" ? (
-          <section className="admin-action-strip" aria-label="Azioni principali backoffice">
-            <button className="primary-action" onClick={() => setActiveTab("courses")} type="button">
-              <Dumbbell aria-hidden="true" />
-              Organizza corsi
-            </button>
-            <button className="secondary-action" onClick={() => setActiveTab("users")} type="button">
-              <UserRound aria-hidden="true" />
-              Gestisci utenti
-            </button>
-            <button className="secondary-action" onClick={() => setActiveTab("dashboard")} type="button">
+        <div className="backoffice-layout">
+          <nav className="admin-tabs" aria-label="Sezioni backoffice">
+            <button
+              aria-current={activeTab === "dashboard" ? "page" : undefined}
+              onClick={() => setActiveTab("dashboard")}
+              type="button"
+            >
               <Activity aria-hidden="true" />
-              Leggi dashboard
+              Dashboard
             </button>
-          </section>
-        ) : null}
+            <button
+              aria-current={activeTab === "users" ? "page" : undefined}
+              onClick={() => setActiveTab("users")}
+              type="button"
+            >
+              <UserRound aria-hidden="true" />
+              Utenti
+            </button>
+            <button
+              aria-current={activeTab === "courses" ? "page" : undefined}
+              onClick={() => setActiveTab("courses")}
+              type="button"
+            >
+              <Dumbbell aria-hidden="true" />
+              Corsi
+            </button>
+            <button
+              aria-current={activeTab === "locations" ? "page" : undefined}
+              onClick={() => setActiveTab("locations")}
+              type="button"
+            >
+              <MapPin aria-hidden="true" />
+              Sedi
+            </button>
+          </nav>
 
-        {notice !== null ? (
-          <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">
-            {notice.tone === "success" ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
-            <span>{notice.message}</span>
+          <div className="backoffice-content">
+            {notice !== null ? (
+              <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">
+                {notice.tone === "success" ? (
+                  <CheckCircle2 aria-hidden="true" />
+                ) : (
+                  <XCircle aria-hidden="true" />
+                )}
+                <span>{notice.message}</span>
+              </div>
+            ) : null}
+
+            {loadState === "loading" ? <LoadingDashboard /> : null}
+            {loadState === "error" ? <ErrorPanel onRetry={() => setLoadState("loading")} /> : null}
+
+            {loadState === "ready" ? (
+              <>
+                {activeTab === "dashboard" ? (
+                  <AdminDashboardPanel
+                    activeLocations={activeLocations.length}
+                    activeMembers={activeMembers}
+                    publishedCourses={publishedCourses}
+                    stats={stats}
+                  />
+                ) : null}
+                {activeTab === "users" ? (
+                  <UsersManager
+                    onNotice={setNotice}
+                    onUserChange={upsertUser}
+                    token={session.access_token}
+                    users={users}
+                  />
+                ) : null}
+                {activeTab === "courses" ? (
+                  <CoursesManager
+                    courses={courses}
+                    locations={activeLocations}
+                    onCourseChange={upsertCourse}
+                    onNotice={setNotice}
+                    token={session.access_token}
+                  />
+                ) : null}
+                {activeTab === "locations" ? (
+                  <LocationsManager
+                    locations={locations}
+                    onNotice={setNotice}
+                    onLocationChange={upsertLocation}
+                    token={session.access_token}
+                  />
+                ) : null}
+              </>
+            ) : null}
           </div>
-        ) : null}
-
-        {loadState === "loading" ? <LoadingDashboard /> : null}
-        {loadState === "error" ? <ErrorPanel onRetry={() => setLoadState("loading")} /> : null}
-
-        {loadState === "ready" ? (
-          <>
-            {activeTab === "dashboard" ? (
-              <AdminDashboardPanel
-                activeLocations={activeLocations.length}
-                activeMembers={activeMembers}
-                publishedCourses={publishedCourses}
-                stats={stats}
-              />
-            ) : null}
-            {activeTab === "users" ? (
-              <UsersManager
-                onNotice={setNotice}
-                onUserChange={upsertUser}
-                token={session.access_token}
-                users={users}
-              />
-            ) : null}
-            {activeTab === "courses" ? (
-              <CoursesManager
-                courses={courses}
-                locations={activeLocations}
-                onCourseChange={upsertCourse}
-                onNotice={setNotice}
-                token={session.access_token}
-              />
-            ) : null}
-            {activeTab === "locations" ? (
-              <LocationsManager
-                locations={locations}
-                onNotice={setNotice}
-                onLocationChange={upsertLocation}
-                token={session.access_token}
-              />
-            ) : null}
-          </>
-        ) : null}
+        </div>
       </div>
     </main>
   );
@@ -670,10 +672,17 @@ function AdminDashboardPanel({
 }) {
   return (
     <div className="backoffice-grid">
+      <div className="admin-page-heading admin-panel-wide">
+        <div>
+          <p className="eyebrow">Oggi in Chiron</p>
+          <h2>Panoramica attivita</h2>
+        </div>
+        <span>Aggiornata dai dati di corsi e iscrizioni</span>
+      </div>
       <section className="admin-overview admin-panel-wide" aria-label="Riepilogo backoffice">
         <article>
           <UsersIcon />
-          <span>{activeMembers === 1 ? "1 iscritto attivo" : `${activeMembers} iscritti attivi`}</span>
+          <span>Iscritti attivi</span>
           <strong>{activeMembers}</strong>
         </article>
         <article>
@@ -700,9 +709,12 @@ function PerformancePanel({
   title: string;
   items: Array<{ id: string; name: string; member_count: number }>;
 }) {
+  const highestCount = Math.max(...items.map((item) => item.member_count), 1);
+  const headingId = `${title.toLowerCase().replace(/\s+/g, "-")}-title`;
+
   return (
-    <section className="admin-panel" aria-labelledby={`${title}-title`}>
-      <SectionTitle icon={<Activity aria-hidden="true" />} title={title} id={`${title}-title`} />
+    <section className="admin-panel" aria-labelledby={headingId}>
+      <SectionTitle icon={<Activity aria-hidden="true" />} title={title} id={headingId} />
       <div className="performance-list">
         {items.length === 0 ? (
           <p className="muted">Appena arrivano prenotazioni, qui trovi i corsi e le sedi da spingere.</p>
@@ -712,6 +724,9 @@ function PerformancePanel({
               <div>
                 <h3>{item.name}</h3>
                 <p>{item.member_count} iscritti collegati</p>
+                <div className="performance-track" aria-hidden="true">
+                  <span style={{ width: `${(item.member_count / highestCount) * 100}%` }} />
+                </div>
               </div>
               <strong>{item.member_count}</strong>
             </article>
@@ -907,6 +922,7 @@ function UsersManager({
           />
         </label>
         <button className="primary-action" type="submit">
+          <Plus aria-hidden="true" />
           Crea utente
         </button>
       </form>
@@ -1026,17 +1042,26 @@ function UsersManager({
               <div className="admin-row-actions">
                 {editingUserId === user.id ? (
                   <>
-                    <button className="secondary-action" onClick={() => handleSaveProfile(user)} type="button">
-                      Salva utente {user.email}
+                    <button
+                      aria-label={`Salva utente ${user.email}`}
+                      className="secondary-action"
+                      onClick={() => handleSaveProfile(user)}
+                      type="button"
+                    >
+                      <Save aria-hidden="true" />
+                      Profilo
                     </button>
                     <button
+                      aria-label={`Salva iscrizione ${user.email}`}
                       className="secondary-action"
                       onClick={() => handleSaveSubscription(user)}
                       type="button"
                     >
-                      Salva iscrizione {user.email}
+                      <CalendarCheck aria-hidden="true" />
+                      Iscrizione
                     </button>
                     <button
+                      aria-label={`Annulla modifica ${user.email}`}
                       className="secondary-action"
                       onClick={() => {
                         setEditingUserId(null);
@@ -1044,26 +1069,51 @@ function UsersManager({
                       }}
                       type="button"
                     >
-                      Annulla modifica {user.email}
+                      <XCircle aria-hidden="true" />
+                      Annulla
                     </button>
                   </>
                 ) : (
-                  <button className="secondary-action" onClick={() => handleEdit(user)} type="button">
-                    Gestisci utente e iscrizione {user.email}
+                  <button
+                    aria-label={`Gestisci utente e iscrizione ${user.email}`}
+                    className="secondary-action"
+                    onClick={() => handleEdit(user)}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" />
+                    Gestisci
                   </button>
                 )}
                 {user.status === "active" ? (
-                  <button className="secondary-action" onClick={() => handleDisable(user)} type="button">
-                    Disabilita {user.email}
+                  <button
+                    aria-label={`Disabilita ${user.email}`}
+                    className="secondary-action"
+                    onClick={() => handleDisable(user)}
+                    type="button"
+                  >
+                    <UserX aria-hidden="true" />
+                    Disabilita
                   </button>
                 ) : (
-                  <button className="secondary-action" onClick={() => handleRestore(user)} type="button">
-                    Riattiva {user.email}
+                  <button
+                    aria-label={`Riattiva ${user.email}`}
+                    className="secondary-action"
+                    onClick={() => handleRestore(user)}
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" />
+                    Riattiva
                   </button>
                 )}
                 {user.status !== "deleted" ? (
-                  <button className="secondary-action" onClick={() => handleDelete(user)} type="button">
-                    Elimina {user.email}
+                  <button
+                    aria-label={`Elimina ${user.email}`}
+                    className="secondary-action danger-action"
+                    onClick={() => handleDelete(user)}
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" />
+                    Elimina
                   </button>
                 ) : null}
               </div>
@@ -1163,6 +1213,7 @@ function LocationsManager({
           <input required value={city} onChange={(event) => setCity(event.target.value)} />
         </label>
         <button className="primary-action" type="submit">
+          <Plus aria-hidden="true" />
           Crea sede
         </button>
       </form>
@@ -1212,28 +1263,34 @@ function LocationsManager({
               <div className="admin-row-actions">
                 {editingLocationId === location.id ? (
                   <button
+                    aria-label={`Salva sede ${location.name}`}
                     className="secondary-action"
                     onClick={() => handleSaveLocation(location)}
                     type="button"
                   >
-                    Salva sede {location.name}
+                    <Save aria-hidden="true" />
+                    Salva
                   </button>
                 ) : (
                   <button
+                    aria-label={`Modifica ${location.name}`}
                     className="secondary-action"
                     onClick={() => handleEditLocation(location)}
                     type="button"
                   >
-                    Modifica {location.name}
+                    <Pencil aria-hidden="true" />
+                    Modifica
                   </button>
                 )}
                 {location.is_active ? (
                   <button
+                    aria-label={`Disattiva ${location.name}`}
                     className="secondary-action"
                     onClick={() => handleDeactivate(location)}
                     type="button"
                   >
-                    Disattiva {location.name}
+                    <UserX aria-hidden="true" />
+                    Disattiva
                   </button>
                 ) : null}
               </div>
@@ -1370,6 +1427,7 @@ function CoursesManager({
           </select>
         </label>
         <button className="primary-action" type="submit">
+          <Plus aria-hidden="true" />
           Crea corso
         </button>
       </form>
@@ -1439,34 +1497,41 @@ function CoursesManager({
               <div className="admin-row-actions">
                 {editingCourseId === course.id ? (
                   <button
+                    aria-label={`Salva corso ${course.title}`}
                     className="secondary-action"
                     onClick={() => handleUpdateCourse(course)}
                     type="button"
                   >
-                    Salva corso {course.title}
+                    <Save aria-hidden="true" />
+                    Salva
                   </button>
                 ) : (
                   <button
+                    aria-label={`Modifica ${course.title}`}
                     className="secondary-action"
                     onClick={() => handleEditCourse(course)}
                     type="button"
                   >
-                    Modifica {course.title}
+                    <Pencil aria-hidden="true" />
+                    Modifica
                   </button>
                 )}
                 <button
+                  aria-label={`Aggiungi sessione a ${course.title}`}
                   className="secondary-action"
                   onClick={() => handleCreateSession(course)}
                   type="button"
                 >
-                  Aggiungi sessione a {course.title}
+                  <CalendarPlus aria-hidden="true" />
+                  Sessione
                 </button>
                 {course.status !== "archived" ? (
                   <button
-                    className="secondary-action"
+                    className="secondary-action danger-action"
                     onClick={() => handleArchive(course)}
                     type="button"
                   >
+                    <Archive aria-hidden="true" />
                     Archivia
                   </button>
                 ) : null}
@@ -1701,7 +1766,7 @@ function OverviewPanel({
       </article>
       <article>
         <CalendarCheck aria-hidden="true" />
-        <span>{bookingsCount === 1 ? "1 prenotazione" : `${bookingsCount} prenotazioni`}</span>
+        <span>Prenotazioni</span>
         <strong>{bookingsCount}</strong>
       </article>
       <article>
@@ -1908,15 +1973,32 @@ function CourseCatalog({
 }
 
 function CourseVisual({ title }: { title: string }) {
-  const variant = title.toLowerCase().includes("pole")
+  const normalizedTitle = title.toLowerCase();
+  const variant = normalizedTitle.includes("pole")
     ? "pole"
-    : title.toLowerCase().includes("yoga")
-      ? "flow"
-      : "power";
+    : ["martial", "karate", "judo", "kung", "boxing"].some((term) => normalizedTitle.includes(term))
+      ? "martial"
+      : "calisthenics";
+  const assets = {
+    calisthenics: {
+      label: "Calisthenics",
+      src: "/assets/course-calisthenics.jpg",
+    },
+    martial: {
+      label: "Arti marziali",
+      src: "/assets/course-martial-arts.jpg",
+    },
+    pole: {
+      label: "Pole",
+      src: "/assets/course-pole.jpg",
+    },
+  } as const;
+  const asset = assets[variant];
 
   return (
     <div className={`course-visual course-visual-${variant}`} aria-hidden="true">
-      <span>{variant === "pole" ? "Flow" : variant === "flow" ? "Mobility" : "Strength"}</span>
+      <img alt="" loading="lazy" src={asset.src} />
+      <span>{asset.label}</span>
     </div>
   );
 }
@@ -1976,13 +2058,14 @@ function BookingsPanel({
                 </div>
                 {!isCancelled ? (
                   <button
+                    aria-label={`Cancella ${title}`}
                     className="secondary-action"
                     disabled={pendingBookingId === booking.id}
                     onClick={() => onCancelBooking(booking)}
                     type="button"
                   >
                     <RotateCcw aria-hidden="true" />
-                    {pendingBookingId === booking.id ? "Cancello" : `Cancella ${title}`}
+                    {pendingBookingId === booking.id ? "Cancello" : "Cancella"}
                   </button>
                 ) : null}
               </article>

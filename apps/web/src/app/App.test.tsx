@@ -420,7 +420,8 @@ describe("App", () => {
     expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
     expect(within(catalog).getByText("Pole Flow")).toBeInTheDocument();
     expect(screen.getByText("Scade il 31/08/2026")).toBeInTheDocument();
-    expect(screen.getByText("1 prenotazione")).toBeInTheDocument();
+    const overview = screen.getByRole("region", { name: "Riepilogo personale" });
+    expect(within(overview).getByText("Prenotazioni")).toBeInTheDocument();
   });
 
   it("loads the backoffice dashboard for admins", async () => {
@@ -429,7 +430,8 @@ describe("App", () => {
     render(<App />);
     await loginAdmin();
 
-    expect(screen.getByText("1 iscritto attivo")).toBeInTheDocument();
+    const overview = screen.getByRole("region", { name: "Riepilogo backoffice" });
+    expect(within(overview).getByText("Iscritti attivi")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Corsi migliori" })).toBeInTheDocument();
     expect(screen.getAllByText("8 iscritti collegati")).toHaveLength(2);
   });

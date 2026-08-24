@@ -1,9 +1,9 @@
 :root {
   color: #18211c;
-  background: #eef2e8;
+  background: #f3f6f0;
   font-family:
-    "Avenir Next", "Nunito Sans", Inter, ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -102,8 +102,17 @@ a {
 
 h1,
 h2,
+h3 {
+  font-family: "Avenir Next", "Nunito Sans", Inter, ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+h1,
+h2,
 h3,
-p {
+p,
+button,
+span {
   overflow-wrap: anywhere;
 }
 
@@ -297,12 +306,18 @@ h3 {
 .icon-button svg,
 .status-link svg,
 .user-chip svg,
+.admin-tabs svg,
 .notice svg,
 .section-icon svg,
 .section-title svg {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
+}
+
+.danger-action {
+  border-color: rgba(165, 59, 37, 0.3);
+  color: #8b321f;
 }
 
 .app-shell {
@@ -569,45 +584,36 @@ h3 {
 
 .course-visual {
   position: relative;
+  height: 138px;
   min-height: 138px;
   overflow: hidden;
   border-radius: 8px;
-  background:
-    linear-gradient(140deg, rgba(255, 255, 255, 0.16), transparent 42%),
-    linear-gradient(90deg, #14372c, #0d1f1b);
+  background: #173b27;
 }
 
-.course-visual::before,
 .course-visual::after {
   position: absolute;
+  inset: 0;
   content: "";
+  background: linear-gradient(90deg, rgba(7, 25, 15, 0.4), transparent 60%);
 }
 
-.course-visual::before {
-  right: 30px;
-  bottom: -28px;
-  width: 96px;
-  height: 148px;
-  border-radius: 52px 52px 18px 18px;
-  background: #f4eee2;
-  transform: rotate(-9deg);
+.course-visual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
-.course-visual::after {
-  right: 54px;
-  bottom: 28px;
-  width: 52px;
-  height: 52px;
-  border: 10px solid #16ee67;
-  border-radius: 50%;
-  box-shadow: -62px 54px 0 -12px rgba(22, 238, 103, 0.72);
+.course-visual-calisthenics img {
+  object-position: center 34%;
 }
 
 .course-visual span {
   position: absolute;
   top: 12px;
   left: 12px;
-  z-index: 1;
+  z-index: 2;
   min-height: 30px;
   padding: 6px 10px;
   border-radius: 8px;
@@ -618,16 +624,12 @@ h3 {
   text-transform: uppercase;
 }
 
-.course-visual-pole {
-  background:
-    linear-gradient(140deg, rgba(255, 255, 255, 0.18), transparent 44%),
-    linear-gradient(90deg, #143b33, #3a2030);
+.course-visual-pole img {
+  object-position: center 42%;
 }
 
-.course-visual-flow {
-  background:
-    linear-gradient(140deg, rgba(255, 255, 255, 0.22), transparent 42%),
-    linear-gradient(90deg, #174333, #efe7d5);
+.course-visual-martial img {
+  object-position: center 38%;
 }
 
 .course-card-header {
@@ -759,6 +761,7 @@ h3 {
   margin-top: 8px;
   background: #e7f3ef;
   color: #0d4d49;
+  white-space: nowrap;
 }
 
 .booking-status.cancelled {
@@ -785,6 +788,13 @@ h3 {
   margin: 0 auto;
 }
 
+.backoffice-layout,
+.backoffice-content {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
 .backoffice-header {
   display: grid;
   gap: 16px;
@@ -804,6 +814,10 @@ h3 {
 }
 
 .admin-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 44px;
   flex: 0 0 auto;
   border: 1px solid rgba(24, 33, 28, 0.14);
@@ -812,6 +826,11 @@ h3 {
   color: #33443a;
   padding: 0 15px;
   font-weight: 900;
+}
+
+.admin-tabs svg {
+  width: 18px;
+  height: 18px;
 }
 
 .admin-tabs button[aria-current="page"] {
@@ -872,6 +891,21 @@ h3 {
 .backoffice-grid {
   display: grid;
   gap: 18px;
+}
+
+.admin-page-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 4px 2px;
+}
+
+.admin-page-heading span {
+  color: #526157;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-align: right;
 }
 
 .admin-panel {
@@ -974,6 +1008,22 @@ h3 {
   font-size: 1.4rem;
 }
 
+.performance-track {
+  width: min(240px, 100%);
+  height: 5px;
+  overflow: hidden;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: #dfe8df;
+}
+
+.performance-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #22d967;
+}
+
 .admin-table {
   display: grid;
   overflow-x: auto;
@@ -1057,10 +1107,7 @@ h3 {
   .login-shell,
   .app-shell,
   .backoffice-shell {
-    background:
-      radial-gradient(circle at 24px 24px, rgba(34, 230, 107, 0.1) 0 2px, transparent 3px),
-      #07190f;
-    background-size: 24px 24px;
+    background: #07190f;
   }
 
   .app-shell,
@@ -1070,7 +1117,7 @@ h3 {
 
   .workspace,
   .backoffice-workspace {
-    width: min(100%, 440px);
+    width: min(100%, 480px);
     min-height: 100vh;
     padding: 14px 14px 94px;
     gap: 16px;
@@ -1161,10 +1208,10 @@ h3 {
   }
 
   .booking-focus {
-    position: sticky;
-    top: 86px;
-    z-index: 4;
-    margin: 0 -4px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    margin: 0;
+    padding: 14px;
     border-color: rgba(34, 230, 107, 0.28);
     background:
       linear-gradient(135deg, rgba(34, 230, 107, 0.18), transparent 48%),
@@ -1172,11 +1219,13 @@ h3 {
   }
 
   .booking-focus-action {
-    grid-template-columns: 1fr;
+    min-width: 112px;
+    justify-items: end;
   }
 
   .booking-focus-action .primary-action {
-    width: 100%;
+    width: auto;
+    white-space: nowrap;
   }
 
   .notice-success {
@@ -1191,30 +1240,28 @@ h3 {
 
   .overview,
   .admin-overview {
-    display: flex;
-    gap: 10px;
-    overflow-x: auto;
-    margin-right: -14px;
-    padding: 0 14px 2px 0;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-  }
-
-  .overview::-webkit-scrollbar,
-  .admin-overview::-webkit-scrollbar {
-    display: none;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    overflow: visible;
+    margin: 0;
+    padding: 0;
   }
 
   .overview article,
   .admin-overview article {
     grid-template-columns: 1fr;
-    flex: 0 0 76%;
-    min-width: 232px;
-    max-width: 286px;
-    min-height: 118px;
+    min-width: 0;
+    min-height: 104px;
     align-content: space-between;
-    scroll-snap-align: start;
-    padding: 15px;
+    gap: 5px;
+    padding: 10px;
+  }
+
+  .overview article svg,
+  .admin-overview article svg {
+    width: 18px;
+    height: 18px;
   }
 
   .overview svg,
@@ -1235,23 +1282,23 @@ h3 {
     color: #92b89b;
   }
 
+  .overview article > span,
+  .admin-overview article > span {
+    font-size: 0.7rem;
+    line-height: 1.15;
+  }
+
   .overview strong,
   .admin-overview strong,
   .performance-item strong {
     color: #f7fff7;
-    font-size: 1.45rem;
+    font-size: 1.1rem;
+    line-height: 1.05;
   }
 
   .admin-tabs {
     margin-right: -14px;
     padding-right: 14px;
-  }
-
-  .admin-action-strip {
-    display: grid;
-    grid-template-columns: 1fr;
-    border-color: rgba(22, 238, 103, 0.14);
-    background: #0d2c18;
   }
 
   .admin-tabs button {
@@ -1329,6 +1376,8 @@ h3 {
 
   .section-heading {
     justify-content: space-between;
+    min-height: 48px;
+    padding-right: 108px;
   }
 
   .section-heading .eyebrow,
@@ -1365,6 +1414,16 @@ h3 {
     font-weight: 950;
   }
 
+  .catalog-panel {
+    position: relative;
+  }
+
+  .catalog-panel > .filters > .filter-trigger {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+
   .filter-trigger svg {
     width: 18px;
     height: 18px;
@@ -1389,7 +1448,7 @@ h3 {
   }
 
   .quick-filters button {
-    min-height: 42px;
+    min-height: 44px;
     border-color: rgba(22, 238, 103, 0.08);
     background: #12391f;
     color: #99c4a2;
@@ -1440,7 +1499,8 @@ h3 {
   }
 
   .course-visual {
-    min-height: 180px;
+    height: 146px;
+    min-height: 146px;
     border-radius: 0;
   }
 
@@ -1480,6 +1540,35 @@ h3 {
     gap: 10px;
     border: 1px solid rgba(22, 238, 103, 0.16);
     background: #0d2c18;
+  }
+
+  .admin-page-heading {
+    display: grid;
+    align-items: start;
+    gap: 6px;
+  }
+
+  .admin-page-heading span {
+    color: #92b89b;
+    text-align: left;
+  }
+
+  .admin-page-heading .eyebrow {
+    color: #7fbf91;
+  }
+
+  .admin-row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-row-actions .secondary-action:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .danger-action {
+    border-color: rgba(255, 138, 108, 0.36);
+    color: #ffd5c8;
   }
 
   .session-thumb {
@@ -1538,7 +1627,7 @@ h3 {
     z-index: 10;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: min(100%, 440px);
+    width: min(100%, 480px);
     margin: 0 auto;
     padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
     border-top: 1px solid rgba(155, 255, 185, 0.12);
@@ -1570,8 +1659,14 @@ h3 {
 }
 
 @media (min-width: 620px) {
-  h1 {
+  .login-copy h1 {
     font-size: 3.55rem;
+  }
+
+  .app-header h1,
+  .backoffice-header h1 {
+    font-size: 2.15rem;
+    line-height: 1.05;
   }
 
   .login-shell,
@@ -1598,6 +1693,11 @@ h3 {
 
   .booking-focus-action {
     justify-items: end;
+  }
+
+  .course-visual {
+    height: 150px;
+    min-height: 150px;
   }
 
   .admin-overview {
@@ -1631,7 +1731,7 @@ h3 {
 }
 
 @media (min-width: 900px) {
-  h1 {
+  .login-copy h1 {
     font-size: 4.4rem;
   }
 
@@ -1646,7 +1746,7 @@ h3 {
 
   .app-header {
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
+    align-items: center;
   }
 
   .backoffice-header {
@@ -1657,6 +1757,11 @@ h3 {
   .dashboard-grid {
     grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
     align-items: start;
+  }
+
+  .side-stack {
+    position: sticky;
+    top: 24px;
   }
 
   .backoffice-grid {
@@ -1688,5 +1793,63 @@ h3 {
   .course-card-header {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
+  }
+}
+
+@media (min-width: 1040px) {
+  .backoffice-layout {
+    grid-template-columns: 210px minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
+  }
+
+  .admin-tabs {
+    position: sticky;
+    top: 24px;
+    display: grid;
+    gap: 6px;
+    overflow: visible;
+    padding: 10px;
+    border-radius: 8px;
+    background: #173b27;
+  }
+
+  .admin-tabs button {
+    width: 100%;
+    justify-content: flex-start;
+    border-color: transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: #c8d9cd;
+  }
+
+  .admin-tabs button[aria-current="page"] {
+    border-color: #22d967;
+    background: #22d967;
+    color: #07190f;
+  }
+}
+
+@media (min-width: 1200px) {
+  .workspace {
+    width: min(1320px, 100%);
+  }
+
+  .course-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .course-card-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (hover: none) {
+  .primary-action:hover,
+  .secondary-action:hover,
+  .icon-button:hover,
+  .status-link:hover {
+    transform: none;
   }
 }
