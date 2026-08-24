@@ -444,6 +444,14 @@ h3 {
   background: #f0eadf;
 }
 
+.filter-trigger {
+  display: none;
+}
+
+.filter-panel {
+  display: contents;
+}
+
 .compact-field {
   min-width: 0;
 }
@@ -872,7 +880,9 @@ h3 {
 
   .overview article {
     grid-template-columns: 1fr;
-    min-width: 142px;
+    flex: 0 0 76%;
+    min-width: 232px;
+    max-width: 286px;
     min-height: 118px;
     align-content: space-between;
     scroll-snap-align: start;
@@ -941,14 +951,46 @@ h3 {
   }
 
   .filters {
-    margin-right: -14px;
-    padding: 0 14px 0 0;
+    margin-right: 0;
+    padding: 0;
     border: 0;
     background: transparent;
   }
 
+  .filter-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    width: fit-content;
+    border: 1px solid rgba(22, 238, 103, 0.18);
+    border-radius: 999px;
+    background: #16ee67;
+    color: #082013;
+    padding: 0 16px;
+    font-weight: 950;
+  }
+
+  .filter-trigger svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .filter-panel {
+    display: none;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid rgba(22, 238, 103, 0.16);
+    border-radius: 8px;
+    background: #0d2c18;
+  }
+
+  .filters-open .filter-panel {
+    display: grid;
+  }
+
   .quick-filters {
-    order: -1;
     margin-right: -14px;
     padding-right: 14px;
   }
@@ -968,6 +1010,16 @@ h3 {
 
   .compact-field {
     display: none;
+  }
+
+  .filters-open .compact-field {
+    display: grid;
+  }
+
+  .filters-open .field select {
+    border-color: rgba(22, 238, 103, 0.28);
+    background: #082010;
+    color: #f7fff7;
   }
 
   .availability-toggle {

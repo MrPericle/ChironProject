@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   UserRound,
   XCircle,
@@ -599,73 +600,88 @@ function CatalogFilters({
   locations: Array<[string, string]>;
   onChange: (filters: Filters) => void;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <form className="filters" aria-label="Filtri catalogo">
-      <div className="quick-filters" role="group" aria-label="Filtri rapidi">
-        <button
-          className={filters.locationId === "all" && !filters.availableOnly ? "is-selected" : ""}
-          onClick={() => onChange({ locationId: "all", weekday: filters.weekday, availableOnly: false })}
-          type="button"
-        >
-          Tutti
-        </button>
-        <button
-          className={filters.availableOnly ? "is-selected" : ""}
-          onClick={() => onChange({ ...filters, availableOnly: !filters.availableOnly })}
-          type="button"
-        >
-          Disponibili
-        </button>
-        {locations.map(([id, name]) => (
+    <form className={isOpen ? "filters filters-open" : "filters"} aria-label="Filtri catalogo">
+      <button
+        aria-controls="catalog-filter-panel"
+        aria-expanded={isOpen}
+        className="filter-trigger"
+        onClick={() => setIsOpen((current) => !current)}
+        type="button"
+      >
+        <SlidersHorizontal aria-hidden="true" />
+        <span>Filtra</span>
+      </button>
+
+      <div className="filter-panel" id="catalog-filter-panel">
+        <div className="quick-filters" role="group" aria-label="Filtri rapidi">
           <button
-            className={filters.locationId === id ? "is-selected" : ""}
-            key={id}
-            onClick={() => onChange({ ...filters, locationId: id })}
+            className={filters.locationId === "all" && !filters.availableOnly ? "is-selected" : ""}
+            onClick={() => onChange({ locationId: "all", weekday: filters.weekday, availableOnly: false })}
             type="button"
           >
-            {name.replace("Chiron ", "")}
+            Tutti
+            </button>
+          <button
+            className={filters.availableOnly ? "is-selected" : ""}
+            onClick={() => onChange({ ...filters, availableOnly: !filters.availableOnly })}
+            type="button"
+          >
+            Disponibili
           </button>
-        ))}
-      </div>
-
-      <label className="field compact-field">
-        <span>Sede</span>
-        <select
-          value={filters.locationId}
-          onChange={(event) => onChange({ ...filters, locationId: event.target.value })}
-        >
-          <option value="all">Tutte le sedi</option>
           {locations.map(([id, name]) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
+            <button
+              className={filters.locationId === id ? "is-selected" : ""}
+              key={id}
+              onClick={() => onChange({ ...filters, locationId: id })}
+              type="button"
+            >
+              {name.replace("Chiron ", "")}
+            </button>
           ))}
-        </select>
-      </label>
+        </div>
 
-      <label className="field compact-field">
-        <span>Giorno</span>
-        <select
-          value={filters.weekday}
-          onChange={(event) => onChange({ ...filters, weekday: event.target.value })}
-        >
-          <option value="all">Tutti i giorni</option>
-          {weekdays.map((weekday, index) => (
-            <option key={weekday} value={index}>
-              {weekday}
-            </option>
-          ))}
-        </select>
-      </label>
+        <label className="field compact-field">
+          <span>Sede</span>
+          <select
+            value={filters.locationId}
+            onChange={(event) => onChange({ ...filters, locationId: event.target.value })}
+          >
+            <option value="all">Tutte le sedi</option>
+            {locations.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      <label className="availability-toggle">
-        <input
-          checked={filters.availableOnly}
-          onChange={(event) => onChange({ ...filters, availableOnly: event.target.checked })}
-          type="checkbox"
-        />
-        <span>Solo posti disponibili</span>
-      </label>
+        <label className="field compact-field">
+          <span>Giorno</span>
+          <select
+            value={filters.weekday}
+            onChange={(event) => onChange({ ...filters, weekday: event.target.value })}
+          >
+            <option value="all">Tutti i giorni</option>
+            {weekdays.map((weekday, index) => (
+              <option key={weekday} value={index}>
+                {weekday}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="availability-toggle">
+          <input
+            checked={filters.availableOnly}
+            onChange={(event) => onChange({ ...filters, availableOnly: event.target.checked })}
+            type="checkbox"
+          />
+          <span>Solo posti disponibili</span>
+        </label>
+      </div>
     </form>
   );
 }

@@ -235,6 +235,7 @@ describe("App", () => {
     render(<App />);
     await login();
 
+    fireEvent.click(screen.getByRole("button", { name: "Filtra" }));
     fireEvent.change(screen.getByLabelText("Sede"), { target: { value: "location-roma" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "Solo posti disponibili" }));
 
