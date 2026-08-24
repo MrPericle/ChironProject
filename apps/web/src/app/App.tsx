@@ -207,12 +207,16 @@ export function App() {
   const visibleCourses = useMemo(() => filteredCourses(courses, filters), [courses, filters]);
   const activeBookingCount = activeBookings(bookings).length;
 
-  async function handleLogin(email: string, password: string): Promise<void> {
+  async function handleLogin(email: string, password: string, totpCode?: string): Promise<void> {
     setNotice(null);
     setLoadState("loading");
 
     try {
-      const nextSession = await api.login({ email, password });
+      const nextSession = await api.login({
+        email,
+        password,
+        ...(totpCode === undefined || totpCode === "" ? {} : { totp_code: totpCode }),
+      });
       saveSession(nextSession);
       setSession(nextSession);
       setUser(nextSession.user);
@@ -805,7 +809,7 @@ function LoginScreen({
   onRegister,
 }: {
   notice: Notice | null;
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: (email: string, password: string, totpCode?: string) => Promise<void>;
   onRegister: (payload: {
     email: string;
     firstName: string;
@@ -818,13 +822,14 @@ function LoginScreen({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSubmitting(true);
     if (mode === "login") {
-      await onLogin(email, password);
+      await onLogin(email, password, totpCode);
     } else {
       await onRegister({ email, firstName, lastName, password });
     }
@@ -938,6 +943,23 @@ function LoginScreen({
               value={password}
             />
           </label>
+
+          {mode === "login" ? (
+            <label className="field">
+              <span>Codice 2FA</span>
+              <input
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                maxLength={6}
+                minLength={6}
+                name="totpCode"
+                onChange={(event) => setTotpCode(event.target.value)}
+                pattern="[0-9]{6}"
+                type="text"
+                value={totpCode}
+              />
+            </label>
+          ) : null}
 
           <button className="primary-action" disabled={submitting} type="submit">
             <span>

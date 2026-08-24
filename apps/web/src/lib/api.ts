@@ -16,6 +16,7 @@ export type TokenPair = {
 export type LoginPayload = {
   email: string;
   password: string;
+  totp_code?: string;
 };
 
 export type RegisterPayload = LoginPayload & {

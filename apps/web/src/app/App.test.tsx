@@ -270,6 +270,9 @@ async function loginAdmin() {
   fireEvent.change(screen.getByLabelText("Password"), {
     target: { value: "password-segreta" },
   });
+  fireEvent.change(screen.getByLabelText("Codice 2FA"), {
+    target: { value: "123456" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
 
   await screen.findByRole("heading", { level: 1, name: "Backoffice Chiron" });
@@ -293,6 +296,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Chiron Project" })).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "email");
     expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "current-password");
+    expect(screen.getByLabelText("Codice 2FA")).toHaveAttribute("autocomplete", "one-time-code");
   });
 
   it("lets a new user register from the auth panel", async () => {
