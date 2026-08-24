@@ -25,7 +25,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_NAME: ${APP_NAME:-Chiron Project API}
-      APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-http://localhost:5173}
+      APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-http://localhost:5173,http://localhost:5174}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-dev-only-change-me-before-production}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}

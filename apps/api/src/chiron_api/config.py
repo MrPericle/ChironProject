@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     app_name: str = Field(default="Chiron Project API", alias="APP_NAME")
     cors_origins: str = Field(
-        default="http://localhost:5173",
+        default="http://localhost:5173,http://localhost:5174",
         alias="APP_CORS_ORIGINS",
     )
     database_url: str = Field(
