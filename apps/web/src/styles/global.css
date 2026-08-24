@@ -288,6 +288,10 @@ h3 {
   color: #18211c;
 }
 
+.mobile-alert-button {
+  display: none;
+}
+
 .primary-action svg,
 .secondary-action svg,
 .icon-button svg,
@@ -459,6 +463,35 @@ h3 {
   accent-color: #155b56;
 }
 
+.quick-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.quick-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-filters button {
+  min-height: 40px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(24, 33, 28, 0.14);
+  border-radius: 999px;
+  background: #fffefb;
+  color: #314339;
+  padding: 0 14px;
+  font-weight: 900;
+}
+
+.quick-filters button.is-selected {
+  border-color: #155b56;
+  background: #155b56;
+  color: #fffaf0;
+}
+
 .course-list,
 .side-stack,
 .booking-list {
@@ -470,6 +503,69 @@ h3 {
   display: grid;
   gap: 16px;
   padding: 15px;
+}
+
+.course-visual {
+  position: relative;
+  min-height: 138px;
+  overflow: hidden;
+  border-radius: 8px;
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.16), transparent 42%),
+    linear-gradient(90deg, #14372c, #0d1f1b);
+}
+
+.course-visual::before,
+.course-visual::after {
+  position: absolute;
+  content: "";
+}
+
+.course-visual::before {
+  right: 30px;
+  bottom: -28px;
+  width: 96px;
+  height: 148px;
+  border-radius: 52px 52px 18px 18px;
+  background: #f4eee2;
+  transform: rotate(-9deg);
+}
+
+.course-visual::after {
+  right: 54px;
+  bottom: 28px;
+  width: 52px;
+  height: 52px;
+  border: 10px solid #16ee67;
+  border-radius: 50%;
+  box-shadow: -62px 54px 0 -12px rgba(22, 238, 103, 0.72);
+}
+
+.course-visual span {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #16ee67;
+  color: #082013;
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.course-visual-pole {
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.18), transparent 44%),
+    linear-gradient(90deg, #143b33, #3a2030);
+}
+
+.course-visual-flow {
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.22), transparent 42%),
+    linear-gradient(90deg, #174333, #efe7d5);
 }
 
 .course-card-header {
@@ -514,6 +610,10 @@ h3 {
   padding: 12px;
   border-radius: 8px;
   background: #f6f0e6;
+}
+
+.session-thumb {
+  display: none;
 }
 
 .session-day,
@@ -598,6 +698,10 @@ h3 {
   color: #6c5a42;
 }
 
+.mobile-tabbar {
+  display: none;
+}
+
 .loading-panel,
 .empty-state {
   display: grid;
@@ -629,6 +733,383 @@ h3 {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 619px) {
+  :root {
+    color: #f6fff8;
+    background: #07190f;
+  }
+
+  body {
+    background: #07190f;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: #f7fff7;
+  }
+
+  .login-shell,
+  .app-shell {
+    background:
+      radial-gradient(circle at 24px 24px, rgba(22, 238, 103, 0.13) 0 2px, transparent 3px),
+      #07190f;
+    background-size: 24px 24px;
+  }
+
+  .app-shell {
+    padding: 0;
+  }
+
+  .workspace {
+    width: min(100%, 440px);
+    min-height: 100vh;
+    padding: 14px 14px 94px;
+    gap: 16px;
+    background: #082010;
+    box-shadow: 0 0 0 1px rgba(114, 92, 255, 0.7);
+  }
+
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 14px;
+    margin: -14px -14px 0;
+    padding: 18px 14px 14px;
+    border-bottom: 1px solid rgba(155, 255, 185, 0.1);
+    background: rgba(8, 32, 16, 0.94);
+    backdrop-filter: blur(14px);
+  }
+
+  .app-header .eyebrow {
+    color: #7fbf91;
+    font-size: 0.7rem;
+  }
+
+  .app-header h1 {
+    max-width: 220px;
+    font-size: 1.42rem;
+    line-height: 1.05;
+  }
+
+  .header-actions {
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+  }
+
+  .status-link {
+    display: none;
+  }
+
+  .mobile-alert-button {
+    display: inline-flex;
+  }
+
+  .user-chip {
+    width: 44px;
+    padding: 0;
+    border-color: rgba(22, 238, 103, 0.22);
+    background: #12391f;
+    color: #16ee67;
+  }
+
+  .user-chip span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .icon-button {
+    border-color: rgba(22, 238, 103, 0.22);
+    background: #12391f;
+    color: #e7ffee;
+  }
+
+  .notice,
+  .loading-panel,
+  .empty-state,
+  .compact-panel,
+  .course-card,
+  .overview article,
+  .booking-item {
+    border-color: rgba(70, 161, 92, 0.4);
+    background: #12391f;
+    box-shadow: none;
+  }
+
+  .notice-success {
+    background: #12391f;
+    color: #d8ffe3;
+  }
+
+  .notice-error {
+    background: #3a1b1b;
+    color: #ffe6dc;
+  }
+
+  .overview {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    margin-right: -14px;
+    padding: 0 14px 2px 0;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .overview::-webkit-scrollbar {
+    display: none;
+  }
+
+  .overview article {
+    grid-template-columns: 1fr;
+    min-width: 142px;
+    min-height: 118px;
+    align-content: space-between;
+    scroll-snap-align: start;
+    padding: 15px;
+  }
+
+  .overview svg {
+    color: #16ee67;
+  }
+
+  .overview span,
+  .course-card p,
+  .muted,
+  .empty-state p,
+  .subscription-box p,
+  .booking-item p,
+  .session-time {
+    color: #92b89b;
+  }
+
+  .overview strong {
+    color: #f7fff7;
+    font-size: 1.45rem;
+  }
+
+  .dashboard-grid {
+    display: block;
+  }
+
+  .catalog-panel,
+  .side-stack {
+    gap: 16px;
+  }
+
+  .mobile-view-courses .side-stack,
+  .mobile-view-bookings .catalog-panel,
+  .mobile-view-bookings .subscription-panel,
+  .mobile-view-profile .catalog-panel,
+  .mobile-view-profile .bookings-panel {
+    display: none;
+  }
+
+  .mobile-view-bookings .side-stack,
+  .mobile-view-profile .side-stack {
+    display: grid;
+  }
+
+  .mobile-view-profile .subscription-panel {
+    display: grid;
+  }
+
+  .section-heading {
+    justify-content: space-between;
+  }
+
+  .section-heading .eyebrow,
+  .section-title + .muted,
+  .field {
+    color: #99c4a2;
+  }
+
+  .section-icon,
+  .section-title span {
+    background: #12391f;
+    color: #16ee67;
+  }
+
+  .filters {
+    margin-right: -14px;
+    padding: 0 14px 0 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .quick-filters {
+    order: -1;
+    margin-right: -14px;
+    padding-right: 14px;
+  }
+
+  .quick-filters button {
+    min-height: 42px;
+    border-color: rgba(22, 238, 103, 0.08);
+    background: #12391f;
+    color: #99c4a2;
+  }
+
+  .quick-filters button.is-selected {
+    border-color: #16ee67;
+    background: #16ee67;
+    color: #082013;
+  }
+
+  .compact-field {
+    display: none;
+  }
+
+  .availability-toggle {
+    min-height: 44px;
+    width: fit-content;
+    padding: 0 13px;
+    border-radius: 999px;
+    background: #12391f;
+    color: #d8ffe3;
+  }
+
+  .availability-toggle input {
+    accent-color: #16ee67;
+  }
+
+  .course-list {
+    gap: 18px;
+  }
+
+  .course-card {
+    overflow: hidden;
+    padding: 0;
+    border-color: rgba(22, 238, 103, 0.18);
+    background: #12391f;
+  }
+
+  .course-visual {
+    min-height: 180px;
+    border-radius: 0;
+  }
+
+  .course-card-header {
+    padding: 0 16px;
+  }
+
+  .course-card h3 {
+    font-size: 1.35rem;
+  }
+
+  .location-badge,
+  .spots,
+  .booking-status {
+    background: #1b4a2a;
+    color: #b8f9c8;
+  }
+
+  .session-list {
+    padding: 0 16px 16px;
+  }
+
+  .session-row {
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(22, 238, 103, 0.16);
+    background: #0d2c18;
+  }
+
+  .session-thumb {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: #1b4a2a;
+    color: #16ee67;
+  }
+
+  .session-thumb svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .session-day {
+    color: #f7fff7;
+  }
+
+  .session-action {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .primary-action {
+    border-color: #16ee67;
+    background: #16ee67;
+    color: #082013;
+  }
+
+  .secondary-action {
+    border-color: rgba(22, 238, 103, 0.18);
+    background: #1b4a2a;
+    color: #d8ffe3;
+  }
+
+  .subscription-box {
+    background:
+      linear-gradient(135deg, rgba(22, 238, 103, 0.18), transparent 48%),
+      #0d2c18;
+  }
+
+  .booking-item {
+    border-color: rgba(22, 238, 103, 0.14);
+    background: #0d2c18;
+  }
+
+  .mobile-tabbar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: min(100%, 440px);
+    margin: 0 auto;
+    padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(155, 255, 185, 0.12);
+    background: rgba(8, 32, 16, 0.96);
+    backdrop-filter: blur(18px);
+  }
+
+  .mobile-tabbar button {
+    display: grid;
+    place-items: center;
+    gap: 4px;
+    min-height: 54px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #6d9375;
+    font-size: 0.72rem;
+    font-weight: 900;
+  }
+
+  .mobile-tabbar button[aria-current="page"] {
+    color: #16ee67;
+  }
+
+  .mobile-tabbar svg {
+    width: 20px;
+    height: 20px;
   }
 }
 

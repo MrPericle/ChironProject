@@ -1,10 +1,13 @@
 import {
   Activity,
   ArrowRight,
+  Bell,
   CalendarCheck,
   CheckCircle2,
   Clock3,
   Dumbbell,
+  Home,
+  ListChecks,
   LogOut,
   MapPin,
   RotateCcw,
@@ -47,6 +50,8 @@ type Notice = {
 };
 
 type AuthMode = "login" | "register";
+
+type MobileView = "courses" | "bookings" | "profile";
 
 function readStoredSession(): TokenPair | null {
   const raw = localStorage.getItem(sessionStorageKey);
@@ -143,6 +148,7 @@ export function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const [pendingBookingId, setPendingBookingId] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<MobileView>("courses");
 
   useEffect(() => {
     if (session === null) {
@@ -291,7 +297,7 @@ export function App() {
 
   return (
     <main className="app-shell" id="main-content">
-      <div className="workspace">
+      <div className={`workspace mobile-view-${mobileView}`}>
         <AppHeader user={user} onLogout={handleLogout} />
 
         {notice !== null ? (
@@ -340,6 +346,7 @@ export function App() {
                 />
               </aside>
             </div>
+            <MobileTabBar activeView={mobileView} onChange={setMobileView} />
           </>
         ) : null}
       </div>
@@ -518,6 +525,9 @@ function AppHeader({ user, onLogout }: { user: User | null; onLogout: () => void
           <Activity aria-hidden="true" />
           <span>API</span>
         </a>
+        <button className="icon-button mobile-alert-button" type="button" aria-label="Notifiche">
+          <Bell aria-hidden="true" />
+        </button>
         <div className="user-chip">
           <UserRound aria-hidden="true" />
           <span>{user?.email ?? "Utente"}</span>
@@ -591,6 +601,33 @@ function CatalogFilters({
 }) {
   return (
     <form className="filters" aria-label="Filtri catalogo">
+      <div className="quick-filters" role="group" aria-label="Filtri rapidi">
+        <button
+          className={filters.locationId === "all" && !filters.availableOnly ? "is-selected" : ""}
+          onClick={() => onChange({ locationId: "all", weekday: filters.weekday, availableOnly: false })}
+          type="button"
+        >
+          Tutti
+        </button>
+        <button
+          className={filters.availableOnly ? "is-selected" : ""}
+          onClick={() => onChange({ ...filters, availableOnly: !filters.availableOnly })}
+          type="button"
+        >
+          Disponibili
+        </button>
+        {locations.map(([id, name]) => (
+          <button
+            className={filters.locationId === id ? "is-selected" : ""}
+            key={id}
+            onClick={() => onChange({ ...filters, locationId: id })}
+            type="button"
+          >
+            {name.replace("Chiron ", "")}
+          </button>
+        ))}
+      </div>
+
       <label className="field compact-field">
         <span>Sede</span>
         <select
@@ -656,6 +693,7 @@ function CourseCatalog({
     <div className="course-list">
       {courses.map((course) => (
         <article className="course-card" key={course.id} aria-label={course.title}>
+          <CourseVisual title={course.title} />
           <div className="course-card-header">
             <div>
               <h3>{course.title}</h3>
@@ -673,6 +711,9 @@ function CourseCatalog({
               const isPending = pendingSessionId === session.id;
               return (
                 <div className="session-row" key={session.id}>
+                  <div className="session-thumb" aria-hidden="true">
+                    <Dumbbell />
+                  </div>
                   <div>
                     <span className="session-day">{weekdays[session.weekday]}</span>
                     <span className="session-time">
@@ -703,9 +744,23 @@ function CourseCatalog({
   );
 }
 
+function CourseVisual({ title }: { title: string }) {
+  const variant = title.toLowerCase().includes("pole")
+    ? "pole"
+    : title.toLowerCase().includes("yoga")
+      ? "flow"
+      : "power";
+
+  return (
+    <div className={`course-visual course-visual-${variant}`} aria-hidden="true">
+      <span>{variant === "pole" ? "Flow" : variant === "flow" ? "Mobility" : "Strength"}</span>
+    </div>
+  );
+}
+
 function SubscriptionPanel({ subscription }: { subscription: SubscriptionInfo | null }) {
   return (
-    <section className="panel compact-panel" aria-labelledby="subscription-title">
+    <section className="panel compact-panel subscription-panel" aria-labelledby="subscription-title">
       <SectionTitle icon={<Sparkles aria-hidden="true" />} title="Abbonamento" id="subscription-title" />
       {subscription === null ? (
         <p className="muted">Nessuna scadenza registrata.</p>
@@ -732,7 +787,7 @@ function BookingsPanel({
   onCancelBooking: (booking: Booking) => void;
 }) {
   return (
-    <section className="panel compact-panel" aria-labelledby="bookings-title">
+    <section className="panel compact-panel bookings-panel" aria-labelledby="bookings-title">
       <SectionTitle icon={<CalendarCheck aria-hidden="true" />} title="Le tue prenotazioni" id="bookings-title" />
       {bookings.length === 0 ? (
         <p className="muted">Non hai ancora prenotazioni.</p>
@@ -773,6 +828,43 @@ function BookingsPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function MobileTabBar({
+  activeView,
+  onChange,
+}: {
+  activeView: MobileView;
+  onChange: (view: MobileView) => void;
+}) {
+  return (
+    <nav className="mobile-tabbar" aria-label="Navigazione area utente">
+      <button
+        aria-current={activeView === "courses" ? "page" : undefined}
+        onClick={() => onChange("courses")}
+        type="button"
+      >
+        <Home aria-hidden="true" />
+        <span>Corsi</span>
+      </button>
+      <button
+        aria-current={activeView === "bookings" ? "page" : undefined}
+        onClick={() => onChange("bookings")}
+        type="button"
+      >
+        <ListChecks aria-hidden="true" />
+        <span>Prenotazioni</span>
+      </button>
+      <button
+        aria-current={activeView === "profile" ? "page" : undefined}
+        onClick={() => onChange("profile")}
+        type="button"
+      >
+        <UserRound aria-hidden="true" />
+        <span>Profilo</span>
+      </button>
+    </nav>
   );
 }
 
