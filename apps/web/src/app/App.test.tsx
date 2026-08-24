@@ -81,6 +81,7 @@ const adminCoursesResponse = [
 
 const adminSubscriptionsResponse = [
   {
+    id: "subscription-1",
     user_id: "user-1",
     user_email: "member@example.com",
     starts_on: "2026-08-01",
@@ -89,6 +90,32 @@ const adminSubscriptionsResponse = [
     is_active: true,
   },
 ];
+
+const adminUsersResponse = [
+  {
+    id: "user-1",
+    email: "member@example.com",
+    role: "user",
+    status: "active",
+    first_name: "Mario",
+    last_name: "Rossi",
+    phone: null,
+    birth_date: null,
+    subscription: {
+      id: "subscription-1",
+      starts_on: "2026-08-01",
+      duration_days: 30,
+      expires_on: "2026-08-31",
+      is_active: true,
+    },
+  },
+];
+
+const adminStatsResponse = {
+  active_members: 1,
+  courses: [{ id: "course-calisthenics", name: "Calisthenics Foundation", member_count: 8 }],
+  locations: [{ id: "location-roma", name: "Chiron Roma", member_count: 8 }],
+};
 
 function jsonResponse(payload: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(payload), {
@@ -159,6 +186,51 @@ function installFetchMock() {
       return jsonResponse(adminSubscriptionsResponse);
     }
 
+    if (url.endsWith("/admin/users") && method === "GET") {
+      return jsonResponse(adminUsersResponse);
+    }
+
+    if (url.endsWith("/admin/stats") && method === "GET") {
+      return jsonResponse(adminStatsResponse);
+    }
+
+    if (url.endsWith("/admin/users") && method === "POST") {
+      return jsonResponse(
+        {
+          id: "user-2",
+          email: "new.member@example.com",
+          role: "user",
+          status: "active",
+          first_name: "Nuovo",
+          last_name: "Utente",
+          phone: null,
+          birth_date: null,
+          subscription: null,
+        },
+        { status: 201 },
+      );
+    }
+
+    if (url.endsWith("/admin/users/user-1") && method === "PATCH") {
+      return jsonResponse({ ...adminUsersResponse[0], status: "disabled" });
+    }
+
+    if (url.endsWith("/admin/users/user-1") && method === "DELETE") {
+      return jsonResponse({ ...adminUsersResponse[0], status: "deleted" });
+    }
+
+    if (url.endsWith("/admin/users/user-1/subscriptions") && method === "POST") {
+      return jsonResponse(adminUsersResponse[0].subscription, { status: 201 });
+    }
+
+    if (url.endsWith("/admin/subscriptions/subscription-1") && method === "PATCH") {
+      return jsonResponse({
+        ...adminUsersResponse[0].subscription,
+        duration_days: 60,
+        expires_on: "2026-09-30",
+      });
+    }
+
     if (url.endsWith("/admin/locations") && method === "POST") {
       return jsonResponse(
         {
@@ -176,6 +248,10 @@ function installFetchMock() {
       return jsonResponse({ ...adminLocationsResponse[0], is_active: false });
     }
 
+    if (url.endsWith("/admin/locations/location-roma") && method === "PATCH") {
+      return jsonResponse({ ...adminLocationsResponse[0], name: "Chiron Roma aggiornata" });
+    }
+
     if (url.endsWith("/admin/courses") && method === "POST") {
       return jsonResponse(
         {
@@ -188,6 +264,10 @@ function installFetchMock() {
         },
         { status: 201 },
       );
+    }
+
+    if (url.endsWith("/admin/courses/course-calisthenics") && method === "PATCH") {
+      return jsonResponse({ ...adminCoursesResponse[0], title: "Calisthenics Foundation aggiornato" });
     }
 
     if (url.endsWith("/admin/courses/course-calisthenics/sessions") && method === "POST") {
@@ -349,12 +429,9 @@ describe("App", () => {
     render(<App />);
     await loginAdmin();
 
-    expect(screen.getByRole("heading", { level: 3, name: "Chiron Roma" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 3, name: "Calisthenics Foundation" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("member@example.com")).toBeInTheDocument();
     expect(screen.getByText("1 iscritto attivo")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Corsi migliori" })).toBeInTheDocument();
+    expect(screen.getAllByText("8 iscritti collegati")).toHaveLength(2);
   });
 
   it("keeps regular users out of the backoffice shell", async () => {
@@ -373,6 +450,7 @@ describe("App", () => {
     render(<App />);
     await loginAdmin();
 
+    fireEvent.click(screen.getByRole("button", { name: "Sedi" }));
     fireEvent.change(screen.getByLabelText("Nome sede"), { target: { value: "Chiron Milano" } });
     fireEvent.change(screen.getByLabelText("Indirizzo"), { target: { value: "Via Milano 2" } });
     fireEvent.change(screen.getByLabelText("Citta"), { target: { value: "Milano" } });
@@ -382,6 +460,15 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/locations",
       expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /modifica Chiron Roma/i }));
+    fireEvent.click(screen.getByRole("button", { name: /salva sede Chiron Roma/i }));
+
+    await screen.findByText("Sede aggiornata.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/locations/location-roma",
+      expect.objectContaining({ method: "PATCH" }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /disattiva Chiron Roma/i }));
@@ -399,6 +486,7 @@ describe("App", () => {
     render(<App />);
     await loginAdmin();
 
+    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
     fireEvent.change(screen.getByLabelText("Titolo corso"), { target: { value: "Martial Flow" } });
     fireEvent.change(screen.getByLabelText("Descrizione corso"), {
       target: { value: "Tecnica e mobilita." },
@@ -411,12 +499,61 @@ describe("App", () => {
       expect.objectContaining({ method: "POST" }),
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /modifica Calisthenics/i }));
+    fireEvent.click(screen.getByRole("button", { name: /salva corso Calisthenics/i }));
+
+    await screen.findByText("Corso aggiornato.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/courses/course-calisthenics",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+
     fireEvent.click(screen.getByRole("button", { name: /aggiungi sessione a Calisthenics/i }));
 
     await screen.findByText("Sessione creata.");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/courses/course-calisthenics/sessions",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("manages users and subscriptions from a dedicated backoffice tab", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Utenti" }));
+    expect(screen.getByText("member@example.com")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Email utente"), {
+      target: { value: "new.member@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Nome utente"), { target: { value: "Nuovo" } });
+    fireEvent.change(screen.getByLabelText("Cognome utente"), { target: { value: "Utente" } });
+    fireEvent.click(screen.getByRole("button", { name: "Crea utente" }));
+
+    await screen.findByText("Utente creato.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/users",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /gestisci utente e iscrizione member@example.com/i }));
+    fireEvent.change(screen.getByLabelText("Durata iscrizione"), { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: /salva iscrizione member@example.com/i }));
+
+    await screen.findByText("Iscrizione aggiornata.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/subscriptions/subscription-1",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /disabilita member@example.com/i }));
+
+    await screen.findByText("Utente disabilitato.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/users/user-1",
+      expect.objectContaining({ method: "PATCH" }),
     );
   });
 
