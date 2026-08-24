@@ -12,6 +12,6 @@ class SubscriptionInfoResponse(BaseModel):
 
 
 class AdminSubscriptionInfoResponse(SubscriptionInfoResponse):
+    id: UUID
     user_id: UUID
     user_email: str
-

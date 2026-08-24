@@ -59,6 +59,7 @@ def admin_subscriptions(
         response.append(
             AdminSubscriptionInfoResponse(
                 **info.model_dump(),
+                id=subscription.id,
                 user_id=user.id,
                 user_email=user.email,
             ),
