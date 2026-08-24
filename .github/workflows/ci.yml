@@ -10,6 +10,20 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: chiron
+          POSTGRES_USER: chiron
+          POSTGRES_PASSWORD: chiron_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chiron -d chiron"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: apps/api
@@ -31,6 +45,8 @@ jobs:
         run: ruff check src tests
 
       - name: Test
+        env:
+          BOOKING_DATABASE_URL: postgresql+psycopg://chiron:chiron_dev_password@localhost:5432/chiron
         run: pytest
 
   frontend:
@@ -69,4 +85,3 @@ jobs:
 
       - name: Validate compose file
         run: docker compose config
-
