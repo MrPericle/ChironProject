@@ -21,11 +21,15 @@ import {
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
+  AdminCourse,
+  AdminSubscriptionInfo,
   ApiError,
   Booking,
   CatalogCourse,
   CatalogSession,
   ChironApi,
+  CourseStatus,
+  Location,
   SubscriptionInfo,
   TokenPair,
   User,
@@ -53,6 +57,10 @@ type Notice = {
 type AuthMode = "login" | "register";
 
 type MobileView = "courses" | "bookings" | "profile";
+
+function isBackofficeRole(user: User | null): boolean {
+  return user?.role === "admin" || user?.role === "staff";
+}
 
 function readStoredSession(): TokenPair | null {
   const raw = localStorage.getItem(sessionStorageKey);
@@ -153,6 +161,10 @@ export function App() {
 
   useEffect(() => {
     if (session === null) {
+      return;
+    }
+    if (isBackofficeRole(session.user)) {
+      setLoadState("ready");
       return;
     }
 
@@ -296,6 +308,10 @@ export function App() {
     return <LoginScreen notice={notice} onLogin={handleLogin} onRegister={handleRegister} />;
   }
 
+  if (isBackofficeRole(session.user)) {
+    return <BackofficeScreen session={session} user={user ?? session.user} onLogout={handleLogout} />;
+  }
+
   return (
     <main className="app-shell" id="main-content">
       <div className={`workspace mobile-view-${mobileView}`}>
@@ -352,6 +368,434 @@ export function App() {
         ) : null}
       </div>
     </main>
+  );
+}
+
+function BackofficeScreen({
+  session,
+  user,
+  onLogout,
+}: {
+  session: TokenPair;
+  user: User;
+  onLogout: () => void;
+}) {
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [courses, setCourses] = useState<AdminCourse[]>([]);
+  const [subscriptions, setSubscriptions] = useState<AdminSubscriptionInfo[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [notice, setNotice] = useState<Notice | null>(null);
+
+  useEffect(() => {
+    let ignore = false;
+    setLoadState("loading");
+
+    api
+      .adminDashboard(session.access_token)
+      .then((dashboard) => {
+        if (ignore) {
+          return;
+        }
+        setLocations(dashboard.locations);
+        setCourses(dashboard.courses);
+        setSubscriptions(dashboard.subscriptions);
+        setLoadState("ready");
+      })
+      .catch((error: unknown) => {
+        if (ignore) {
+          return;
+        }
+        setNotice({ tone: "error", message: describeError(error) });
+        setLoadState("error");
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [session.access_token]);
+
+  const activeLocations = locations.filter((location) => location.is_active);
+  const activeMembers = subscriptions.filter((subscription) => subscription.is_active).length;
+  const publishedCourses = courses.filter((course) => course.status === "published").length;
+
+  function upsertLocation(location: Location): void {
+    setLocations((current) => {
+      const existing = current.some((item) => item.id === location.id);
+      if (!existing) {
+        return [location, ...current];
+      }
+      return current.map((item) => (item.id === location.id ? location : item));
+    });
+  }
+
+  function upsertCourse(course: AdminCourse): void {
+    setCourses((current) => {
+      const existing = current.some((item) => item.id === course.id);
+      if (!existing) {
+        return [course, ...current];
+      }
+      return current.map((item) => (item.id === course.id ? course : item));
+    });
+  }
+
+  return (
+    <main className="backoffice-shell" id="main-content">
+      <div className="backoffice-workspace">
+        <header className="backoffice-header">
+          <div>
+            <p className="eyebrow">Backoffice</p>
+            <h1>Backoffice Chiron</h1>
+          </div>
+          <div className="header-actions">
+            <div className="user-chip">
+              <UserRound aria-hidden="true" />
+              <span>{user.email}</span>
+            </div>
+            <button className="icon-button" type="button" onClick={onLogout} aria-label="Esci">
+              <LogOut aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+
+        {notice !== null ? (
+          <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">
+            {notice.tone === "success" ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
+            <span>{notice.message}</span>
+          </div>
+        ) : null}
+
+        {loadState === "loading" ? <LoadingDashboard /> : null}
+        {loadState === "error" ? <ErrorPanel onRetry={() => setLoadState("loading")} /> : null}
+
+        {loadState === "ready" ? (
+          <>
+            <section className="admin-overview" aria-label="Riepilogo backoffice">
+              <article>
+                <UsersIcon />
+                <span>{activeMembers === 1 ? "1 iscritto attivo" : `${activeMembers} iscritti attivi`}</span>
+                <strong>{activeMembers}</strong>
+              </article>
+              <article>
+                <Dumbbell aria-hidden="true" />
+                <span>Corsi pubblicati</span>
+                <strong>{publishedCourses}</strong>
+              </article>
+              <article>
+                <MapPin aria-hidden="true" />
+                <span>Sedi attive</span>
+                <strong>{activeLocations.length}</strong>
+              </article>
+            </section>
+
+            <div className="backoffice-grid">
+              <LocationsManager
+                locations={locations}
+                onNotice={setNotice}
+                onLocationChange={upsertLocation}
+                token={session.access_token}
+              />
+              <CoursesManager
+                courses={courses}
+                locations={activeLocations}
+                onCourseChange={upsertCourse}
+                onNotice={setNotice}
+                token={session.access_token}
+              />
+              <MembersManager subscriptions={subscriptions} locations={activeLocations} />
+            </div>
+          </>
+        ) : null}
+      </div>
+    </main>
+  );
+}
+
+function UsersIcon() {
+  return <UserRound aria-hidden="true" />;
+}
+
+function LocationsManager({
+  locations,
+  onLocationChange,
+  onNotice,
+  token,
+}: {
+  locations: Location[];
+  onLocationChange: (location: Location) => void;
+  onNotice: (notice: Notice) => void;
+  token: string;
+}) {
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    try {
+      const location = await api.createLocation(token, { name, address, city });
+      onLocationChange(location);
+      setName("");
+      setAddress("");
+      setCity("");
+      onNotice({ tone: "success", message: "Sede creata." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleDeactivate(location: Location): Promise<void> {
+    try {
+      onLocationChange(await api.deactivateLocation(token, location.id));
+      onNotice({ tone: "success", message: "Sede disattivata." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  return (
+    <section className="admin-panel" aria-labelledby="locations-title">
+      <SectionTitle icon={<MapPin aria-hidden="true" />} title="Sedi" id="locations-title" />
+      <form className="admin-form" onSubmit={handleCreate}>
+        <label className="field">
+          <span>Nome sede</span>
+          <input required value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>Indirizzo</span>
+          <input required value={address} onChange={(event) => setAddress(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>Citta</span>
+          <input required value={city} onChange={(event) => setCity(event.target.value)} />
+        </label>
+        <button className="primary-action" type="submit">
+          Crea sede
+        </button>
+      </form>
+
+      <div className="admin-list">
+        {locations.length === 0 ? (
+          <p className="muted">Nessuna sede presente.</p>
+        ) : (
+          locations.map((location) => (
+            <article className="admin-list-item" key={location.id}>
+              <div>
+                <h3>{location.name}</h3>
+                <p>
+                  {location.address}, {location.city}
+                </p>
+                <span className={location.is_active ? "admin-status" : "admin-status muted-status"}>
+                  {location.is_active ? "Attiva" : "Disattivata"}
+                </span>
+              </div>
+              {location.is_active ? (
+                <button
+                  className="secondary-action"
+                  onClick={() => handleDeactivate(location)}
+                  type="button"
+                >
+                  Disattiva {location.name}
+                </button>
+              ) : null}
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CoursesManager({
+  courses,
+  locations,
+  onCourseChange,
+  onNotice,
+  token,
+}: {
+  courses: AdminCourse[];
+  locations: Location[];
+  onCourseChange: (course: AdminCourse) => void;
+  onNotice: (notice: Notice) => void;
+  token: string;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [status, setStatus] = useState<CourseStatus>("published");
+
+  const selectedLocationId = locationId || locations[0]?.id || "";
+
+  async function handleCreateCourse(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (selectedLocationId === "") {
+      onNotice({ tone: "error", message: "Crea prima una sede attiva." });
+      return;
+    }
+
+    try {
+      const course = await api.createCourse(token, {
+        location_id: selectedLocationId,
+        title,
+        description: description || null,
+        status,
+      });
+      onCourseChange(course);
+      setTitle("");
+      setDescription("");
+      onNotice({ tone: "success", message: "Corso creato." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleCreateSession(course: AdminCourse): Promise<void> {
+    try {
+      await api.createCourseSession(token, course.id, {
+        weekday: 2,
+        starts_at: "18:00",
+        ends_at: "19:00",
+        capacity: 12,
+        cancellation_deadline_hours: 24,
+      });
+      onNotice({ tone: "success", message: "Sessione creata." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleArchive(course: AdminCourse): Promise<void> {
+    try {
+      onCourseChange(await api.archiveCourse(token, course.id));
+      onNotice({ tone: "success", message: "Corso archiviato." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  return (
+    <section className="admin-panel" aria-labelledby="courses-title">
+      <SectionTitle icon={<Dumbbell aria-hidden="true" />} title="Corsi e sessioni" id="courses-title" />
+      <form className="admin-form" onSubmit={handleCreateCourse}>
+        <label className="field">
+          <span>Titolo corso</span>
+          <input required value={title} onChange={(event) => setTitle(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>Descrizione corso</span>
+          <input value={description} onChange={(event) => setDescription(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>Sede corso</span>
+          <select value={selectedLocationId} onChange={(event) => setLocationId(event.target.value)}>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Stato corso</span>
+          <select value={status} onChange={(event) => setStatus(event.target.value as CourseStatus)}>
+            <option value="published">Pubblicato</option>
+            <option value="draft">Bozza</option>
+          </select>
+        </label>
+        <button className="primary-action" type="submit">
+          Crea corso
+        </button>
+      </form>
+
+      <div className="admin-list">
+        {courses.length === 0 ? (
+          <p className="muted">Nessun corso presente.</p>
+        ) : (
+          courses.map((course, index) => (
+            <article className="admin-list-item" key={`${course.id}-${index}`}>
+              <div>
+                <h3>{course.title}</h3>
+                <p>{course.description ?? "Descrizione non inserita."}</p>
+                <span className="admin-status">{course.status}</span>
+              </div>
+              <div className="admin-row-actions">
+                <button
+                  className="secondary-action"
+                  onClick={() => handleCreateSession(course)}
+                  type="button"
+                >
+                  Aggiungi sessione a {course.title}
+                </button>
+                {course.status !== "archived" ? (
+                  <button
+                    className="secondary-action"
+                    onClick={() => handleArchive(course)}
+                    type="button"
+                  >
+                    Archivia
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function MembersManager({
+  subscriptions,
+  locations,
+}: {
+  subscriptions: AdminSubscriptionInfo[];
+  locations: Location[];
+}) {
+  const [query, setQuery] = useState("");
+  const [locationId, setLocationId] = useState("all");
+
+  const visibleSubscriptions = subscriptions.filter((subscription) =>
+    subscription.user_email.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+
+  return (
+    <section className="admin-panel admin-panel-wide" aria-labelledby="members-title">
+      <SectionTitle icon={<UserRound aria-hidden="true" />} title="Iscritti e scadenze" id="members-title" />
+      <div className="admin-toolbar">
+        <label className="field">
+          <span>Cerca iscritto</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>Filtro sede</span>
+          <select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
+            <option value="all">Tutte le sedi</option>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="admin-table" role="table" aria-label="Elenco iscritti">
+        <div className="admin-table-row admin-table-head" role="row">
+          <span role="columnheader">Email</span>
+          <span role="columnheader">Scadenza</span>
+          <span role="columnheader">Stato</span>
+        </div>
+        {visibleSubscriptions.length === 0 ? (
+          <p className="muted">Nessun iscritto trovato.</p>
+        ) : (
+          visibleSubscriptions.map((subscription) => (
+            <div className="admin-table-row" key={subscription.user_id} role="row">
+              <span role="cell">{subscription.user_email}</span>
+              <span role="cell">{formatDate(subscription.expires_on)}</span>
+              <span role="cell">{subscription.is_active ? "Attivo" : "Scaduto"}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 
