@@ -58,6 +58,38 @@ const subscriptionResponse = {
   is_active: true,
 };
 
+const adminLocationsResponse = [
+  {
+    id: "location-roma",
+    name: "Chiron Roma",
+    address: "Via Roma 1",
+    city: "Roma",
+    is_active: true,
+  },
+];
+
+const adminCoursesResponse = [
+  {
+    id: "course-calisthenics",
+    location_id: "location-roma",
+    instructor_user_id: null,
+    title: "Calisthenics Foundation",
+    description: "Forza e controllo.",
+    status: "published",
+  },
+];
+
+const adminSubscriptionsResponse = [
+  {
+    user_id: "user-1",
+    user_email: "member@example.com",
+    starts_on: "2026-08-01",
+    duration_days: 30,
+    expires_on: "2026-08-31",
+    is_active: true,
+  },
+];
+
 function jsonResponse(payload: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(payload), {
     status: init?.status ?? 200,
@@ -72,11 +104,18 @@ function installFetchMock() {
     const method = init?.method ?? "GET";
 
     if (url.endsWith("/auth/login") && method === "POST") {
+      const body = JSON.parse(init?.body?.toString() ?? "{}") as { email?: string };
+      const isAdmin = body.email === "admin@example.com";
+
       return jsonResponse({
         access_token: "access-token",
         refresh_token: "refresh-token",
         token_type: "bearer",
-        user: { id: "user-1", email: "mattia@example.com", role: "user" },
+        user: {
+          id: isAdmin ? "admin-1" : "user-1",
+          email: body.email ?? "mattia@example.com",
+          role: isAdmin ? "admin" : "user",
+        },
       });
     }
 
@@ -106,6 +145,65 @@ function installFetchMock() {
 
     if (url.endsWith("/subscriptions/me")) {
       return jsonResponse(subscriptionResponse);
+    }
+
+    if (url.endsWith("/admin/locations") && method === "GET") {
+      return jsonResponse(adminLocationsResponse);
+    }
+
+    if (url.endsWith("/admin/courses") && method === "GET") {
+      return jsonResponse(adminCoursesResponse);
+    }
+
+    if (url.endsWith("/admin/subscriptions") && method === "GET") {
+      return jsonResponse(adminSubscriptionsResponse);
+    }
+
+    if (url.endsWith("/admin/locations") && method === "POST") {
+      return jsonResponse(
+        {
+          id: "location-milano",
+          name: "Chiron Milano",
+          address: "Via Milano 2",
+          city: "Milano",
+          is_active: true,
+        },
+        { status: 201 },
+      );
+    }
+
+    if (url.endsWith("/admin/locations/location-roma") && method === "DELETE") {
+      return jsonResponse({ ...adminLocationsResponse[0], is_active: false });
+    }
+
+    if (url.endsWith("/admin/courses") && method === "POST") {
+      return jsonResponse(
+        {
+          id: "course-martial",
+          location_id: "location-roma",
+          instructor_user_id: null,
+          title: "Martial Flow",
+          description: "Tecnica e mobilita.",
+          status: "published",
+        },
+        { status: 201 },
+      );
+    }
+
+    if (url.endsWith("/admin/courses/course-calisthenics/sessions") && method === "POST") {
+      return jsonResponse(
+        {
+          id: "session-new",
+          course_id: "course-calisthenics",
+          weekday: 2,
+          starts_at: "18:00",
+          ends_at: "19:00",
+          capacity: 12,
+          cancellation_deadline_hours: 24,
+          is_active: true,
+        },
+        { status: 201 },
+      );
     }
 
     if (url.endsWith("/bookings") && method === "POST") {
@@ -163,6 +261,18 @@ async function login() {
   fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
 
   await screen.findByRole("heading", { level: 1, name: "Il tuo movimento, oggi" });
+}
+
+async function loginAdmin() {
+  fireEvent.change(screen.getByLabelText("Email"), {
+    target: { value: "admin@example.com" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "password-segreta" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Backoffice Chiron" });
 }
 
 describe("App", () => {
@@ -227,6 +337,83 @@ describe("App", () => {
     expect(within(catalog).getByText("Pole Flow")).toBeInTheDocument();
     expect(screen.getByText("Scade il 31/08/2026")).toBeInTheDocument();
     expect(screen.getByText("1 prenotazione")).toBeInTheDocument();
+  });
+
+  it("loads the backoffice dashboard for admins", async () => {
+    installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+
+    expect(screen.getByRole("heading", { level: 3, name: "Chiron Roma" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Calisthenics Foundation" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("member@example.com")).toBeInTheDocument();
+    expect(screen.getByText("1 iscritto attivo")).toBeInTheDocument();
+  });
+
+  it("keeps regular users out of the backoffice shell", async () => {
+    installFetchMock();
+
+    render(<App />);
+    await login();
+
+    expect(screen.queryByRole("heading", { level: 1, name: "Backoffice Chiron" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Il tuo movimento, oggi" })).toBeInTheDocument();
+  });
+
+  it("creates and deactivates locations from the backoffice", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+
+    fireEvent.change(screen.getByLabelText("Nome sede"), { target: { value: "Chiron Milano" } });
+    fireEvent.change(screen.getByLabelText("Indirizzo"), { target: { value: "Via Milano 2" } });
+    fireEvent.change(screen.getByLabelText("Citta"), { target: { value: "Milano" } });
+    fireEvent.click(screen.getByRole("button", { name: "Crea sede" }));
+
+    await screen.findByText("Sede creata.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/locations",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /disattiva Chiron Roma/i }));
+
+    await screen.findByText("Sede disattivata.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/locations/location-roma",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("creates courses and sessions from the backoffice", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+
+    fireEvent.change(screen.getByLabelText("Titolo corso"), { target: { value: "Martial Flow" } });
+    fireEvent.change(screen.getByLabelText("Descrizione corso"), {
+      target: { value: "Tecnica e mobilita." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Crea corso" }));
+
+    await screen.findByText("Corso creato.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/courses",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /aggiungi sessione a Calisthenics/i }));
+
+    await screen.findByText("Sessione creata.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/courses/course-calisthenics/sessions",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("filters the catalog by location and availability", async () => {
