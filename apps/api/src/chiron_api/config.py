@@ -15,6 +15,13 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://chiron:chiron_dev_password@localhost:5432/chiron",
         alias="DATABASE_URL",
     )
+    app_secret_key: str = Field(
+        default="dev-only-change-me-before-production",
+        alias="APP_SECRET_KEY",
+    )
+    access_token_expire_minutes: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
+    auth_token_issuer: str = Field(default="chiron-api", alias="AUTH_TOKEN_ISSUER")
 
     model_config = SettingsConfigDict(
         env_file=".env",
