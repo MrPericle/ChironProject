@@ -731,6 +731,35 @@ h3 {
   padding: 18px 0 4px;
 }
 
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.admin-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-tabs button {
+  min-height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(24, 33, 28, 0.14);
+  border-radius: 999px;
+  background: #fffefb;
+  color: #33443a;
+  padding: 0 15px;
+  font-weight: 900;
+}
+
+.admin-tabs button[aria-current="page"] {
+  border-color: #155b56;
+  background: #155b56;
+  color: #fffaf0;
+}
+
 .admin-overview {
   display: grid;
   grid-template-columns: 1fr;
@@ -833,6 +862,41 @@ h3 {
   gap: 8px;
 }
 
+.inline-edit-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(24, 33, 28, 0.1);
+  border-radius: 8px;
+  background: rgba(247, 243, 234, 0.74);
+}
+
+.performance-list {
+  display: grid;
+  gap: 10px;
+}
+
+.performance-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(24, 33, 28, 0.12);
+  border-radius: 8px;
+  background: #fffefb;
+}
+
+.performance-item p {
+  margin: 6px 0 0;
+  color: #536257;
+}
+
+.performance-item strong {
+  font-size: 1.4rem;
+}
+
 .admin-table {
   display: grid;
   overflow-x: auto;
@@ -914,18 +978,21 @@ h3 {
   }
 
   .login-shell,
-  .app-shell {
+  .app-shell,
+  .backoffice-shell {
     background:
       radial-gradient(circle at 24px 24px, rgba(22, 238, 103, 0.13) 0 2px, transparent 3px),
       #07190f;
     background-size: 24px 24px;
   }
 
-  .app-shell {
+  .app-shell,
+  .backoffice-shell {
     padding: 0;
   }
 
-  .workspace {
+  .workspace,
+  .backoffice-workspace {
     width: min(100%, 440px);
     min-height: 100vh;
     padding: 14px 14px 94px;
@@ -934,7 +1001,8 @@ h3 {
     box-shadow: 0 0 0 1px rgba(114, 92, 255, 0.7);
   }
 
-  .app-header {
+  .app-header,
+  .backoffice-header {
     position: sticky;
     top: 0;
     z-index: 5;
@@ -948,12 +1016,14 @@ h3 {
     backdrop-filter: blur(14px);
   }
 
-  .app-header .eyebrow {
+  .app-header .eyebrow,
+  .backoffice-header .eyebrow {
     color: #7fbf91;
     font-size: 0.7rem;
   }
 
-  .app-header h1 {
+  .app-header h1,
+  .backoffice-header h1 {
     max-width: 220px;
     font-size: 1.42rem;
     line-height: 1.05;
@@ -999,8 +1069,12 @@ h3 {
   .loading-panel,
   .empty-state,
   .compact-panel,
+  .admin-panel,
   .course-card,
   .overview article,
+  .admin-overview article,
+  .performance-item,
+  .admin-list-item,
   .booking-item {
     border-color: rgba(70, 161, 92, 0.4);
     background: #12391f;
@@ -1017,7 +1091,8 @@ h3 {
     color: #ffe6dc;
   }
 
-  .overview {
+  .overview,
+  .admin-overview {
     display: flex;
     gap: 10px;
     overflow-x: auto;
@@ -1027,11 +1102,13 @@ h3 {
     scrollbar-width: none;
   }
 
-  .overview::-webkit-scrollbar {
+  .overview::-webkit-scrollbar,
+  .admin-overview::-webkit-scrollbar {
     display: none;
   }
 
-  .overview article {
+  .overview article,
+  .admin-overview article {
     grid-template-columns: 1fr;
     flex: 0 0 76%;
     min-width: 232px;
@@ -1042,12 +1119,16 @@ h3 {
     padding: 15px;
   }
 
-  .overview svg {
+  .overview svg,
+  .admin-overview svg {
     color: #16ee67;
   }
 
   .overview span,
+  .admin-overview span,
   .course-card p,
+  .admin-list-item p,
+  .performance-item p,
   .muted,
   .empty-state p,
   .subscription-box p,
@@ -1056,9 +1137,61 @@ h3 {
     color: #92b89b;
   }
 
-  .overview strong {
+  .overview strong,
+  .admin-overview strong,
+  .performance-item strong {
     color: #f7fff7;
     font-size: 1.45rem;
+  }
+
+  .admin-tabs {
+    margin-right: -14px;
+    padding-right: 14px;
+  }
+
+  .admin-tabs button {
+    border-color: rgba(22, 238, 103, 0.08);
+    background: #12391f;
+    color: #99c4a2;
+  }
+
+  .admin-tabs button[aria-current="page"] {
+    border-color: #16ee67;
+    background: #16ee67;
+    color: #082013;
+  }
+
+  .admin-panel,
+  .admin-panel-wide {
+    padding: 16px;
+  }
+
+  .admin-status {
+    background: #1b4a2a;
+    color: #b8f9c8;
+  }
+
+  .inline-edit-grid {
+    border-color: rgba(22, 238, 103, 0.12);
+    background: #0d2c18;
+  }
+
+  .muted-status {
+    background: #3a2f1d;
+    color: #efd89d;
+  }
+
+  .admin-table {
+    border-color: rgba(22, 238, 103, 0.14);
+  }
+
+  .admin-table-head {
+    background: #0d2c18;
+    color: #99c4a2;
+  }
+
+  .admin-table-row span {
+    border-bottom-color: rgba(22, 238, 103, 0.1);
   }
 
   .dashboard-grid {
@@ -1358,6 +1491,10 @@ h3 {
   .admin-list-item {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+  }
+
+  .inline-edit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .session-action {

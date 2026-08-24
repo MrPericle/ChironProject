@@ -22,14 +22,18 @@ import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
   AdminCourse,
+  AdminStats,
   AdminSubscriptionInfo,
+  AdminUser,
   ApiError,
   Booking,
   CatalogCourse,
   CatalogSession,
   ChironApi,
+  CoursePayload,
   CourseStatus,
   Location,
+  LocationPayload,
   SubscriptionInfo,
   TokenPair,
   User,
@@ -57,6 +61,7 @@ type Notice = {
 type AuthMode = "login" | "register";
 
 type MobileView = "courses" | "bookings" | "profile";
+type AdminTab = "dashboard" | "users" | "courses" | "locations";
 
 function isBackofficeRole(user: User | null): boolean {
   return user?.role === "admin" || user?.role === "staff";
@@ -387,6 +392,9 @@ function BackofficeScreen({
   const [locations, setLocations] = useState<Location[]>([]);
   const [courses, setCourses] = useState<AdminCourse[]>([]);
   const [subscriptions, setSubscriptions] = useState<AdminSubscriptionInfo[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [notice, setNotice] = useState<Notice | null>(null);
 
@@ -403,6 +411,8 @@ function BackofficeScreen({
         setLocations(dashboard.locations);
         setCourses(dashboard.courses);
         setSubscriptions(dashboard.subscriptions);
+        setUsers(dashboard.users);
+        setStats(dashboard.stats);
         setLoadState("ready");
       })
       .catch((error: unknown) => {
@@ -442,6 +452,16 @@ function BackofficeScreen({
     });
   }
 
+  function upsertUser(user: AdminUser): void {
+    setUsers((current) => {
+      const existing = current.some((item) => item.id === user.id);
+      if (!existing) {
+        return [user, ...current];
+      }
+      return current.map((item) => (item.id === user.id ? user : item));
+    });
+  }
+
   return (
     <main className="backoffice-shell" id="main-content">
       <div className="backoffice-workspace">
@@ -461,6 +481,37 @@ function BackofficeScreen({
           </div>
         </header>
 
+        <nav className="admin-tabs" aria-label="Sezioni backoffice">
+          <button
+            aria-current={activeTab === "dashboard" ? "page" : undefined}
+            onClick={() => setActiveTab("dashboard")}
+            type="button"
+          >
+            Dashboard
+          </button>
+          <button
+            aria-current={activeTab === "users" ? "page" : undefined}
+            onClick={() => setActiveTab("users")}
+            type="button"
+          >
+            Utenti
+          </button>
+          <button
+            aria-current={activeTab === "courses" ? "page" : undefined}
+            onClick={() => setActiveTab("courses")}
+            type="button"
+          >
+            Corsi
+          </button>
+          <button
+            aria-current={activeTab === "locations" ? "page" : undefined}
+            onClick={() => setActiveTab("locations")}
+            type="button"
+          >
+            Sedi
+          </button>
+        </nav>
+
         {notice !== null ? (
           <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">
             {notice.tone === "success" ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
@@ -473,31 +524,23 @@ function BackofficeScreen({
 
         {loadState === "ready" ? (
           <>
-            <section className="admin-overview" aria-label="Riepilogo backoffice">
-              <article>
-                <UsersIcon />
-                <span>{activeMembers === 1 ? "1 iscritto attivo" : `${activeMembers} iscritti attivi`}</span>
-                <strong>{activeMembers}</strong>
-              </article>
-              <article>
-                <Dumbbell aria-hidden="true" />
-                <span>Corsi pubblicati</span>
-                <strong>{publishedCourses}</strong>
-              </article>
-              <article>
-                <MapPin aria-hidden="true" />
-                <span>Sedi attive</span>
-                <strong>{activeLocations.length}</strong>
-              </article>
-            </section>
-
-            <div className="backoffice-grid">
-              <LocationsManager
-                locations={locations}
-                onNotice={setNotice}
-                onLocationChange={upsertLocation}
-                token={session.access_token}
+            {activeTab === "dashboard" ? (
+              <AdminDashboardPanel
+                activeLocations={activeLocations.length}
+                activeMembers={activeMembers}
+                publishedCourses={publishedCourses}
+                stats={stats}
               />
+            ) : null}
+            {activeTab === "users" ? (
+              <UsersManager
+                onNotice={setNotice}
+                onUserChange={upsertUser}
+                token={session.access_token}
+                users={users}
+              />
+            ) : null}
+            {activeTab === "courses" ? (
               <CoursesManager
                 courses={courses}
                 locations={activeLocations}
@@ -505,8 +548,15 @@ function BackofficeScreen({
                 onNotice={setNotice}
                 token={session.access_token}
               />
-              <MembersManager subscriptions={subscriptions} locations={activeLocations} />
-            </div>
+            ) : null}
+            {activeTab === "locations" ? (
+              <LocationsManager
+                locations={locations}
+                onNotice={setNotice}
+                onLocationChange={upsertLocation}
+                token={session.access_token}
+              />
+            ) : null}
           </>
         ) : null}
       </div>
@@ -516,6 +566,423 @@ function BackofficeScreen({
 
 function UsersIcon() {
   return <UserRound aria-hidden="true" />;
+}
+
+function AdminDashboardPanel({
+  activeLocations,
+  activeMembers,
+  publishedCourses,
+  stats,
+}: {
+  activeLocations: number;
+  activeMembers: number;
+  publishedCourses: number;
+  stats: AdminStats | null;
+}) {
+  return (
+    <div className="backoffice-grid">
+      <section className="admin-overview admin-panel-wide" aria-label="Riepilogo backoffice">
+        <article>
+          <UsersIcon />
+          <span>{activeMembers === 1 ? "1 iscritto attivo" : `${activeMembers} iscritti attivi`}</span>
+          <strong>{activeMembers}</strong>
+        </article>
+        <article>
+          <Dumbbell aria-hidden="true" />
+          <span>Corsi pubblicati</span>
+          <strong>{publishedCourses}</strong>
+        </article>
+        <article>
+          <MapPin aria-hidden="true" />
+          <span>Sedi attive</span>
+          <strong>{activeLocations}</strong>
+        </article>
+      </section>
+      <PerformancePanel title="Corsi migliori" items={stats?.courses ?? []} />
+      <PerformancePanel title="Sedi migliori" items={stats?.locations ?? []} />
+    </div>
+  );
+}
+
+function PerformancePanel({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{ id: string; name: string; member_count: number }>;
+}) {
+  return (
+    <section className="admin-panel" aria-labelledby={`${title}-title`}>
+      <SectionTitle icon={<Activity aria-hidden="true" />} title={title} id={`${title}-title`} />
+      <div className="performance-list">
+        {items.length === 0 ? (
+          <p className="muted">Nessun dato prenotazione disponibile.</p>
+        ) : (
+          items.map((item) => (
+            <article className="performance-item" key={item.id}>
+              <div>
+                <h3>{item.name}</h3>
+                <p>{item.member_count} iscritti collegati</p>
+              </div>
+              <strong>{item.member_count}</strong>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function UsersManager({
+  onNotice,
+  onUserChange,
+  token,
+  users,
+}: {
+  onNotice: (notice: Notice) => void;
+  onUserChange: (user: AdminUser) => void;
+  token: string;
+  users: AdminUser[];
+}) {
+  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [password, setPassword] = useState("password-segreta");
+  const [query, setQuery] = useState("");
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [userDraft, setUserDraft] = useState<{
+    birth_date: string;
+    duration_days: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    phone: string;
+    role: AdminUser["role"];
+    starts_on: string;
+    status: AdminUser["status"];
+  } | null>(null);
+
+  const visibleUsers = users.filter((user) =>
+    `${user.email} ${user.first_name ?? ""} ${user.last_name ?? ""}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    try {
+      onUserChange(
+        await api.createAdminUser(token, {
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          password,
+          role: "user",
+        }),
+      );
+      setEmail("");
+      setFirstName("");
+      setLastName("");
+      onNotice({ tone: "success", message: "Utente creato." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleDisable(user: AdminUser): Promise<void> {
+    try {
+      onUserChange(await api.updateAdminUser(token, user.id, { status: "disabled" }));
+      onNotice({ tone: "success", message: "Utente disabilitato." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleRestore(user: AdminUser): Promise<void> {
+    try {
+      onUserChange(await api.updateAdminUser(token, user.id, { status: "active" }));
+      onNotice({ tone: "success", message: "Utente riattivato." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleDelete(user: AdminUser): Promise<void> {
+    try {
+      onUserChange(await api.deleteAdminUser(token, user.id));
+      onNotice({ tone: "success", message: "Utente eliminato." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  function handleEdit(user: AdminUser): void {
+    setEditingUserId(user.id);
+    setUserDraft({
+      birth_date: user.birth_date ?? "",
+      duration_days: String(user.subscription?.duration_days ?? 30),
+      email: user.email,
+      first_name: user.first_name ?? "",
+      last_name: user.last_name ?? "",
+      phone: user.phone ?? "",
+      role: user.role,
+      starts_on: user.subscription?.starts_on ?? new Date().toISOString().slice(0, 10),
+      status: user.status,
+    });
+  }
+
+  async function handleSaveProfile(user: AdminUser): Promise<void> {
+    if (userDraft === null) {
+      return;
+    }
+
+    try {
+      onUserChange(
+        await api.updateAdminUser(token, user.id, {
+          birth_date: userDraft.birth_date || null,
+          email: userDraft.email,
+          first_name: userDraft.first_name,
+          last_name: userDraft.last_name,
+          phone: userDraft.phone || null,
+          role: userDraft.role,
+          status: userDraft.status,
+        }),
+      );
+      onNotice({ tone: "success", message: "Utente aggiornato." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleSaveSubscription(user: AdminUser): Promise<void> {
+    if (userDraft === null) {
+      return;
+    }
+
+    const durationDays = Number.parseInt(userDraft.duration_days, 10);
+    if (Number.isNaN(durationDays) || durationDays <= 0) {
+      onNotice({ tone: "error", message: "Durata iscrizione non valida." });
+      return;
+    }
+
+    try {
+      const subscription =
+        user.subscription === null
+          ? await api.createAdminSubscription(token, user.id, {
+              starts_on: userDraft.starts_on,
+              duration_days: durationDays,
+            })
+          : await api.updateAdminSubscription(token, user.subscription.id, {
+              starts_on: userDraft.starts_on,
+              duration_days: durationDays,
+            });
+      onUserChange({ ...user, subscription });
+      onNotice({ tone: "success", message: "Iscrizione aggiornata." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  return (
+    <section className="admin-panel admin-panel-wide" aria-labelledby="users-title">
+      <SectionTitle icon={<UserRound aria-hidden="true" />} title="Utenti e iscrizioni" id="users-title" />
+      <form className="admin-form" onSubmit={handleCreate}>
+        <label className="field">
+          <span>Email utente</span>
+          <input
+            autoComplete="email"
+            inputMode="email"
+            required
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Nome utente</span>
+          <input required value={firstName} onChange={(event) => setFirstName(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>Cognome utente</span>
+          <input required value={lastName} onChange={(event) => setLastName(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>Password provvisoria</span>
+          <input
+            minLength={12}
+            required
+            type="text"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        <button className="primary-action" type="submit">
+          Crea utente
+        </button>
+      </form>
+
+      <div className="admin-toolbar">
+        <label className="field">
+          <span>Cerca utente</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} />
+        </label>
+      </div>
+
+      <div className="admin-list">
+        {visibleUsers.length === 0 ? (
+          <p className="muted">Nessun utente trovato.</p>
+        ) : (
+          visibleUsers.map((user) => (
+            <article className="admin-list-item" key={user.id}>
+              <div>
+                <h3>{user.email}</h3>
+                <p>
+                  {[user.first_name, user.last_name].filter(Boolean).join(" ") || "Profilo incompleto"}
+                </p>
+                <span className={user.status === "active" ? "admin-status" : "admin-status muted-status"}>
+                  {user.status}
+                </span>
+                <p>
+                  {user.subscription === null
+                    ? "Nessuna iscrizione attiva"
+                    : `Scadenza ${formatDate(user.subscription.expires_on)}`}
+                </p>
+                {editingUserId === user.id && userDraft !== null ? (
+                  <div className="inline-edit-grid">
+                    <label className="field">
+                      <span>Email profilo</span>
+                      <input
+                        type="email"
+                        value={userDraft.email}
+                        onChange={(event) => setUserDraft({ ...userDraft, email: event.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Nome profilo</span>
+                      <input
+                        value={userDraft.first_name}
+                        onChange={(event) => setUserDraft({ ...userDraft, first_name: event.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Cognome profilo</span>
+                      <input
+                        value={userDraft.last_name}
+                        onChange={(event) => setUserDraft({ ...userDraft, last_name: event.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Telefono</span>
+                      <input
+                        inputMode="tel"
+                        value={userDraft.phone}
+                        onChange={(event) => setUserDraft({ ...userDraft, phone: event.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Data nascita</span>
+                      <input
+                        type="date"
+                        value={userDraft.birth_date}
+                        onChange={(event) => setUserDraft({ ...userDraft, birth_date: event.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Ruolo</span>
+                      <select
+                        value={userDraft.role}
+                        onChange={(event) =>
+                          setUserDraft({ ...userDraft, role: event.target.value as AdminUser["role"] })
+                        }
+                      >
+                        <option value="user">Utente</option>
+                        <option value="staff">Staff</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Stato utente</span>
+                      <select
+                        value={userDraft.status}
+                        onChange={(event) =>
+                          setUserDraft({ ...userDraft, status: event.target.value as AdminUser["status"] })
+                        }
+                      >
+                        <option value="active">Attivo</option>
+                        <option value="disabled">Disabilitato</option>
+                        <option value="deleted">Eliminato</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Inizio iscrizione</span>
+                      <input
+                        type="date"
+                        value={userDraft.starts_on}
+                        onChange={(event) => setUserDraft({ ...userDraft, starts_on: event.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Durata iscrizione</span>
+                      <input
+                        min="1"
+                        type="number"
+                        value={userDraft.duration_days}
+                        onChange={(event) => setUserDraft({ ...userDraft, duration_days: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+              <div className="admin-row-actions">
+                {editingUserId === user.id ? (
+                  <>
+                    <button className="secondary-action" onClick={() => handleSaveProfile(user)} type="button">
+                      Salva utente {user.email}
+                    </button>
+                    <button
+                      className="secondary-action"
+                      onClick={() => handleSaveSubscription(user)}
+                      type="button"
+                    >
+                      Salva iscrizione {user.email}
+                    </button>
+                    <button
+                      className="secondary-action"
+                      onClick={() => {
+                        setEditingUserId(null);
+                        setUserDraft(null);
+                      }}
+                      type="button"
+                    >
+                      Annulla modifica {user.email}
+                    </button>
+                  </>
+                ) : (
+                  <button className="secondary-action" onClick={() => handleEdit(user)} type="button">
+                    Gestisci utente e iscrizione {user.email}
+                  </button>
+                )}
+                {user.status === "active" ? (
+                  <button className="secondary-action" onClick={() => handleDisable(user)} type="button">
+                    Disabilita {user.email}
+                  </button>
+                ) : (
+                  <button className="secondary-action" onClick={() => handleRestore(user)} type="button">
+                    Riattiva {user.email}
+                  </button>
+                )}
+                {user.status !== "deleted" ? (
+                  <button className="secondary-action" onClick={() => handleDelete(user)} type="button">
+                    Elimina {user.email}
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
 }
 
 function LocationsManager({
@@ -532,6 +999,8 @@ function LocationsManager({
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [locationDraft, setLocationDraft] = useState<LocationPayload | null>(null);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -551,6 +1020,36 @@ function LocationsManager({
     try {
       onLocationChange(await api.deactivateLocation(token, location.id));
       onNotice({ tone: "success", message: "Sede disattivata." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  function handleEditLocation(location: Location): void {
+    setEditingLocationId(location.id);
+    setLocationDraft({
+      address: location.address,
+      city: location.city,
+      name: location.name,
+    });
+  }
+
+  async function handleSaveLocation(location: Location): Promise<void> {
+    if (locationDraft === null) {
+      return;
+    }
+
+    try {
+      onLocationChange(
+        await api.updateLocation(token, location.id, {
+          address: locationDraft.address,
+          city: locationDraft.city,
+          name: locationDraft.name,
+        }),
+      );
+      setEditingLocationId(null);
+      setLocationDraft(null);
+      onNotice({ tone: "success", message: "Sede aggiornata." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
     }
@@ -588,19 +1087,65 @@ function LocationsManager({
                 <p>
                   {location.address}, {location.city}
                 </p>
+                {editingLocationId === location.id && locationDraft !== null ? (
+                  <div className="inline-edit-grid">
+                    <label className="field">
+                      <span>Nome sede da modificare</span>
+                      <input
+                        value={locationDraft.name}
+                        onChange={(event) => setLocationDraft({ ...locationDraft, name: event.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Indirizzo sede da modificare</span>
+                      <input
+                        value={locationDraft.address}
+                        onChange={(event) =>
+                          setLocationDraft({ ...locationDraft, address: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Citta sede da modificare</span>
+                      <input
+                        value={locationDraft.city}
+                        onChange={(event) => setLocationDraft({ ...locationDraft, city: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                ) : null}
                 <span className={location.is_active ? "admin-status" : "admin-status muted-status"}>
                   {location.is_active ? "Attiva" : "Disattivata"}
                 </span>
               </div>
-              {location.is_active ? (
-                <button
-                  className="secondary-action"
-                  onClick={() => handleDeactivate(location)}
-                  type="button"
-                >
-                  Disattiva {location.name}
-                </button>
-              ) : null}
+              <div className="admin-row-actions">
+                {editingLocationId === location.id ? (
+                  <button
+                    className="secondary-action"
+                    onClick={() => handleSaveLocation(location)}
+                    type="button"
+                  >
+                    Salva sede {location.name}
+                  </button>
+                ) : (
+                  <button
+                    className="secondary-action"
+                    onClick={() => handleEditLocation(location)}
+                    type="button"
+                  >
+                    Modifica {location.name}
+                  </button>
+                )}
+                {location.is_active ? (
+                  <button
+                    className="secondary-action"
+                    onClick={() => handleDeactivate(location)}
+                    type="button"
+                  >
+                    Disattiva {location.name}
+                  </button>
+                ) : null}
+              </div>
             </article>
           ))
         )}
@@ -626,6 +1171,8 @@ function CoursesManager({
   const [description, setDescription] = useState("");
   const [locationId, setLocationId] = useState("");
   const [status, setStatus] = useState<CourseStatus>("published");
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+  const [courseDraft, setCourseDraft] = useState<CoursePayload | null>(null);
 
   const selectedLocationId = locationId || locations[0]?.id || "";
 
@@ -676,6 +1223,31 @@ function CoursesManager({
     }
   }
 
+  function handleEditCourse(course: AdminCourse): void {
+    setEditingCourseId(course.id);
+    setCourseDraft({
+      description: course.description,
+      location_id: course.location_id,
+      status: course.status,
+      title: course.title,
+    });
+  }
+
+  async function handleUpdateCourse(course: AdminCourse): Promise<void> {
+    if (courseDraft === null) {
+      return;
+    }
+
+    try {
+      onCourseChange(await api.updateCourse(token, course.id, courseDraft));
+      setEditingCourseId(null);
+      setCourseDraft(null);
+      onNotice({ tone: "success", message: "Corso aggiornato." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
   return (
     <section className="admin-panel" aria-labelledby="courses-title">
       <SectionTitle icon={<Dumbbell aria-hidden="true" />} title="Corsi e sessioni" id="courses-title" />
@@ -719,9 +1291,77 @@ function CoursesManager({
               <div>
                 <h3>{course.title}</h3>
                 <p>{course.description ?? "Descrizione non inserita."}</p>
+                {editingCourseId === course.id && courseDraft !== null ? (
+                  <div className="inline-edit-grid">
+                    <label className="field">
+                      <span>Titolo corso da modificare</span>
+                      <input
+                        value={courseDraft.title}
+                        onChange={(event) => setCourseDraft({ ...courseDraft, title: event.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Descrizione corso da modificare</span>
+                      <input
+                        value={courseDraft.description ?? ""}
+                        onChange={(event) =>
+                          setCourseDraft({
+                            ...courseDraft,
+                            description: event.target.value || null,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Sede corso da modificare</span>
+                      <select
+                        value={courseDraft.location_id}
+                        onChange={(event) =>
+                          setCourseDraft({ ...courseDraft, location_id: event.target.value })
+                        }
+                      >
+                        {locations.map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Stato corso da modificare</span>
+                      <select
+                        value={courseDraft.status}
+                        onChange={(event) =>
+                          setCourseDraft({ ...courseDraft, status: event.target.value as CourseStatus })
+                        }
+                      >
+                        <option value="published">Pubblicato</option>
+                        <option value="draft">Bozza</option>
+                        <option value="archived">Archiviato</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
                 <span className="admin-status">{course.status}</span>
               </div>
               <div className="admin-row-actions">
+                {editingCourseId === course.id ? (
+                  <button
+                    className="secondary-action"
+                    onClick={() => handleUpdateCourse(course)}
+                    type="button"
+                  >
+                    Salva corso {course.title}
+                  </button>
+                ) : (
+                  <button
+                    className="secondary-action"
+                    onClick={() => handleEditCourse(course)}
+                    type="button"
+                  >
+                    Modifica {course.title}
+                  </button>
+                )}
                 <button
                   className="secondary-action"
                   onClick={() => handleCreateSession(course)}
@@ -740,62 +1380,6 @@ function CoursesManager({
                 ) : null}
               </div>
             </article>
-          ))
-        )}
-      </div>
-    </section>
-  );
-}
-
-function MembersManager({
-  subscriptions,
-  locations,
-}: {
-  subscriptions: AdminSubscriptionInfo[];
-  locations: Location[];
-}) {
-  const [query, setQuery] = useState("");
-  const [locationId, setLocationId] = useState("all");
-
-  const visibleSubscriptions = subscriptions.filter((subscription) =>
-    subscription.user_email.toLowerCase().includes(query.trim().toLowerCase()),
-  );
-
-  return (
-    <section className="admin-panel admin-panel-wide" aria-labelledby="members-title">
-      <SectionTitle icon={<UserRound aria-hidden="true" />} title="Iscritti e scadenze" id="members-title" />
-      <div className="admin-toolbar">
-        <label className="field">
-          <span>Cerca iscritto</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} />
-        </label>
-        <label className="field">
-          <span>Filtro sede</span>
-          <select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
-            <option value="all">Tutte le sedi</option>
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="admin-table" role="table" aria-label="Elenco iscritti">
-        <div className="admin-table-row admin-table-head" role="row">
-          <span role="columnheader">Email</span>
-          <span role="columnheader">Scadenza</span>
-          <span role="columnheader">Stato</span>
-        </div>
-        {visibleSubscriptions.length === 0 ? (
-          <p className="muted">Nessun iscritto trovato.</p>
-        ) : (
-          visibleSubscriptions.map((subscription) => (
-            <div className="admin-table-row" key={subscription.user_id} role="row">
-              <span role="cell">{subscription.user_email}</span>
-              <span role="cell">{formatDate(subscription.expires_on)}</span>
-              <span role="cell">{subscription.is_active ? "Attivo" : "Scaduto"}</span>
-            </div>
           ))
         )}
       </div>

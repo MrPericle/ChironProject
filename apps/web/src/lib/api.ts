@@ -61,8 +61,46 @@ export type SubscriptionInfo = {
 };
 
 export type AdminSubscriptionInfo = SubscriptionInfo & {
+  id: string;
   user_id: string;
   user_email: string;
+};
+
+export type UserStatus = "active" | "disabled" | "deleted";
+
+export type AdminUserSubscription = SubscriptionInfo & {
+  id: string;
+};
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  birth_date: string | null;
+  subscription: AdminUserSubscription | null;
+};
+
+export type AdminUserPayload = {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  phone?: string | null;
+  birth_date?: string | null;
+  role: UserRole;
+};
+
+export type AdminUserUpdatePayload = Partial<Omit<AdminUserPayload, "password">> & {
+  status?: UserStatus;
+};
+
+export type AdminSubscriptionPayload = {
+  starts_on: string;
+  duration_days: number;
 };
 
 export type Location = {
@@ -77,6 +115,10 @@ export type LocationPayload = {
   name: string;
   address: string;
   city: string;
+};
+
+export type LocationUpdatePayload = Partial<LocationPayload> & {
+  is_active?: boolean;
 };
 
 export type CourseStatus = "draft" | "published" | "archived";
@@ -97,6 +139,8 @@ export type CoursePayload = {
   status: CourseStatus;
 };
 
+export type CourseUpdatePayload = Partial<CoursePayload>;
+
 export type CourseSessionPayload = {
   weekday: number;
   starts_at: string;
@@ -111,6 +155,18 @@ export type CourseSession = CourseSessionPayload & {
   is_active: boolean;
 };
 
+export type AdminStatsItem = {
+  id: string;
+  name: string;
+  member_count: number;
+};
+
+export type AdminStats = {
+  active_members: number;
+  courses: AdminStatsItem[];
+  locations: AdminStatsItem[];
+};
+
 export type UserDashboard = {
   user: User;
   courses: CatalogCourse[];
@@ -122,12 +178,14 @@ export type AdminDashboard = {
   locations: Location[];
   courses: AdminCourse[];
   subscriptions: AdminSubscriptionInfo[];
+  users: AdminUser[];
+  stats: AdminStats;
 };
 
 type RequestOptions = {
   token?: string;
   body?: unknown;
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
 };
 
 export class ApiError extends Error {
@@ -171,13 +229,15 @@ export class ChironApi {
   }
 
   async adminDashboard(token: string): Promise<AdminDashboard> {
-    const [locations, courses, subscriptions] = await Promise.all([
+    const [locations, courses, subscriptions, users, stats] = await Promise.all([
       this.request<Location[]>("/admin/locations", { token }),
       this.request<AdminCourse[]>("/admin/courses", { token }),
       this.request<AdminSubscriptionInfo[]>("/admin/subscriptions", { token }),
+      this.request<AdminUser[]>("/admin/users", { token }),
+      this.request<AdminStats>("/admin/stats", { token }),
     ]);
 
-    return { locations, courses, subscriptions };
+    return { locations, courses, subscriptions, users, stats };
   }
 
   async createLocation(token: string, payload: LocationPayload): Promise<Location> {
@@ -195,9 +255,84 @@ export class ChironApi {
     });
   }
 
+  async updateLocation(
+    token: string,
+    locationId: string,
+    payload: LocationUpdatePayload,
+  ): Promise<Location> {
+    return this.request<Location>(`/admin/locations/${locationId}`, {
+      method: "PATCH",
+      token,
+      body: payload,
+    });
+  }
+
+  async createAdminUser(token: string, payload: AdminUserPayload): Promise<AdminUser> {
+    return this.request<AdminUser>("/admin/users", {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  }
+
+  async updateAdminUser(
+    token: string,
+    userId: string,
+    payload: AdminUserUpdatePayload,
+  ): Promise<AdminUser> {
+    return this.request<AdminUser>(`/admin/users/${userId}`, {
+      method: "PATCH",
+      token,
+      body: payload,
+    });
+  }
+
+  async deleteAdminUser(token: string, userId: string): Promise<AdminUser> {
+    return this.request<AdminUser>(`/admin/users/${userId}`, {
+      method: "DELETE",
+      token,
+    });
+  }
+
+  async createAdminSubscription(
+    token: string,
+    userId: string,
+    payload: AdminSubscriptionPayload,
+  ): Promise<AdminUserSubscription> {
+    return this.request<AdminUserSubscription>(`/admin/users/${userId}/subscriptions`, {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  }
+
+  async updateAdminSubscription(
+    token: string,
+    subscriptionId: string,
+    payload: Partial<AdminSubscriptionPayload>,
+  ): Promise<AdminUserSubscription> {
+    return this.request<AdminUserSubscription>(`/admin/subscriptions/${subscriptionId}`, {
+      method: "PATCH",
+      token,
+      body: payload,
+    });
+  }
+
   async createCourse(token: string, payload: CoursePayload): Promise<AdminCourse> {
     return this.request<AdminCourse>("/admin/courses", {
       method: "POST",
+      token,
+      body: payload,
+    });
+  }
+
+  async updateCourse(
+    token: string,
+    courseId: string,
+    payload: CourseUpdatePayload,
+  ): Promise<AdminCourse> {
+    return this.request<AdminCourse>(`/admin/courses/${courseId}`, {
+      method: "PATCH",
       token,
       body: payload,
     });
