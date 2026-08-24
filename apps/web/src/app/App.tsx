@@ -343,12 +343,17 @@ export function App() {
               coursesCount={courses.length}
               subscription={subscription}
             />
+            <BookingFocus
+              courses={visibleCourses}
+              pendingSessionId={pendingSessionId}
+              onCreateBooking={handleCreateBooking}
+            />
             <div className="dashboard-grid">
               <section className="panel catalog-panel" aria-labelledby="catalog-title">
                 <SectionHeading
                   icon={<Dumbbell aria-hidden="true" />}
                   eyebrow="Catalogo"
-                  title="Scegli il prossimo allenamento"
+                  title="Prenota una sessione"
                 />
                 <CatalogFilters
                   filters={filters}
@@ -512,6 +517,23 @@ function BackofficeScreen({
           </button>
         </nav>
 
+        {loadState === "ready" ? (
+          <section className="admin-action-strip" aria-label="Azioni principali backoffice">
+            <button className="primary-action" onClick={() => setActiveTab("courses")} type="button">
+              <Dumbbell aria-hidden="true" />
+              Organizza corsi
+            </button>
+            <button className="secondary-action" onClick={() => setActiveTab("users")} type="button">
+              <UserRound aria-hidden="true" />
+              Gestisci utenti
+            </button>
+            <button className="secondary-action" onClick={() => setActiveTab("dashboard")} type="button">
+              <Activity aria-hidden="true" />
+              Leggi dashboard
+            </button>
+          </section>
+        ) : null}
+
         {notice !== null ? (
           <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">
             {notice.tone === "success" ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
@@ -568,6 +590,73 @@ function UsersIcon() {
   return <UserRound aria-hidden="true" />;
 }
 
+function availableBookingCandidate(courses: CatalogCourse[]): {
+  course: CatalogCourse;
+  session: CatalogSession;
+} | null {
+  for (const course of courses) {
+    const session = course.sessions.find((item) => item.available_spots > 0);
+    if (session !== undefined) {
+      return { course, session };
+    }
+  }
+
+  return null;
+}
+
+function BookingFocus({
+  courses,
+  pendingSessionId,
+  onCreateBooking,
+}: {
+  courses: CatalogCourse[];
+  pendingSessionId: string | null;
+  onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
+}) {
+  const candidate = availableBookingCandidate(courses);
+
+  if (candidate === null) {
+    return (
+      <section className="booking-focus booking-focus-empty" aria-labelledby="booking-focus-title">
+        <div>
+          <p className="eyebrow">Prenotazione</p>
+          <h2 id="booking-focus-title">Nessun posto libero con questi filtri</h2>
+          <p>Apri i filtri o guarda le liste attesa nei corsi sotto.</p>
+        </div>
+        <Search aria-hidden="true" />
+      </section>
+    );
+  }
+
+  const { course, session } = candidate;
+  const isPending = pendingSessionId === session.id;
+
+  return (
+    <section className="booking-focus" aria-labelledby="booking-focus-title">
+      <div className="booking-focus-copy">
+        <p className="eyebrow">Prenotazione rapida</p>
+        <h2 id="booking-focus-title">{course.title}</h2>
+        <p>
+          {weekdays[session.weekday]} · {formatTime(session.starts_at)} - {formatTime(session.ends_at)} ·{" "}
+          {course.location_name}
+        </p>
+      </div>
+      <div className="booking-focus-action">
+        <span>{session.available_spots} posti liberi</span>
+        <button
+          className="primary-action"
+          disabled={isPending}
+          onClick={() => onCreateBooking(course, session)}
+          type="button"
+        >
+          <CalendarCheck aria-hidden="true" />
+          {isPending ? "Prenoto" : "Prenota ora"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function AdminDashboardPanel({
   activeLocations,
   activeMembers,
@@ -616,7 +705,7 @@ function PerformancePanel({
       <SectionTitle icon={<Activity aria-hidden="true" />} title={title} id={`${title}-title`} />
       <div className="performance-list">
         {items.length === 0 ? (
-          <p className="muted">Nessun dato prenotazione disponibile.</p>
+          <p className="muted">Appena arrivano prenotazioni, qui trovi i corsi e le sedi da spingere.</p>
         ) : (
           items.map((item) => (
             <article className="performance-item" key={item.id}>
@@ -786,6 +875,7 @@ function UsersManager({
   return (
     <section className="admin-panel admin-panel-wide" aria-labelledby="users-title">
       <SectionTitle icon={<UserRound aria-hidden="true" />} title="Utenti e iscrizioni" id="users-title" />
+      <p className="muted">Crea account, aggiorna dati e mantieni sotto controllo le iscrizioni.</p>
       <form className="admin-form" onSubmit={handleCreate}>
         <label className="field">
           <span>Email utente</span>
@@ -1058,6 +1148,7 @@ function LocationsManager({
   return (
     <section className="admin-panel" aria-labelledby="locations-title">
       <SectionTitle icon={<MapPin aria-hidden="true" />} title="Sedi" id="locations-title" />
+      <p className="muted">Le sedi attive alimentano catalogo corsi e filtri utente.</p>
       <form className="admin-form" onSubmit={handleCreate}>
         <label className="field">
           <span>Nome sede</span>
@@ -1251,6 +1342,7 @@ function CoursesManager({
   return (
     <section className="admin-panel" aria-labelledby="courses-title">
       <SectionTitle icon={<Dumbbell aria-hidden="true" />} title="Corsi e sessioni" id="courses-title" />
+      <p className="muted">Prepara il catalogo prenotabile: titolo, sede, stato e sessioni operative.</p>
       <form className="admin-form" onSubmit={handleCreateCourse}>
         <label className="field">
           <span>Titolo corso</span>
@@ -1750,7 +1842,7 @@ function CourseCatalog({
       <div className="empty-state">
         <Search aria-hidden="true" />
         <h3>Nessun corso trovato</h3>
-        <p>Prova a cambiare sede, giorno o disponibilita.</p>
+        <p>Cambia filtri o rimuovi "Solo posti disponibili" per vedere anche le liste attesa.</p>
       </div>
     );
   }
@@ -1765,10 +1857,15 @@ function CourseCatalog({
               <h3>{course.title}</h3>
               <p>{course.description ?? "Sessione di movimento a corpo libero."}</p>
             </div>
-            <span className="location-badge">
-              <MapPin aria-hidden="true" />
-              {course.location_name}
-            </span>
+            <div className="course-meta-row">
+              <span className="location-badge">
+                <MapPin aria-hidden="true" />
+                {course.location_name}
+              </span>
+              <span className="spots">
+                {course.sessions.reduce((total, session) => total + session.available_spots, 0)} posti totali
+              </span>
+            </div>
           </div>
 
           <div className="session-list">

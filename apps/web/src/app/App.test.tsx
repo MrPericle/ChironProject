@@ -414,7 +414,7 @@ describe("App", () => {
     render(<App />);
     await login();
 
-    const catalog = screen.getByRole("region", { name: "Scegli il prossimo allenamento" });
+    const catalog = screen.getByRole("region", { name: "Prenota una sessione" });
 
     expect(screen.getByText("mattia@example.com")).toBeInTheDocument();
     expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
@@ -567,7 +567,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Sede"), { target: { value: "location-roma" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "Solo posti disponibili" }));
 
-    const catalog = screen.getByRole("region", { name: "Scegli il prossimo allenamento" });
+    const catalog = screen.getByRole("region", { name: "Prenota una sessione" });
     expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
     expect(within(catalog).queryByText("Pole Flow")).not.toBeInTheDocument();
   });
