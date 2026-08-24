@@ -59,11 +59,68 @@ export type SubscriptionInfo = {
   is_active: boolean;
 };
 
+export type AdminSubscriptionInfo = SubscriptionInfo & {
+  user_id: string;
+  user_email: string;
+};
+
+export type Location = {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  is_active: boolean;
+};
+
+export type LocationPayload = {
+  name: string;
+  address: string;
+  city: string;
+};
+
+export type CourseStatus = "draft" | "published" | "archived";
+
+export type AdminCourse = {
+  id: string;
+  location_id: string;
+  instructor_user_id: string | null;
+  title: string;
+  description: string | null;
+  status: CourseStatus;
+};
+
+export type CoursePayload = {
+  location_id: string;
+  title: string;
+  description: string | null;
+  status: CourseStatus;
+};
+
+export type CourseSessionPayload = {
+  weekday: number;
+  starts_at: string;
+  ends_at: string;
+  capacity: number;
+  cancellation_deadline_hours: number;
+};
+
+export type CourseSession = CourseSessionPayload & {
+  id: string;
+  course_id: string;
+  is_active: boolean;
+};
+
 export type UserDashboard = {
   user: User;
   courses: CatalogCourse[];
   bookings: Booking[];
   subscription: SubscriptionInfo | null;
+};
+
+export type AdminDashboard = {
+  locations: Location[];
+  courses: AdminCourse[];
+  subscriptions: AdminSubscriptionInfo[];
 };
 
 type RequestOptions = {
@@ -110,6 +167,58 @@ export class ChironApi {
     ]);
 
     return { user, courses, bookings, subscription };
+  }
+
+  async adminDashboard(token: string): Promise<AdminDashboard> {
+    const [locations, courses, subscriptions] = await Promise.all([
+      this.request<Location[]>("/admin/locations", { token }),
+      this.request<AdminCourse[]>("/admin/courses", { token }),
+      this.request<AdminSubscriptionInfo[]>("/admin/subscriptions", { token }),
+    ]);
+
+    return { locations, courses, subscriptions };
+  }
+
+  async createLocation(token: string, payload: LocationPayload): Promise<Location> {
+    return this.request<Location>("/admin/locations", {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  }
+
+  async deactivateLocation(token: string, locationId: string): Promise<Location> {
+    return this.request<Location>(`/admin/locations/${locationId}`, {
+      method: "DELETE",
+      token,
+    });
+  }
+
+  async createCourse(token: string, payload: CoursePayload): Promise<AdminCourse> {
+    return this.request<AdminCourse>("/admin/courses", {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  }
+
+  async archiveCourse(token: string, courseId: string): Promise<AdminCourse> {
+    return this.request<AdminCourse>(`/admin/courses/${courseId}`, {
+      method: "DELETE",
+      token,
+    });
+  }
+
+  async createCourseSession(
+    token: string,
+    courseId: string,
+    payload: CourseSessionPayload,
+  ): Promise<CourseSession> {
+    return this.request<CourseSession>(`/admin/courses/${courseId}/sessions`, {
+      method: "POST",
+      token,
+      body: payload,
+    });
   }
 
   async createBooking(token: string, courseSessionId: string): Promise<Booking> {
