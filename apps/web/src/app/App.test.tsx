@@ -80,6 +80,18 @@ function installFetchMock() {
       });
     }
 
+    if (url.endsWith("/auth/register") && method === "POST") {
+      return jsonResponse(
+        {
+          access_token: "register-access-token",
+          refresh_token: "register-refresh-token",
+          token_type: "bearer",
+          user: { id: "user-2", email: "nuovo@example.com", role: "user" },
+        },
+        { status: 201 },
+      );
+    }
+
     if (url.endsWith("/auth/me")) {
       return jsonResponse({ id: "user-1", email: "mattia@example.com", role: "user" });
     }
@@ -171,6 +183,35 @@ describe("App", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Chiron Project" })).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "email");
     expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "current-password");
+  });
+
+  it("lets a new user register from the auth panel", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Registrati" }));
+    fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Mattia" } });
+    fireEvent.change(screen.getByLabelText("Cognome"), { target: { value: "Rossi" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "nuovo@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "password-segreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Crea account" }));
+
+    await screen.findByRole("heading", { level: 1, name: "Il tuo movimento, oggi" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/auth/register",
+      expect.objectContaining({
+        body: JSON.stringify({
+          email: "nuovo@example.com",
+          first_name: "Mattia",
+          last_name: "Rossi",
+          password: "password-segreta",
+        }),
+        method: "POST",
+      }),
+    );
   });
 
   it("loads catalog, bookings and subscription after login", async () => {

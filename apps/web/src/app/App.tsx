@@ -46,6 +46,8 @@ type Notice = {
   message: string;
 };
 
+type AuthMode = "login" | "register";
+
 function readStoredSession(): TokenPair | null {
   const raw = localStorage.getItem(sessionStorageKey);
   if (raw === null) {
@@ -201,6 +203,31 @@ export function App() {
     }
   }
 
+  async function handleRegister(payload: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    password: string;
+  }): Promise<void> {
+    setNotice(null);
+    setLoadState("loading");
+
+    try {
+      const nextSession = await api.register({
+        email: payload.email,
+        first_name: payload.firstName,
+        last_name: payload.lastName,
+        password: payload.password,
+      });
+      saveSession(nextSession);
+      setSession(nextSession);
+      setUser(nextSession.user);
+    } catch (error) {
+      setLoadState("idle");
+      setNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
   async function handleCreateBooking(course: CatalogCourse, courseSession: CatalogSession): Promise<void> {
     if (session === null) {
       return;
@@ -259,7 +286,7 @@ export function App() {
   }
 
   if (session === null) {
-    return <LoginScreen notice={notice} onLogin={handleLogin} />;
+    return <LoginScreen notice={notice} onLogin={handleLogin} onRegister={handleRegister} />;
   }
 
   return (
@@ -323,18 +350,32 @@ export function App() {
 function LoginScreen({
   notice,
   onLogin,
+  onRegister,
 }: {
   notice: Notice | null;
   onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (payload: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    password: string;
+  }) => Promise<void>;
 }) {
+  const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSubmitting(true);
-    await onLogin(email, password);
+    if (mode === "login") {
+      await onLogin(email, password);
+    } else {
+      await onRegister({ email, firstName, lastName, password });
+    }
     setSubmitting(false);
   }
 
@@ -360,14 +401,63 @@ function LoginScreen({
 
         <form className="login-card" id="login-form" onSubmit={handleSubmit}>
           <div>
-            <p className="eyebrow">Bentornato</p>
-            <h2>Entra nell'area utente</h2>
+            <p className="eyebrow">{mode === "login" ? "Bentornato" : "Nuovo iscritto"}</p>
+            <h2>{mode === "login" ? "Entra nell'area utente" : "Crea account utente"}</h2>
+          </div>
+
+          <div className="auth-switch" role="tablist" aria-label="Accesso area utente">
+            <button
+              aria-selected={mode === "login"}
+              className={mode === "login" ? "is-selected" : ""}
+              onClick={() => setMode("login")}
+              role="tab"
+              type="button"
+            >
+              Accedi
+            </button>
+            <button
+              aria-selected={mode === "register"}
+              className={mode === "register" ? "is-selected" : ""}
+              onClick={() => setMode("register")}
+              role="tab"
+              type="button"
+            >
+              Registrati
+            </button>
           </div>
 
           {notice !== null ? (
             <div className={`notice notice-${notice.tone}`} role="alert">
               <XCircle aria-hidden="true" />
               <span>{notice.message}</span>
+            </div>
+          ) : null}
+
+          {mode === "register" ? (
+            <div className="name-grid">
+              <label className="field">
+                <span>Nome</span>
+                <input
+                  autoComplete="given-name"
+                  name="firstName"
+                  onChange={(event) => setFirstName(event.target.value)}
+                  required
+                  type="text"
+                  value={firstName}
+                />
+              </label>
+
+              <label className="field">
+                <span>Cognome</span>
+                <input
+                  autoComplete="family-name"
+                  name="lastName"
+                  onChange={(event) => setLastName(event.target.value)}
+                  required
+                  type="text"
+                  value={lastName}
+                />
+              </label>
             </div>
           ) : null}
 
@@ -387,7 +477,8 @@ function LoginScreen({
           <label className="field">
             <span>Password</span>
             <input
-              autoComplete="current-password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              minLength={mode === "register" ? 12 : undefined}
               name="password"
               onChange={(event) => setPassword(event.target.value)}
               required
@@ -397,7 +488,13 @@ function LoginScreen({
           </label>
 
           <button className="primary-action" disabled={submitting} type="submit">
-            <span>{submitting ? "Accesso in corso" : "Entra nell'area utente"}</span>
+            <span>
+              {submitting
+                ? "Operazione in corso"
+                : mode === "login"
+                  ? "Entra nell'area utente"
+                  : "Crea account"}
+            </span>
             <ArrowRight aria-hidden="true" />
           </button>
         </form>

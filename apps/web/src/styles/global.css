@@ -181,6 +181,35 @@ h3 {
   padding: 18px;
 }
 
+.auth-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid rgba(24, 33, 28, 0.12);
+  border-radius: 8px;
+  background: #f0eadf;
+}
+
+.auth-switch button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #33443a;
+  font-weight: 900;
+}
+
+.auth-switch button.is-selected {
+  background: #18211c;
+  color: #fffaf0;
+}
+
+.name-grid {
+  display: grid;
+  gap: 12px;
+}
+
 .field {
   display: grid;
   gap: 7px;
@@ -615,6 +644,10 @@ h3 {
 
   .login-card {
     padding: 24px;
+  }
+
+  .name-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .overview {

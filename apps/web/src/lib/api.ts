@@ -18,6 +18,11 @@ export type LoginPayload = {
   password: string;
 };
 
+export type RegisterPayload = LoginPayload & {
+  first_name: string;
+  last_name: string;
+};
+
 export type CatalogSession = {
   id: string;
   weekday: number;
@@ -84,6 +89,13 @@ export class ChironApi {
 
   async login(payload: LoginPayload): Promise<TokenPair> {
     return this.request<TokenPair>("/auth/login", {
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async register(payload: RegisterPayload): Promise<TokenPair> {
+    return this.request<TokenPair>("/auth/register", {
       method: "POST",
       body: payload,
     });
