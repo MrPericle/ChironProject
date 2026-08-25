@@ -626,7 +626,7 @@ h3 {
 }
 
 .quick-filters button {
-  min-height: 40px;
+  min-height: 44px;
   flex: 0 0 auto;
   border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 999px;
@@ -883,14 +883,14 @@ h3 {
 
 .weekday-picker {
   display: grid;
-  grid-template-columns: repeat(7, minmax(42px, 1fr));
+  grid-template-columns: repeat(7, minmax(44px, 1fr));
   gap: 6px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
 
 .weekday-picker button {
-  min-width: 42px;
+  min-width: 44px;
   min-height: 46px;
   border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 8px;
@@ -1088,6 +1088,10 @@ h3 {
   display: none;
 }
 
+.admin-tab-label-mobile {
+  display: none;
+}
+
 .admin-tabs button {
   display: inline-flex;
   align-items: center;
@@ -1279,7 +1283,7 @@ h3 {
 .weekday-checkboxes label {
   display: inline-flex;
   align-items: center;
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 8px;
   background: #ffffff;
@@ -1743,20 +1747,50 @@ h3 {
   }
 
   .admin-tabs {
-    margin-right: -14px;
-    padding-right: 14px;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: min(100%, 480px);
+    margin: 0 auto;
+    padding: 9px 8px calc(9px + env(safe-area-inset-bottom));
+    overflow: visible;
+    border-top: 1px solid rgba(255, 141, 147, 0.12);
+    background: rgba(11, 11, 13, 0.96);
+    backdrop-filter: blur(18px);
   }
 
   .admin-tabs button {
-    border-color: rgba(239, 37, 44, 0.08);
-    background: #18181b;
-    color: #b8b8bd;
+    display: grid;
+    min-width: 0;
+    min-height: 54px;
+    place-items: center;
+    gap: 4px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #77777d;
+    padding: 0 2px;
+    font-size: 0.68rem;
   }
 
   .admin-tabs button[aria-current="page"] {
-    border-color: #ef252c;
-    background: #ef252c;
-    color: #0b0b0d;
+    background: transparent;
+    color: #ef252c;
+    box-shadow: inset 0 3px #ef252c;
+  }
+
+  .admin-tab-label-full {
+    display: none;
+  }
+
+  .admin-tab-label-mobile {
+    display: inline;
+    overflow-wrap: normal;
+    white-space: nowrap;
   }
 
   .admin-panel,
@@ -1832,8 +1866,11 @@ h3 {
   }
 
   .weekday-picker {
-    margin-right: -14px;
-    padding-right: 14px;
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+    gap: 6px;
+    margin-right: 0;
+    padding-right: 0;
+    overflow: visible;
   }
 
   .weekday-picker button {
@@ -1890,7 +1927,14 @@ h3 {
   }
 
   .attendee-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 0;
     border-top-color: rgba(239, 37, 44, 0.12);
+  }
+
+  .attendee-list .booking-status {
+    justify-self: start;
   }
 
   .attendee-list .booking-status {
@@ -2037,6 +2081,23 @@ h3 {
     padding-right: 14px;
   }
 
+  .filters-open .quick-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-right: 0;
+    padding-right: 0;
+    overflow: visible;
+  }
+
+  .filters-open .quick-filters button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .filters-open .quick-filters button:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
   .quick-filters button {
     min-height: 44px;
     border-color: rgba(239, 37, 44, 0.08);
@@ -2166,6 +2227,12 @@ h3 {
     grid-column: 1 / -1;
   }
 
+  .admin-form > .primary-action,
+  .schedule-form > .primary-action,
+  .session-edit-fields > .primary-action {
+    width: 100%;
+  }
+
   .danger-action {
     border-color: rgba(239, 37, 44, 0.36);
     color: #ffd3d5;
@@ -2271,6 +2338,37 @@ h3 {
   }
 }
 
+@media (max-width: 340px) {
+  .booking-focus {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .booking-focus-action {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-width: 0;
+    align-items: center;
+    justify-items: stretch;
+  }
+
+  .booking-focus-action span {
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  .booking-focus-action .primary-action {
+    width: 100%;
+    min-width: 0;
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 0.82rem;
+  }
+
+  .is-booking-locked .booking-focus-action {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (min-width: 620px) {
   .login-copy h1 {
     font-size: 3.55rem;
@@ -2331,6 +2429,14 @@ h3 {
   .admin-list-item {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+  }
+
+  .admin-list-item.is-editing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-list-item.is-editing > .admin-row-actions {
+    justify-self: end;
   }
 
   .inline-edit-grid {
@@ -2404,6 +2510,23 @@ h3 {
   .admin-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: end;
+  }
+
+  .admin-form > .primary-action,
+  .schedule-form > .primary-action,
+  .session-edit-fields > .primary-action {
+    grid-column: 1 / -1;
+    width: auto;
+    min-width: 210px;
+    justify-self: end;
+  }
+
+  .admin-row-actions {
+    justify-content: flex-end;
+  }
+
+  .admin-row-actions > .secondary-action {
+    min-width: 116px;
   }
 
   .admin-toolbar {
