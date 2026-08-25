@@ -1,6 +1,6 @@
 # MAKA logo package
 
-Digital redraw based on the supplied gym logo. The simplified figures and circular motion preserve the original idea while remaining legible in compact application headers.
+Color-layer vector trace based on the supplied gym logo. The red and white silhouettes, yin-yang construction and brush texture are preserved from the original artwork. Compact application headers use the same detailed master instead of a separate reinterpretation.
 
 ## Files
 
@@ -29,4 +29,3 @@ The interface uses black text on MAKA Red for normal-size action labels; this ha
 ## Clear space
 
 Keep clear space around each signature equal to at least one quarter of the mark diameter. Do not recolor individual figures, stretch the artwork, add shadows, or place the inverse version on a light surface.
-
