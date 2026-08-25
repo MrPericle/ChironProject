@@ -2,7 +2,7 @@ from collections.abc import Generator
 from datetime import date, time
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -20,6 +20,7 @@ from chiron_api.db.models import (
     User,
     UserProfile,
     UserRole,
+    UserStatus,
 )
 from chiron_api.db.session import get_db_session
 from chiron_api.main import create_app
@@ -111,6 +112,66 @@ def test_admin_can_manage_users_and_subscriptions() -> None:
     delete_response = client.delete(f"/admin/users/{member_id}", headers=headers_for(admin))
     assert delete_response.status_code == 200
     assert delete_response.json()["status"] == "deleted"
+
+
+def test_disabling_user_releases_confirmed_and_waitlisted_bookings() -> None:
+    client, session_factory = make_client()
+    admin = create_user(session_factory, email="admin@example.com", role=UserRole.ADMIN)
+    member = create_user(session_factory, email="member@example.com")
+
+    with session_factory() as session:
+        location = Location(name="MAKA Roma", address="Via Roma 1", city="Roma")
+        course = Course(location=location, title="Calisthenics", status=CourseStatus.PUBLISHED)
+        confirmed_session = CourseSession(
+            course=course,
+            weekday=1,
+            starts_at=time(18, 0),
+            ends_at=time(19, 0),
+            capacity=10,
+        )
+        waitlisted_session = CourseSession(
+            course=course,
+            weekday=3,
+            starts_at=time(18, 0),
+            ends_at=time(19, 0),
+            capacity=10,
+        )
+        session.add_all([confirmed_session, waitlisted_session])
+        session.flush()
+        session.add_all(
+            [
+                Booking(
+                    user_id=member.id,
+                    course_session_id=confirmed_session.id,
+                    status=BookingStatus.CONFIRMED,
+                ),
+                Booking(
+                    user_id=member.id,
+                    course_session_id=waitlisted_session.id,
+                    status=BookingStatus.WAITLISTED,
+                ),
+            ],
+        )
+        session.commit()
+
+    response = client.patch(
+        f"/admin/users/{member.id}",
+        json={"status": "disabled"},
+        headers=headers_for(admin),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "disabled"
+    with session_factory() as session:
+        bookings = session.scalars(
+            select(Booking).where(Booking.user_id == member.id).order_by(Booking.created_at),
+        ).all()
+        assert [booking.status for booking in bookings] == [
+            BookingStatus.CANCELLED,
+            BookingStatus.CANCELLED,
+        ]
+        assert all(booking.cancelled_at is not None for booking in bookings)
+        assert session.get(User, member.id).status == UserStatus.DISABLED
 
 
 def test_staff_can_read_admin_stats() -> None:

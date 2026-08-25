@@ -19,6 +19,7 @@ from chiron_api.admin.schemas import (
 )
 from chiron_api.auth.dependencies import require_roles
 from chiron_api.auth.passwords import hash_password
+from chiron_api.bookings.service import cancel_active_user_bookings
 from chiron_api.db.models import (
     Booking,
     BookingStatus,
@@ -138,6 +139,8 @@ def update_user(
         user.role = data["role"]
     if "status" in data:
         user.status = data["status"]
+        if user.status in (UserStatus.DISABLED, UserStatus.DELETED):
+            cancel_active_user_bookings(db, user_id=user.id)
         if user.status != UserStatus.DELETED:
             user.deleted_at = None
 
@@ -172,6 +175,7 @@ def delete_user(
     user.status = UserStatus.DELETED
     user.deleted_at = datetime.now(UTC)
     user.email = f"deleted-{user.id}@deleted.local"
+    cancel_active_user_bookings(db, user_id=user.id)
     db.add(user)
     db.commit()
     db.refresh(user)

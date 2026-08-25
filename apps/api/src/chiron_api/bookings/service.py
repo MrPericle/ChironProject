@@ -152,6 +152,21 @@ def cancel_booking(db: Session, *, user: User, booking_id: UUID) -> Booking:
     return booking
 
 
+def cancel_active_user_bookings(db: Session, *, user_id: UUID) -> int:
+    bookings = db.scalars(
+        select(Booking).where(
+            Booking.user_id == user_id,
+            Booking.status.in_((BookingStatus.CONFIRMED, BookingStatus.WAITLISTED)),
+        ),
+    ).all()
+    cancelled_at = utc_now()
+    for booking in bookings:
+        booking.status = BookingStatus.CANCELLED
+        booking.cancelled_at = cancelled_at
+        db.add(booking)
+    return len(bookings)
+
+
 def list_user_bookings(db: Session, *, user: User) -> list[Booking]:
     return list(
         db.scalars(
