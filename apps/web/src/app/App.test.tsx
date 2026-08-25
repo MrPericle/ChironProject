@@ -135,6 +135,25 @@ const adminStatsResponse = {
   locations: [{ id: "location-roma", name: "Chiron Roma", member_count: 8 }],
 };
 
+const adminAttendeesResponse = [
+  {
+    booking_id: "booking-admin-1",
+    user_id: "user-1",
+    email: "member@example.com",
+    first_name: "Mario",
+    last_name: "Rossi",
+    status: "confirmed",
+  },
+  {
+    booking_id: "booking-admin-2",
+    user_id: "user-2",
+    email: "waitlist@example.com",
+    first_name: "Anna",
+    last_name: "Bianchi",
+    status: "waitlisted",
+  },
+];
+
 function jsonResponse(payload: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(payload), {
     status: init?.status ?? 200,
@@ -143,7 +162,7 @@ function jsonResponse(payload: unknown, init?: ResponseInit): Response {
   });
 }
 
-function installFetchMock() {
+function installFetchMock(subscription = subscriptionResponse) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
     const method = init?.method ?? "GET";
@@ -196,7 +215,7 @@ function installFetchMock() {
       return jsonResponse({ id: "user-1", email: "mattia@example.com", role: "user" });
     }
 
-    if (url.endsWith("/courses") && method === "GET") {
+    if (url.endsWith("/courses") && !url.endsWith("/admin/courses") && method === "GET") {
       return jsonResponse(catalogResponse);
     }
 
@@ -205,7 +224,7 @@ function installFetchMock() {
     }
 
     if (url.endsWith("/subscriptions/me")) {
-      return jsonResponse(subscriptionResponse);
+      return jsonResponse(subscription);
     }
 
     if (url.endsWith("/admin/locations") && method === "GET") {
@@ -226,6 +245,10 @@ function installFetchMock() {
 
     if (url.endsWith("/admin/stats") && method === "GET") {
       return jsonResponse(adminStatsResponse);
+    }
+
+    if (url.endsWith("/admin/course-sessions/session-calisthenics/attendees") && method === "GET") {
+      return jsonResponse(adminAttendeesResponse);
     }
 
     if (url.endsWith("/admin/users") && method === "POST") {
@@ -504,6 +527,26 @@ describe("App", () => {
     expect(screen.getAllByText("8 iscritti collegati")).toHaveLength(2);
   });
 
+  it("shows course session attendees from the admin calendar", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Calendario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lun" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prenotati" }));
+
+    expect(await screen.findByText("Mario Rossi")).toBeInTheDocument();
+    expect(screen.getByText("Anna Bianchi")).toBeInTheDocument();
+    expect(screen.getByText("1 confermati")).toBeInTheDocument();
+    expect(screen.getByText("1 in lista d'attesa")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/course-sessions/session-calisthenics/attendees",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("keeps regular users out of the backoffice shell", async () => {
     installFetchMock();
 
@@ -693,6 +736,25 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/bookings/booking-existing",
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("disables booking actions when the membership is not active", async () => {
+    const fetchMock = installFetchMock({ ...subscriptionResponse, is_active: false });
+
+    render(<App />);
+    await login();
+
+    const calisthenicsCard = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    const bookingButton = within(calisthenicsCard).getByRole("button", {
+      name: "Iscrizione richiesta",
+    });
+
+    expect(bookingButton).toBeDisabled();
+    expect(screen.getByText("Attiva l'iscrizione per prenotare.")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "http://localhost:8000/bookings",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 });

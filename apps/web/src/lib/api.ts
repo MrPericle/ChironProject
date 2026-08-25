@@ -194,6 +194,15 @@ export type AdminStats = {
   locations: AdminStatsItem[];
 };
 
+export type AdminCourseSessionAttendee = {
+  booking_id: string;
+  user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  status: Exclude<BookingStatus, "cancelled">;
+};
+
 export type UserDashboard = {
   user: User;
   courses: CatalogCourse[];
@@ -420,6 +429,16 @@ export class ChironApi {
       method: "DELETE",
       token,
     });
+  }
+
+  async courseSessionAttendees(
+    token: string,
+    sessionId: string,
+  ): Promise<AdminCourseSessionAttendee[]> {
+    return this.request<AdminCourseSessionAttendee[]>(
+      `/admin/course-sessions/${sessionId}/attendees`,
+      { token },
+    );
   }
 
   async uploadCourseImage(token: string, courseId: string, image: File): Promise<AdminCourse> {

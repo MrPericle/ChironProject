@@ -7,11 +7,13 @@ import {
   CalendarCheck,
   CalendarPlus,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Dumbbell,
   Home,
   ImagePlus,
   ListChecks,
+  LockKeyhole,
   LogOut,
   MapPin,
   Pencil,
@@ -31,6 +33,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
   AdminCourse,
+  AdminCourseSessionAttendee,
   AdminStats,
   AdminSubscriptionInfo,
   AdminUser,
@@ -147,6 +150,9 @@ function describeError(error: unknown): string {
     if (error.status === 401) {
       return "Credenziali non valide o sessione scaduta.";
     }
+    if (error.message === "Active subscription required") {
+      return "Serve un'iscrizione attiva per prenotare.";
+    }
     return error.message;
   }
 
@@ -239,6 +245,7 @@ export function App() {
 
   const visibleCourses = useMemo(() => filteredCourses(courses, filters), [courses, filters]);
   const activeBookingCount = activeBookings(bookings).length;
+  const canBook = subscription?.is_active === true;
 
   async function handleLogin(email: string, password: string): Promise<string | null> {
     setNotice(null);
@@ -313,6 +320,10 @@ export function App() {
 
   async function handleCreateBooking(course: CatalogCourse, courseSession: CatalogSession): Promise<void> {
     if (session === null) {
+      return;
+    }
+    if (!canBook) {
+      setNotice({ tone: "error", message: "Serve un'iscrizione attiva per prenotare." });
       return;
     }
 
@@ -406,11 +417,13 @@ export function App() {
               subscription={subscription}
             />
             <BookingFocus
+              canBook={canBook}
               courses={visibleCourses}
               pendingSessionId={pendingSessionId}
               onCreateBooking={handleCreateBooking}
             />
             <WeeklyCalendar
+              canBook={canBook}
               courses={courses}
               pendingSessionId={pendingSessionId}
               onCreateBooking={handleCreateBooking}
@@ -428,6 +441,7 @@ export function App() {
                   onChange={setFilters}
                 />
                 <CourseCatalog
+                  canBook={canBook}
                   courses={visibleCourses}
                   pendingSessionId={pendingSessionId}
                   onCreateBooking={handleCreateBooking}
@@ -620,7 +634,11 @@ function BackofficeScreen({
                   />
                 ) : null}
                 {activeTab === "calendar" ? (
-                  <AdminCalendarPanel courses={courses} locations={locations} />
+                  <AdminCalendarPanel
+                    courses={courses}
+                    locations={locations}
+                    token={session.access_token}
+                  />
                 ) : null}
                 {activeTab === "users" ? (
                   <UsersManager
@@ -675,10 +693,12 @@ function availableBookingCandidate(courses: CatalogCourse[]): {
 }
 
 function BookingFocus({
+  canBook,
   courses,
   pendingSessionId,
   onCreateBooking,
 }: {
+  canBook: boolean;
   courses: CatalogCourse[];
   pendingSessionId: string | null;
   onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
@@ -702,7 +722,10 @@ function BookingFocus({
   const isPending = pendingSessionId === session.id;
 
   return (
-    <section className="booking-focus" aria-labelledby="booking-focus-title">
+    <section
+      className={canBook ? "booking-focus" : "booking-focus is-booking-locked"}
+      aria-labelledby="booking-focus-title"
+    >
       <div className="booking-focus-copy">
         <p className="eyebrow">Prenotazione rapida</p>
         <h2 id="booking-focus-title">{course.title}</h2>
@@ -710,17 +733,18 @@ function BookingFocus({
           {weekdays[session.weekday]} · {formatTime(session.starts_at)} - {formatTime(session.ends_at)} ·{" "}
           {course.location_name}
         </p>
+        {!canBook ? <p className="booking-lock-message">Attiva l'iscrizione per prenotare.</p> : null}
       </div>
       <div className="booking-focus-action">
-        <span>{session.available_spots} posti liberi</span>
+        <span>{canBook ? `${session.available_spots} posti liberi` : "Iscrizione non attiva"}</span>
         <button
           className="primary-action"
-          disabled={isPending}
+          disabled={!canBook || isPending}
           onClick={() => onCreateBooking(course, session)}
           type="button"
         >
-          <CalendarCheck aria-hidden="true" />
-          {isPending ? "Prenoto" : "Prenota ora"}
+          {canBook ? <CalendarCheck aria-hidden="true" /> : <LockKeyhole aria-hidden="true" />}
+          {isPending ? "Prenoto" : canBook ? "Prenota ora" : "Iscrizione richiesta"}
         </button>
       </div>
     </section>
@@ -752,10 +776,12 @@ function WeekdayPicker({
 }
 
 function WeeklyCalendar({
+  canBook,
   courses,
   pendingSessionId,
   onCreateBooking,
 }: {
+  canBook: boolean;
   courses: CatalogCourse[];
   pendingSessionId: string | null;
   onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
@@ -792,11 +818,15 @@ function WeeklyCalendar({
               </div>
               <button
                 className="primary-action"
-                disabled={pendingSessionId === session.id}
+                disabled={!canBook || pendingSessionId === session.id}
                 onClick={() => onCreateBooking(course, session)}
                 type="button"
               >
-                {session.available_spots > 0 ? "Prenota" : "Lista attesa"}
+                {!canBook
+                  ? "Iscrizione richiesta"
+                  : session.available_spots > 0
+                    ? "Prenota"
+                    : "Lista attesa"}
               </button>
             </article>
           ))
@@ -806,8 +836,22 @@ function WeeklyCalendar({
   );
 }
 
-function AdminCalendarPanel({ courses, locations }: { courses: AdminCourse[]; locations: Location[] }) {
+function AdminCalendarPanel({
+  courses,
+  locations,
+  token,
+}: {
+  courses: AdminCourse[];
+  locations: Location[];
+  token: string;
+}) {
   const [selectedWeekday, setSelectedWeekday] = useState(new Date().getDay());
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+  const [attendeesBySession, setAttendeesBySession] = useState<
+    Record<string, AdminCourseSessionAttendee[]>
+  >({});
+  const [attendeeErrors, setAttendeeErrors] = useState<Record<string, string>>({});
   const locationNames = new Map(locations.map((location) => [location.id, location.name]));
   const entries = courses
     .filter((course) => course.status !== "archived")
@@ -817,6 +861,36 @@ function AdminCalendarPanel({ courses, locations }: { courses: AdminCourse[]; lo
         .map((session) => ({ course, session })),
     )
     .sort((left, right) => left.session.starts_at.localeCompare(right.session.starts_at));
+
+  async function loadAttendees(sessionId: string): Promise<void> {
+    setLoadingSessionId(sessionId);
+    setAttendeeErrors((current) => {
+      const next = { ...current };
+      delete next[sessionId];
+      return next;
+    });
+
+    try {
+      const attendees = await api.courseSessionAttendees(token, sessionId);
+      setAttendeesBySession((current) => ({ ...current, [sessionId]: attendees }));
+    } catch (error) {
+      setAttendeeErrors((current) => ({ ...current, [sessionId]: describeError(error) }));
+    } finally {
+      setLoadingSessionId(null);
+    }
+  }
+
+  function toggleAttendees(sessionId: string): void {
+    if (expandedSessionId === sessionId) {
+      setExpandedSessionId(null);
+      return;
+    }
+
+    setExpandedSessionId(sessionId);
+    if (attendeesBySession[sessionId] === undefined) {
+      void loadAttendees(sessionId);
+    }
+  }
 
   return (
     <section className="admin-panel calendar-panel" aria-labelledby="admin-calendar-title">
@@ -832,19 +906,95 @@ function AdminCalendarPanel({ courses, locations }: { courses: AdminCourse[]; lo
         {entries.length === 0 ? (
           <p className="muted">Nessuna ricorrenza attiva per {weekdays[selectedWeekday].toLowerCase()}.</p>
         ) : (
-          entries.map(({ course, session }) => (
-            <article className="calendar-entry" key={session.id}>
-              <time>{formatTime(session.starts_at)}</time>
-              <div>
-                <h3>{course.title}</h3>
-                <p>{locationNames.get(course.location_id) ?? "Sede non disponibile"}</p>
-              </div>
-              <span className="calendar-capacity">
-                <UsersIcon />
-                {session.capacity} posti
-              </span>
-            </article>
-          ))
+          entries.map(({ course, session }) => {
+            const isExpanded = expandedSessionId === session.id;
+            const attendees = attendeesBySession[session.id];
+            const confirmedCount = attendees?.filter((item) => item.status === "confirmed").length ?? 0;
+            const waitlistedCount = attendees?.filter((item) => item.status === "waitlisted").length ?? 0;
+            const panelId = `session-attendees-${session.id}`;
+
+            return (
+              <article className="calendar-entry admin-calendar-entry" key={session.id}>
+                <time>{formatTime(session.starts_at)}</time>
+                <div>
+                  <h3>{course.title}</h3>
+                  <p>
+                    {locationNames.get(course.location_id) ?? "Sede non disponibile"} ·{" "}
+                    {formatTime(session.starts_at)} - {formatTime(session.ends_at)}
+                  </p>
+                </div>
+                <div className="calendar-entry-actions">
+                  <span className="calendar-capacity">
+                    <UsersIcon />
+                    {session.capacity} posti
+                  </span>
+                  <button
+                    aria-controls={panelId}
+                    aria-expanded={isExpanded}
+                    className="secondary-action attendee-toggle"
+                    onClick={() => toggleAttendees(session.id)}
+                    type="button"
+                  >
+                    Prenotati
+                    <ChevronDown aria-hidden="true" />
+                  </button>
+                </div>
+
+                {isExpanded ? (
+                  <div className="attendee-panel" id={panelId} aria-live="polite">
+                    {loadingSessionId === session.id ? <p>Carico i partecipanti...</p> : null}
+                    {attendeeErrors[session.id] !== undefined ? (
+                      <div className="attendee-error">
+                        <p>{attendeeErrors[session.id]}</p>
+                        <button
+                          className="secondary-action"
+                          onClick={() => void loadAttendees(session.id)}
+                          type="button"
+                        >
+                          Riprova
+                        </button>
+                      </div>
+                    ) : null}
+                    {attendees !== undefined && attendees.length === 0 ? (
+                      <p>Nessuna prenotazione attiva per questa lezione.</p>
+                    ) : null}
+                    {attendees !== undefined && attendees.length > 0 ? (
+                      <>
+                        <div className="attendee-summary">
+                          <strong>{confirmedCount} confermati</strong>
+                          {waitlistedCount > 0 ? <span>{waitlistedCount} in lista d'attesa</span> : null}
+                        </div>
+                        <ul className="attendee-list">
+                          {attendees.map((attendee) => {
+                            const fullName = [attendee.first_name, attendee.last_name]
+                              .filter(Boolean)
+                              .join(" ");
+                            return (
+                              <li key={attendee.booking_id}>
+                                <div>
+                                  <strong>{fullName || attendee.email}</strong>
+                                  {fullName ? <span>{attendee.email}</span> : null}
+                                </div>
+                                <span
+                                  className={
+                                    attendee.status === "waitlisted"
+                                      ? "booking-status waitlisted"
+                                      : "booking-status"
+                                  }
+                                >
+                                  {attendee.status === "waitlisted" ? "Lista attesa" : "Confermato"}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })
         )}
       </div>
     </section>
@@ -2422,10 +2572,12 @@ function CatalogFilters({
 }
 
 function CourseCatalog({
+  canBook,
   courses,
   pendingSessionId,
   onCreateBooking,
 }: {
+  canBook: boolean;
   courses: CatalogCourse[];
   pendingSessionId: string | null;
   onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
@@ -2483,11 +2635,17 @@ function CourseCatalog({
                     </span>
                     <button
                       className={isFull ? "secondary-action" : "primary-action"}
-                      disabled={isPending}
+                      disabled={!canBook || isPending}
                       onClick={() => onCreateBooking(course, session)}
                       type="button"
                     >
-                      {isPending ? "Invio" : isFull ? "Lista attesa" : "Prenota"}
+                      {isPending
+                        ? "Invio"
+                        : !canBook
+                          ? "Iscrizione richiesta"
+                          : isFull
+                            ? "Lista attesa"
+                            : "Prenota"}
                     </button>
                   </div>
                 </div>
