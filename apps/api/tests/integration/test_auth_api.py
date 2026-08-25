@@ -166,18 +166,19 @@ def test_admin_must_complete_2fa_before_backoffice_access() -> None:
         "/auth/login",
         json={"email": "admin@example.com", "password": "AdminPass123!"},
     )
-    assert password_only_response.status_code == 403
+    assert password_only_response.status_code == 202
     assert password_only_response.json()["requires_2fa"] is True
+    challenge_token = password_only_response.json()["challenge_token"]
 
     totp_login_response = client.post(
-        "/auth/login",
+        "/auth/2fa/verify",
         json={
-            "email": "admin@example.com",
-            "password": "AdminPass123!",
+            "challenge_token": challenge_token,
             "totp_code": generate_totp_code(secret),
         },
     )
     assert totp_login_response.status_code == 200
+    assert totp_login_response.json()["user"]["role"] == "admin"
 
 
 def test_delete_me_anonymizes_account() -> None:
@@ -199,4 +200,3 @@ def test_delete_me_anonymizes_account() -> None:
 
     me_response = client.get("/auth/me", headers=auth_headers(tokens["access_token"]))
     assert me_response.status_code == 401
-

@@ -10,6 +10,8 @@ const catalogResponse = [
     location_name: "Chiron Roma",
     title: "Calisthenics Foundation",
     description: "Forza, controllo e progressioni a corpo libero.",
+    discipline: "calisthenics",
+    image_url: "/uploads/calisthenics.jpg",
     sessions: [
       {
         id: "session-calisthenics",
@@ -27,6 +29,8 @@ const catalogResponse = [
     location_name: "Chiron Milano",
     title: "Pole Flow",
     description: "Tecnica e transizioni fluide.",
+    discipline: "pole_dance",
+    image_url: null,
     sessions: [
       {
         id: "session-pole",
@@ -75,7 +79,21 @@ const adminCoursesResponse = [
     instructor_user_id: null,
     title: "Calisthenics Foundation",
     description: "Forza e controllo.",
+    discipline: "calisthenics",
+    image_url: "/uploads/calisthenics.jpg",
     status: "published",
+    sessions: [
+      {
+        id: "session-calisthenics",
+        course_id: "course-calisthenics",
+        weekday: 1,
+        starts_at: "18:00:00",
+        ends_at: "19:00:00",
+        capacity: 10,
+        cancellation_deadline_hours: 24,
+        is_active: true,
+      },
+    ],
   },
 ];
 
@@ -134,15 +152,31 @@ function installFetchMock() {
       const body = JSON.parse(init?.body?.toString() ?? "{}") as { email?: string };
       const isAdmin = body.email === "admin@example.com";
 
+      if (isAdmin) {
+        return jsonResponse(
+          { requires_2fa: true, challenge_token: "challenge-token" },
+          { status: 202 },
+        );
+      }
+
       return jsonResponse({
         access_token: "access-token",
         refresh_token: "refresh-token",
         token_type: "bearer",
         user: {
-          id: isAdmin ? "admin-1" : "user-1",
+          id: "user-1",
           email: body.email ?? "mattia@example.com",
-          role: isAdmin ? "admin" : "user",
+          role: "user",
         },
+      });
+    }
+
+    if (url.endsWith("/auth/2fa/verify") && method === "POST") {
+      return jsonResponse({
+        access_token: "admin-access-token",
+        refresh_token: "admin-refresh-token",
+        token_type: "bearer",
+        user: { id: "admin-1", email: "admin@example.com", role: "admin" },
       });
     }
 
@@ -260,7 +294,10 @@ function installFetchMock() {
           instructor_user_id: null,
           title: "Martial Flow",
           description: "Tecnica e mobilita.",
+          discipline: "martial_arts",
+          image_url: null,
           status: "published",
+          sessions: [],
         },
         { status: 201 },
       );
@@ -270,20 +307,36 @@ function installFetchMock() {
       return jsonResponse({ ...adminCoursesResponse[0], title: "Calisthenics Foundation aggiornato" });
     }
 
-    if (url.endsWith("/admin/courses/course-calisthenics/sessions") && method === "POST") {
+    if (url.endsWith("/admin/courses/course-calisthenics/schedule") && method === "POST") {
       return jsonResponse(
-        {
-          id: "session-new",
-          course_id: "course-calisthenics",
-          weekday: 2,
-          starts_at: "18:00",
-          ends_at: "19:00",
-          capacity: 12,
-          cancellation_deadline_hours: 24,
-          is_active: true,
-        },
+        [
+          {
+            id: "session-wednesday",
+            course_id: "course-calisthenics",
+            weekday: 3,
+            starts_at: "18:00",
+            ends_at: "19:00",
+            capacity: 12,
+            cancellation_deadline_hours: 24,
+            is_active: true,
+          },
+          {
+            id: "session-friday",
+            course_id: "course-calisthenics",
+            weekday: 5,
+            starts_at: "18:00",
+            ends_at: "19:00",
+            capacity: 12,
+            cancellation_deadline_hours: 24,
+            is_active: true,
+          },
+        ],
         { status: 201 },
       );
+    }
+
+    if (url.endsWith("/admin/course-sessions/session-calisthenics") && method === "PATCH") {
+      return jsonResponse({ ...adminCoursesResponse[0].sessions[0], capacity: 14 });
     }
 
     if (url.endsWith("/bookings") && method === "POST") {
@@ -350,10 +403,14 @@ async function loginAdmin() {
   fireEvent.change(screen.getByLabelText("Password"), {
     target: { value: "password-segreta" },
   });
+  expect(screen.queryByLabelText("Codice 2FA")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
+
+  await screen.findByRole("heading", { level: 2, name: "Conferma accesso" });
   fireEvent.change(screen.getByLabelText("Codice 2FA"), {
     target: { value: "123456" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
+  fireEvent.click(screen.getByRole("button", { name: "Conferma codice" }));
 
   await screen.findByRole("heading", { level: 1, name: "Backoffice Chiron" });
 }
@@ -376,7 +433,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Chiron Project" })).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "email");
     expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "current-password");
-    expect(screen.getByLabelText("Codice 2FA")).toHaveAttribute("autocomplete", "one-time-code");
+    expect(screen.queryByLabelText("Codice 2FA")).not.toBeInTheDocument();
   });
 
   it("lets a new user register from the auth panel", async () => {
@@ -510,13 +567,33 @@ describe("App", () => {
       expect.objectContaining({ method: "PATCH" }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /aggiungi sessione a Calisthenics/i }));
+    fireEvent.click(screen.getByRole("button", { name: /configura orari Calisthenics/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mercoledi" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Venerdi" }));
+    fireEvent.change(screen.getByLabelText("Ora inizio ricorrenza"), {
+      target: { value: "18:00" },
+    });
+    fireEvent.change(screen.getByLabelText("Ora fine ricorrenza"), {
+      target: { value: "19:00" },
+    });
+    fireEvent.change(screen.getByLabelText("Posti per lezione"), {
+      target: { value: "12" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salva ricorrenze" }));
 
-    await screen.findByText("Sessione creata.");
+    await screen.findByText("Ricorrenze create.");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/admin/courses/course-calisthenics/sessions",
+      "http://localhost:8000/admin/courses/course-calisthenics/schedule",
       expect.objectContaining({ method: "POST" }),
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Modifica Lunedi 18:00" }));
+    fireEvent.change(screen.getByLabelText("Capienza Lunedi 18:00"), {
+      target: { value: "14" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salva Lunedi 18:00" }));
+
+    await screen.findByText("Ricorrenza aggiornata.");
   });
 
   it("manages users and subscriptions from a dedicated backoffice tab", async () => {
