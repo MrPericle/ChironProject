@@ -380,6 +380,28 @@ Descrizione: UI per consultare iscritti per corso, stato prenotazioni e scadenze
 
 Definition of done: filtri e ordinamenti principali funzionanti.
 
+## Incremento completato - Programmazione corsi, media e calendari
+
+### `feat: periodizzazione settimanale corsi`
+
+Completato: l'admin puo creare in un'unica operazione ricorrenze su piu giorni, configurando ora di inizio, ora di fine, capienza e limite di cancellazione. Ogni ricorrenza puo essere modificata o disattivata singolarmente.
+
+### `fix: vincoli su capienza e sovrapposizioni`
+
+Completato: non e possibile duplicare lo stesso corso nella stessa sede o creare due ricorrenze attive identiche per corso, giorno e fascia oraria. La capienza non puo essere ridotta sotto il numero di prenotazioni confermate.
+
+### `feat: immagini e discipline corso`
+
+Completato: i corsi hanno una disciplina esplicita e una foto JPEG, PNG o WebP caricabile dall'admin. Il catalogo usa la foto caricata o un visual coerente con la disciplina, senza dedurla dal titolo.
+
+### `feat: calendari utente e backoffice`
+
+Completato: area utente e backoffice dispongono di un calendario settimanale adattivo. L'utente prenota dalla giornata selezionata; l'admin consulta orari, sedi e posti configurati.
+
+### `security: login admin 2fa a due passaggi`
+
+Completato: il primo passaggio verifica email e password, il secondo richiede il codice TOTP tramite una challenge breve; il backoffice viene aperto soltanto dopo entrambe le verifiche.
+
 ## Milestone 9 - CI/CD e deploy VPS
 
 ### `ci: aggiungi test backend e frontend`
@@ -472,4 +494,4 @@ Definition of done: MVP approvabile, nessuna funzionalita di pagamento introdott
 
 ## Prossimo passo consigliato
 
-Iniziare dalla Milestone 1 con inizializzazione Git, backend FastAPI minimo, frontend React/Vite minimo e Docker Compose locale. Ogni microtask puo diventare un commit atomico.
+Procedere con la Milestone 9: consolidare CI/CD, immagini Docker di produzione e deploy staging su VPS. Ogni microtask resta un commit atomico.
