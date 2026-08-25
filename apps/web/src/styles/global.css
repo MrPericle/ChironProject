@@ -339,6 +339,7 @@ h3 {
 
 .primary-action:disabled,
 .secondary-action:disabled {
+  cursor: not-allowed;
   opacity: 0.68;
   transform: none;
 }
@@ -954,6 +955,96 @@ h3 {
 .calendar-capacity svg {
   width: 17px;
   height: 17px;
+}
+
+.calendar-entry-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.attendee-toggle {
+  min-width: 132px;
+  white-space: nowrap;
+}
+
+.attendee-toggle svg {
+  transition: transform 160ms ease;
+}
+
+.attendee-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.attendee-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(11, 11, 13, 0.12);
+}
+
+.attendee-panel > p,
+.attendee-error p {
+  margin: 0;
+}
+
+.attendee-summary,
+.attendee-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attendee-summary span {
+  color: #66666b;
+  font-weight: 800;
+}
+
+.attendee-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attendee-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  border-top: 1px solid rgba(11, 11, 13, 0.08);
+}
+
+.attendee-list li > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.attendee-list li > div span {
+  overflow-wrap: anywhere;
+  color: #66666b;
+  font-size: 0.86rem;
+}
+
+.attendee-list .booking-status {
+  margin: 0;
+}
+
+.booking-status.waitlisted {
+  background: #fff0cf;
+  color: #684a06;
+}
+
+.booking-lock-message {
+  color: #98141e;
+  font-weight: 850;
 }
 
 .backoffice-shell {
@@ -1775,6 +1866,58 @@ h3 {
   .calendar-entry .primary-action,
   .calendar-entry .calendar-capacity {
     grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .calendar-entry-actions {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+  }
+
+  .calendar-entry-actions .calendar-capacity {
+    grid-column: auto;
+  }
+
+  .attendee-panel {
+    border-top-color: rgba(239, 37, 44, 0.16);
+  }
+
+  .attendee-summary span,
+  .attendee-list li > div span {
+    color: #a8a8ad;
+  }
+
+  .attendee-list li {
+    border-top-color: rgba(239, 37, 44, 0.12);
+  }
+
+  .attendee-list .booking-status {
+    background: #173326;
+    color: #bdebd4;
+  }
+
+  .attendee-list .booking-status.waitlisted {
+    background: #3a2f1d;
+    color: #efd89d;
+  }
+
+  .booking-lock-message {
+    color: #ffbfc2 !important;
+  }
+
+  .booking-focus.is-booking-locked {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .is-booking-locked .booking-focus-action {
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .is-booking-locked .booking-focus-action .primary-action {
     width: 100%;
   }
 
