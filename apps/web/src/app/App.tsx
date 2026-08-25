@@ -3,12 +3,14 @@ import {
   Archive,
   ArrowRight,
   Bell,
+  CalendarDays,
   CalendarCheck,
   CalendarPlus,
   CheckCircle2,
   Clock3,
   Dumbbell,
   Home,
+  ImagePlus,
   ListChecks,
   LogOut,
   MapPin,
@@ -37,7 +39,9 @@ import {
   CatalogCourse,
   CatalogSession,
   ChironApi,
+  CourseDiscipline,
   CoursePayload,
+  CourseSession,
   CourseStatus,
   Location,
   LocationPayload,
@@ -67,8 +71,16 @@ type Notice = {
 
 type AuthMode = "login" | "register";
 
-type MobileView = "courses" | "bookings" | "profile";
-type AdminTab = "dashboard" | "users" | "courses" | "locations";
+type MobileView = "courses" | "calendar" | "bookings" | "profile";
+type AdminTab = "dashboard" | "calendar" | "users" | "courses" | "locations";
+
+const disciplineLabels: Record<CourseDiscipline, string> = {
+  calisthenics: "Calisthenics",
+  martial_arts: "Arti marziali",
+  pole_dance: "Pole dance",
+  mobility: "Mobilita",
+  other: "Altro",
+};
 
 function isBackofficeRole(user: User | null): boolean {
   return user?.role === "admin" || user?.role === "staff";
@@ -102,6 +114,15 @@ function formatDate(value: string): string {
 
 function formatTime(value: string): string {
   return value.slice(0, 5);
+}
+
+function absoluteImageUrl(imageUrl: string | null): string | null {
+  if (imageUrl === null) {
+    return null;
+  }
+  return imageUrl.startsWith("http://") || imageUrl.startsWith("https://")
+    ? imageUrl
+    : `${apiBaseUrl}${imageUrl}`;
 }
 
 function activeBookings(bookings: Booking[]): Booking[] {
@@ -219,22 +240,49 @@ export function App() {
   const visibleCourses = useMemo(() => filteredCourses(courses, filters), [courses, filters]);
   const activeBookingCount = activeBookings(bookings).length;
 
-  async function handleLogin(email: string, password: string, totpCode?: string): Promise<void> {
+  async function handleLogin(email: string, password: string): Promise<string | null> {
     setNotice(null);
     setLoadState("loading");
 
     try {
-      const nextSession = await api.login({
-        email,
-        password,
-        ...(totpCode === undefined || totpCode === "" ? {} : { totp_code: totpCode }),
-      });
+      const result = await api.login({ email, password });
+      if ("requires_2fa" in result) {
+        setLoadState("idle");
+        return result.challenge_token;
+      }
+      if ("requires_2fa_setup" in result) {
+        setLoadState("idle");
+        setNotice({
+          tone: "error",
+          message: "Il 2FA admin deve essere configurato prima del primo accesso.",
+        });
+        return null;
+      }
+      const nextSession = result;
       saveSession(nextSession);
       setSession(nextSession);
       setUser(nextSession.user);
+      return null;
     } catch (error) {
       setLoadState("idle");
       setNotice({ tone: "error", message: describeError(error) });
+      return null;
+    }
+  }
+
+  async function handleVerifyTwoFactor(challengeToken: string, totpCode: string): Promise<boolean> {
+    setNotice(null);
+    setLoadState("loading");
+    try {
+      const nextSession = await api.verifyTwoFactor(challengeToken, totpCode);
+      saveSession(nextSession);
+      setSession(nextSession);
+      setUser(nextSession.user);
+      return true;
+    } catch (error) {
+      setLoadState("idle");
+      setNotice({ tone: "error", message: describeError(error) });
+      return false;
     }
   }
 
@@ -321,7 +369,14 @@ export function App() {
   }
 
   if (session === null) {
-    return <LoginScreen notice={notice} onLogin={handleLogin} onRegister={handleRegister} />;
+    return (
+      <LoginScreen
+        notice={notice}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        onVerifyTwoFactor={handleVerifyTwoFactor}
+      />
+    );
   }
 
   if (isBackofficeRole(session.user)) {
@@ -352,6 +407,11 @@ export function App() {
             />
             <BookingFocus
               courses={visibleCourses}
+              pendingSessionId={pendingSessionId}
+              onCreateBooking={handleCreateBooking}
+            />
+            <WeeklyCalendar
+              courses={courses}
               pendingSessionId={pendingSessionId}
               onCreateBooking={handleCreateBooking}
             />
@@ -504,6 +564,14 @@ function BackofficeScreen({
               Dashboard
             </button>
             <button
+              aria-current={activeTab === "calendar" ? "page" : undefined}
+              onClick={() => setActiveTab("calendar")}
+              type="button"
+            >
+              <CalendarDays aria-hidden="true" />
+              Calendario
+            </button>
+            <button
               aria-current={activeTab === "users" ? "page" : undefined}
               onClick={() => setActiveTab("users")}
               type="button"
@@ -553,6 +621,9 @@ function BackofficeScreen({
                     publishedCourses={publishedCourses}
                     stats={stats}
                   />
+                ) : null}
+                {activeTab === "calendar" ? (
+                  <AdminCalendarPanel courses={courses} locations={locations} />
                 ) : null}
                 {activeTab === "users" ? (
                   <UsersManager
@@ -654,6 +725,130 @@ function BookingFocus({
           <CalendarCheck aria-hidden="true" />
           {isPending ? "Prenoto" : "Prenota ora"}
         </button>
+      </div>
+    </section>
+  );
+}
+
+function WeekdayPicker({
+  selectedWeekday,
+  onChange,
+}: {
+  selectedWeekday: number;
+  onChange: (weekday: number) => void;
+}) {
+  return (
+    <div className="weekday-picker" role="group" aria-label="Giorno del calendario">
+      {weekdays.map((weekday, index) => (
+        <button
+          aria-pressed={selectedWeekday === index}
+          className={selectedWeekday === index ? "is-selected" : ""}
+          key={weekday}
+          onClick={() => onChange(index)}
+          type="button"
+        >
+          <span>{weekday.slice(0, 3)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function WeeklyCalendar({
+  courses,
+  pendingSessionId,
+  onCreateBooking,
+}: {
+  courses: CatalogCourse[];
+  pendingSessionId: string | null;
+  onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
+}) {
+  const [selectedWeekday, setSelectedWeekday] = useState(new Date().getDay());
+  const entries = courses
+    .flatMap((course) =>
+      course.sessions
+        .filter((session) => session.weekday === selectedWeekday)
+        .map((session) => ({ course, session })),
+    )
+    .sort((left, right) => left.session.starts_at.localeCompare(right.session.starts_at));
+
+  return (
+    <section className="panel calendar-panel user-calendar" aria-labelledby="weekly-calendar-title">
+      <SectionTitle
+        icon={<CalendarDays aria-hidden="true" />}
+        title="Calendario settimanale"
+        id="weekly-calendar-title"
+      />
+      <WeekdayPicker selectedWeekday={selectedWeekday} onChange={setSelectedWeekday} />
+      <div className="calendar-agenda">
+        {entries.length === 0 ? (
+          <p className="muted">Nessuna lezione programmata per {weekdays[selectedWeekday].toLowerCase()}.</p>
+        ) : (
+          entries.map(({ course, session }) => (
+            <article className="calendar-entry" key={session.id}>
+              <time>{formatTime(session.starts_at)}</time>
+              <div>
+                <h3>{course.title}</h3>
+                <p>
+                  {course.location_name} · {formatTime(session.starts_at)} - {formatTime(session.ends_at)}
+                </p>
+              </div>
+              <button
+                className="primary-action"
+                disabled={pendingSessionId === session.id}
+                onClick={() => onCreateBooking(course, session)}
+                type="button"
+              >
+                {session.available_spots > 0 ? "Prenota" : "Lista attesa"}
+              </button>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AdminCalendarPanel({ courses, locations }: { courses: AdminCourse[]; locations: Location[] }) {
+  const [selectedWeekday, setSelectedWeekday] = useState(new Date().getDay());
+  const locationNames = new Map(locations.map((location) => [location.id, location.name]));
+  const entries = courses
+    .filter((course) => course.status !== "archived")
+    .flatMap((course) =>
+      course.sessions
+        .filter((session) => session.is_active && session.weekday === selectedWeekday)
+        .map((session) => ({ course, session })),
+    )
+    .sort((left, right) => left.session.starts_at.localeCompare(right.session.starts_at));
+
+  return (
+    <section className="admin-panel calendar-panel" aria-labelledby="admin-calendar-title">
+      <div className="admin-page-heading">
+        <div>
+          <p className="eyebrow">Programmazione</p>
+          <h2 id="admin-calendar-title">Calendario corsi</h2>
+        </div>
+        <span>{entries.length} lezioni nel giorno selezionato</span>
+      </div>
+      <WeekdayPicker selectedWeekday={selectedWeekday} onChange={setSelectedWeekday} />
+      <div className="calendar-agenda">
+        {entries.length === 0 ? (
+          <p className="muted">Nessuna ricorrenza attiva per {weekdays[selectedWeekday].toLowerCase()}.</p>
+        ) : (
+          entries.map(({ course, session }) => (
+            <article className="calendar-entry" key={session.id}>
+              <time>{formatTime(session.starts_at)}</time>
+              <div>
+                <h3>{course.title}</h3>
+                <p>{locationNames.get(course.location_id) ?? "Sede non disponibile"}</p>
+              </div>
+              <span className="calendar-capacity">
+                <UsersIcon />
+                {session.capacity} posti
+              </span>
+            </article>
+          ))
+        )}
       </div>
     </section>
   );
@@ -1319,8 +1514,18 @@ function CoursesManager({
   const [description, setDescription] = useState("");
   const [locationId, setLocationId] = useState("");
   const [status, setStatus] = useState<CourseStatus>("published");
+  const [discipline, setDiscipline] = useState<CourseDiscipline>("calisthenics");
+  const [courseImage, setCourseImage] = useState<File | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [courseDraft, setCourseDraft] = useState<CoursePayload | null>(null);
+  const [schedulingCourseId, setSchedulingCourseId] = useState<string | null>(null);
+  const [scheduleWeekdays, setScheduleWeekdays] = useState<number[]>([]);
+  const [scheduleStartsAt, setScheduleStartsAt] = useState("18:00");
+  const [scheduleEndsAt, setScheduleEndsAt] = useState("19:00");
+  const [scheduleCapacity, setScheduleCapacity] = useState("12");
+  const [scheduleDeadline, setScheduleDeadline] = useState("24");
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [sessionDraft, setSessionDraft] = useState<CourseSession | null>(null);
 
   const selectedLocationId = locationId || locations[0]?.id || "";
 
@@ -1336,27 +1541,98 @@ function CoursesManager({
         location_id: selectedLocationId,
         title,
         description: description || null,
+        discipline,
         status,
       });
-      onCourseChange(course);
+      const savedCourse =
+        courseImage === null ? course : await api.uploadCourseImage(token, course.id, courseImage);
+      onCourseChange(savedCourse);
       setTitle("");
       setDescription("");
+      setCourseImage(null);
       onNotice({ tone: "success", message: "Corso creato." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
     }
   }
 
-  async function handleCreateSession(course: AdminCourse): Promise<void> {
+  async function handleCreateSchedule(event: FormEvent<HTMLFormElement>, course: AdminCourse): Promise<void> {
+    event.preventDefault();
+    if (scheduleWeekdays.length === 0) {
+      onNotice({ tone: "error", message: "Seleziona almeno un giorno." });
+      return;
+    }
     try {
-      await api.createCourseSession(token, course.id, {
-        weekday: 2,
-        starts_at: "18:00",
-        ends_at: "19:00",
-        capacity: 12,
-        cancellation_deadline_hours: 24,
+      const sessions = await api.createCourseSchedule(token, course.id, {
+        weekdays: scheduleWeekdays,
+        starts_at: scheduleStartsAt,
+        ends_at: scheduleEndsAt,
+        capacity: Number(scheduleCapacity),
+        cancellation_deadline_hours: Number(scheduleDeadline),
       });
-      onNotice({ tone: "success", message: "Sessione creata." });
+      onCourseChange({ ...course, sessions: [...course.sessions, ...sessions] });
+      setScheduleWeekdays([]);
+      onNotice({ tone: "success", message: "Ricorrenze create." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleUploadImage(course: AdminCourse, image: File | undefined): Promise<void> {
+    if (image === undefined) {
+      return;
+    }
+    try {
+      onCourseChange(await api.uploadCourseImage(token, course.id, image));
+      onNotice({ tone: "success", message: "Immagine corso aggiornata." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  function toggleScheduleWeekday(weekday: number): void {
+    setScheduleWeekdays((current) =>
+      current.includes(weekday) ? current.filter((item) => item !== weekday) : [...current, weekday],
+    );
+  }
+
+  function handleEditSession(session: CourseSession): void {
+    setEditingSessionId(session.id);
+    setSessionDraft({ ...session });
+  }
+
+  async function handleUpdateSession(course: AdminCourse): Promise<void> {
+    if (sessionDraft === null) {
+      return;
+    }
+    try {
+      const updated = await api.updateCourseSession(token, sessionDraft.id, {
+        weekday: sessionDraft.weekday,
+        starts_at: sessionDraft.starts_at,
+        ends_at: sessionDraft.ends_at,
+        capacity: Number(sessionDraft.capacity),
+        cancellation_deadline_hours: Number(sessionDraft.cancellation_deadline_hours),
+      });
+      onCourseChange({
+        ...course,
+        sessions: course.sessions.map((session) => (session.id === updated.id ? updated : session)),
+      });
+      setEditingSessionId(null);
+      setSessionDraft(null);
+      onNotice({ tone: "success", message: "Ricorrenza aggiornata." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function handleDeactivateSession(course: AdminCourse, session: CourseSession): Promise<void> {
+    try {
+      const updated = await api.deactivateCourseSession(token, session.id);
+      onCourseChange({
+        ...course,
+        sessions: course.sessions.map((item) => (item.id === updated.id ? updated : item)),
+      });
+      onNotice({ tone: "success", message: "Ricorrenza disattivata." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
     }
@@ -1375,6 +1651,7 @@ function CoursesManager({
     setEditingCourseId(course.id);
     setCourseDraft({
       description: course.description,
+      discipline: course.discipline,
       location_id: course.location_id,
       status: course.status,
       title: course.title,
@@ -1426,6 +1703,25 @@ function CoursesManager({
             <option value="draft">Bozza</option>
           </select>
         </label>
+        <label className="field">
+          <span>Disciplina</span>
+          <select
+            value={discipline}
+            onChange={(event) => setDiscipline(event.target.value as CourseDiscipline)}
+          >
+            {Object.entries(disciplineLabels).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field file-field">
+          <span>Foto corso</span>
+          <input
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => setCourseImage(event.target.files?.[0] ?? null)}
+            type="file"
+          />
+        </label>
         <button className="primary-action" type="submit">
           <Plus aria-hidden="true" />
           Crea corso
@@ -1437,8 +1733,9 @@ function CoursesManager({
           <p className="muted">Nessun corso presente.</p>
         ) : (
           courses.map((course, index) => (
-            <article className="admin-list-item" key={`${course.id}-${index}`}>
-              <div>
+            <article className="admin-list-item admin-course-item" key={`${course.id}-${index}`}>
+              <CourseVisual discipline={course.discipline} imageUrl={course.image_url} />
+              <div className="admin-course-body">
                 <h3>{course.title}</h3>
                 <p>{course.description ?? "Descrizione non inserita."}</p>
                 {editingCourseId === course.id && courseDraft !== null ? (
@@ -1478,6 +1775,22 @@ function CoursesManager({
                       </select>
                     </label>
                     <label className="field">
+                      <span>Disciplina da modificare</span>
+                      <select
+                        value={courseDraft.discipline}
+                        onChange={(event) =>
+                          setCourseDraft({
+                            ...courseDraft,
+                            discipline: event.target.value as CourseDiscipline,
+                          })
+                        }
+                      >
+                        {Object.entries(disciplineLabels).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
                       <span>Stato corso da modificare</span>
                       <select
                         value={courseDraft.status}
@@ -1493,6 +1806,15 @@ function CoursesManager({
                   </div>
                 ) : null}
                 <span className="admin-status">{course.status}</span>
+                <label className="secondary-action image-upload-action">
+                  <ImagePlus aria-hidden="true" />
+                  <span>Aggiorna foto</span>
+                  <input
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => handleUploadImage(course, event.target.files?.[0])}
+                    type="file"
+                  />
+                </label>
               </div>
               <div className="admin-row-actions">
                 {editingCourseId === course.id ? (
@@ -1517,13 +1839,16 @@ function CoursesManager({
                   </button>
                 )}
                 <button
-                  aria-label={`Aggiungi sessione a ${course.title}`}
+                  aria-expanded={schedulingCourseId === course.id}
+                  aria-label={`Configura orari ${course.title}`}
                   className="secondary-action"
-                  onClick={() => handleCreateSession(course)}
+                  onClick={() =>
+                    setSchedulingCourseId((current) => (current === course.id ? null : course.id))
+                  }
                   type="button"
                 >
                   <CalendarPlus aria-hidden="true" />
-                  Sessione
+                  Orari
                 </button>
                 {course.status !== "archived" ? (
                   <button
@@ -1535,6 +1860,161 @@ function CoursesManager({
                     Archivia
                   </button>
                 ) : null}
+              </div>
+              {schedulingCourseId === course.id ? (
+                <form className="schedule-form" onSubmit={(event) => handleCreateSchedule(event, course)}>
+                  <fieldset className="weekday-checkboxes">
+                    <legend>Giorni ricorrenti</legend>
+                    {weekdays.map((weekday, weekdayIndex) => (
+                      <label key={weekday}>
+                        <input
+                          checked={scheduleWeekdays.includes(weekdayIndex)}
+                          onChange={() => toggleScheduleWeekday(weekdayIndex)}
+                          type="checkbox"
+                        />
+                        <span>{weekday}</span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <div className="schedule-fields">
+                    <label className="field">
+                      <span>Ora inizio ricorrenza</span>
+                      <input
+                        onChange={(event) => setScheduleStartsAt(event.target.value)}
+                        required
+                        type="time"
+                        value={scheduleStartsAt}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Ora fine ricorrenza</span>
+                      <input
+                        onChange={(event) => setScheduleEndsAt(event.target.value)}
+                        required
+                        type="time"
+                        value={scheduleEndsAt}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Posti per lezione</span>
+                      <input
+                        min="1"
+                        onChange={(event) => setScheduleCapacity(event.target.value)}
+                        required
+                        type="number"
+                        value={scheduleCapacity}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Ore limite cancellazione</span>
+                      <input
+                        min="0"
+                        onChange={(event) => setScheduleDeadline(event.target.value)}
+                        required
+                        type="number"
+                        value={scheduleDeadline}
+                      />
+                    </label>
+                  </div>
+                  <button className="primary-action" type="submit">
+                    <CalendarPlus aria-hidden="true" />
+                    Salva ricorrenze
+                  </button>
+                </form>
+              ) : null}
+              <div className="course-session-admin-list">
+                {course.sessions.filter((session) => session.is_active).map((session) => {
+                  const sessionLabel = `${weekdays[session.weekday]} ${formatTime(session.starts_at)}`;
+                  const isEditing = editingSessionId === session.id && sessionDraft !== null;
+                  return (
+                    <article className="course-session-admin" key={session.id}>
+                      <div>
+                        <strong>{sessionLabel}</strong>
+                        <span>
+                          {formatTime(session.starts_at)} - {formatTime(session.ends_at)} · {session.capacity} posti
+                        </span>
+                      </div>
+                      {isEditing ? (
+                        <div className="session-edit-fields">
+                          <label className="field">
+                            <span>{`Giorno ${sessionLabel}`}</span>
+                            <select
+                              onChange={(event) =>
+                                setSessionDraft({ ...sessionDraft, weekday: Number(event.target.value) })
+                              }
+                              value={sessionDraft.weekday}
+                            >
+                              {weekdays.map((weekday, weekdayIndex) => (
+                                <option key={weekday} value={weekdayIndex}>{weekday}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="field">
+                            <span>{`Inizio ${sessionLabel}`}</span>
+                            <input
+                              onChange={(event) =>
+                                setSessionDraft({ ...sessionDraft, starts_at: event.target.value })
+                              }
+                              type="time"
+                              value={formatTime(sessionDraft.starts_at)}
+                            />
+                          </label>
+                          <label className="field">
+                            <span>{`Fine ${sessionLabel}`}</span>
+                            <input
+                              onChange={(event) =>
+                                setSessionDraft({ ...sessionDraft, ends_at: event.target.value })
+                              }
+                              type="time"
+                              value={formatTime(sessionDraft.ends_at)}
+                            />
+                          </label>
+                          <label className="field">
+                            <span>{`Capienza ${sessionLabel}`}</span>
+                            <input
+                              min="1"
+                              onChange={(event) =>
+                                setSessionDraft({ ...sessionDraft, capacity: Number(event.target.value) })
+                              }
+                              type="number"
+                              value={sessionDraft.capacity}
+                            />
+                          </label>
+                          <button
+                            aria-label={`Salva ${sessionLabel}`}
+                            className="primary-action"
+                            onClick={() => handleUpdateSession(course)}
+                            type="button"
+                          >
+                            <Save aria-hidden="true" />
+                            Salva
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="admin-row-actions">
+                          <button
+                            aria-label={`Modifica ${sessionLabel}`}
+                            className="secondary-action"
+                            onClick={() => handleEditSession(session)}
+                            type="button"
+                          >
+                            <Pencil aria-hidden="true" />
+                            Modifica
+                          </button>
+                          <button
+                            aria-label={`Disattiva ${sessionLabel}`}
+                            className="secondary-action danger-action"
+                            onClick={() => handleDeactivateSession(course, session)}
+                            type="button"
+                          >
+                            <Trash2 aria-hidden="true" />
+                            Disattiva
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             </article>
           ))
@@ -1548,15 +2028,17 @@ function LoginScreen({
   notice,
   onLogin,
   onRegister,
+  onVerifyTwoFactor,
 }: {
   notice: Notice | null;
-  onLogin: (email: string, password: string, totpCode?: string) => Promise<void>;
+  onLogin: (email: string, password: string) => Promise<string | null>;
   onRegister: (payload: {
     email: string;
     firstName: string;
     lastName: string;
     password: string;
   }) => Promise<void>;
+  onVerifyTwoFactor: (challengeToken: string, totpCode: string) => Promise<boolean>;
 }) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
@@ -1564,13 +2046,17 @@ function LoginScreen({
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSubmitting(true);
-    if (mode === "login") {
-      await onLogin(email, password, totpCode);
+    if (challengeToken !== null) {
+      await onVerifyTwoFactor(challengeToken, totpCode);
+    } else if (mode === "login") {
+      const nextChallenge = await onLogin(email, password);
+      setChallengeToken(nextChallenge);
     } else {
       await onRegister({ email, firstName, lastName, password });
     }
@@ -1599,10 +2085,19 @@ function LoginScreen({
 
         <form className="login-card" id="login-form" onSubmit={handleSubmit}>
           <div>
-            <p className="eyebrow">{mode === "login" ? "Bentornato" : "Nuovo iscritto"}</p>
-            <h2>{mode === "login" ? "Entra nell'area utente" : "Crea account utente"}</h2>
+            <p className="eyebrow">
+              {challengeToken !== null ? "Verifica amministratore" : mode === "login" ? "Bentornato" : "Nuovo iscritto"}
+            </p>
+            <h2>
+              {challengeToken !== null
+                ? "Conferma accesso"
+                : mode === "login"
+                  ? "Entra nell'area utente"
+                  : "Crea account utente"}
+            </h2>
           </div>
 
+          {challengeToken === null ? (
           <div className="auth-switch" role="tablist" aria-label="Accesso area utente">
             <button
               aria-selected={mode === "login"}
@@ -1623,6 +2118,7 @@ function LoginScreen({
               Registrati
             </button>
           </div>
+          ) : null}
 
           {notice !== null ? (
             <div className={`notice notice-${notice.tone}`} role="alert">
@@ -1631,7 +2127,7 @@ function LoginScreen({
             </div>
           ) : null}
 
-          {mode === "register" ? (
+          {mode === "register" && challengeToken === null ? (
             <div className="name-grid">
               <label className="field">
                 <span>Nome</span>
@@ -1659,7 +2155,7 @@ function LoginScreen({
             </div>
           ) : null}
 
-          <label className="field">
+          {challengeToken === null ? <label className="field">
             <span>Email</span>
             <input
               autoComplete="email"
@@ -1670,9 +2166,9 @@ function LoginScreen({
               type="email"
               value={email}
             />
-          </label>
+          </label> : null}
 
-          <label className="field">
+          {challengeToken === null ? <label className="field">
             <span>Password</span>
             <input
               autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -1683,9 +2179,9 @@ function LoginScreen({
               type="password"
               value={password}
             />
-          </label>
+          </label> : null}
 
-          {mode === "login" ? (
+          {challengeToken !== null ? (
             <label className="field">
               <span>Codice 2FA</span>
               <input
@@ -1696,6 +2192,7 @@ function LoginScreen({
                 name="totpCode"
                 onChange={(event) => setTotpCode(event.target.value)}
                 pattern="[0-9]{6}"
+                required
                 type="text"
                 value={totpCode}
               />
@@ -1706,12 +2203,26 @@ function LoginScreen({
             <span>
               {submitting
                 ? "Operazione in corso"
+                : challengeToken !== null
+                  ? "Conferma codice"
                 : mode === "login"
                   ? "Entra nell'area utente"
                   : "Crea account"}
             </span>
             <ArrowRight aria-hidden="true" />
           </button>
+          {challengeToken !== null ? (
+            <button
+              className="secondary-action"
+              onClick={() => {
+                setChallengeToken(null);
+                setTotpCode("");
+              }}
+              type="button"
+            >
+              Torna alle credenziali
+            </button>
+          ) : null}
         </form>
       </section>
     </main>
@@ -1916,7 +2427,7 @@ function CourseCatalog({
     <div className="course-list">
       {courses.map((course) => (
         <article className="course-card" key={course.id} aria-label={course.title}>
-          <CourseVisual title={course.title} />
+          <CourseVisual discipline={course.discipline} imageUrl={course.image_url} />
           <div className="course-card-header">
             <div>
               <h3>{course.title}</h3>
@@ -1972,33 +2483,39 @@ function CourseCatalog({
   );
 }
 
-function CourseVisual({ title }: { title: string }) {
-  const normalizedTitle = title.toLowerCase();
-  const variant = normalizedTitle.includes("pole")
-    ? "pole"
-    : ["martial", "karate", "judo", "kung", "boxing"].some((term) => normalizedTitle.includes(term))
-      ? "martial"
-      : "calisthenics";
+function CourseVisual({
+  discipline,
+  imageUrl,
+}: {
+  discipline: CourseDiscipline;
+  imageUrl: string | null;
+}) {
+  const variant =
+    discipline === "pole_dance"
+      ? "pole"
+      : discipline === "martial_arts"
+        ? "martial"
+        : discipline === "calisthenics"
+          ? "calisthenics"
+          : "movement";
   const assets = {
-    calisthenics: {
-      label: "Calisthenics",
-      src: "/assets/course-calisthenics.jpg",
-    },
-    martial: {
-      label: "Arti marziali",
-      src: "/assets/course-martial-arts.jpg",
-    },
-    pole: {
-      label: "Pole",
-      src: "/assets/course-pole.jpg",
-    },
+    calisthenics: "/assets/course-calisthenics.jpg",
+    martial: "/assets/course-martial-arts.jpg",
+    movement: null,
+    pole: "/assets/course-pole.jpg",
   } as const;
-  const asset = assets[variant];
+  const source = absoluteImageUrl(imageUrl) ?? assets[variant];
 
   return (
     <div className={`course-visual course-visual-${variant}`} aria-hidden="true">
-      <img alt="" loading="lazy" src={asset.src} />
-      <span>{asset.label}</span>
+      {source === null ? (
+        <div className="course-visual-placeholder">
+          <Dumbbell />
+        </div>
+      ) : (
+        <img alt="" loading="lazy" src={source} />
+      )}
+      <span>{disciplineLabels[discipline]}</span>
     </div>
   );
 }
@@ -2093,6 +2610,14 @@ function MobileTabBar({
       >
         <Home aria-hidden="true" />
         <span>Corsi</span>
+      </button>
+      <button
+        aria-current={activeView === "calendar" ? "page" : undefined}
+        onClick={() => onChange("calendar")}
+        type="button"
+      >
+        <CalendarDays aria-hidden="true" />
+        <span>Calendario</span>
       </button>
       <button
         aria-current={activeView === "bookings" ? "page" : undefined}

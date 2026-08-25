@@ -16,13 +16,24 @@ export type TokenPair = {
 export type LoginPayload = {
   email: string;
   password: string;
-  totp_code?: string;
 };
 
 export type RegisterPayload = LoginPayload & {
   first_name: string;
   last_name: string;
 };
+
+export type TwoFactorChallenge = {
+  requires_2fa: true;
+  challenge_token: string;
+};
+
+export type TwoFactorSetupRequired = {
+  requires_2fa_setup: true;
+  setup_token: string;
+};
+
+export type LoginResult = TokenPair | TwoFactorChallenge | TwoFactorSetupRequired;
 
 export type CatalogSession = {
   id: string;
@@ -39,6 +50,8 @@ export type CatalogCourse = {
   location_name: string;
   title: string;
   description: string | null;
+  discipline: CourseDiscipline;
+  image_url: string | null;
   sessions: CatalogSession[];
 };
 
@@ -122,6 +135,12 @@ export type LocationUpdatePayload = Partial<LocationPayload> & {
 };
 
 export type CourseStatus = "draft" | "published" | "archived";
+export type CourseDiscipline =
+  | "calisthenics"
+  | "martial_arts"
+  | "pole_dance"
+  | "mobility"
+  | "other";
 
 export type AdminCourse = {
   id: string;
@@ -129,13 +148,17 @@ export type AdminCourse = {
   instructor_user_id: string | null;
   title: string;
   description: string | null;
+  discipline: CourseDiscipline;
+  image_url: string | null;
   status: CourseStatus;
+  sessions: CourseSession[];
 };
 
 export type CoursePayload = {
   location_id: string;
   title: string;
   description: string | null;
+  discipline: CourseDiscipline;
   status: CourseStatus;
 };
 
@@ -153,6 +176,10 @@ export type CourseSession = CourseSessionPayload & {
   id: string;
   course_id: string;
   is_active: boolean;
+};
+
+export type CourseSchedulePayload = Omit<CourseSessionPayload, "weekday"> & {
+  weekdays: number[];
 };
 
 export type AdminStatsItem = {
@@ -203,10 +230,17 @@ export class ChironApi {
     private readonly fetcher?: typeof fetch,
   ) {}
 
-  async login(payload: LoginPayload): Promise<TokenPair> {
-    return this.request<TokenPair>("/auth/login", {
+  async login(payload: LoginPayload): Promise<LoginResult> {
+    return this.request<LoginResult>("/auth/login", {
       method: "POST",
       body: payload,
+    });
+  }
+
+  async verifyTwoFactor(challengeToken: string, totpCode: string): Promise<TokenPair> {
+    return this.request<TokenPair>("/auth/2fa/verify", {
+      method: "POST",
+      body: { challenge_token: challengeToken, totp_code: totpCode },
     });
   }
 
@@ -357,6 +391,47 @@ export class ChironApi {
     });
   }
 
+  async createCourseSchedule(
+    token: string,
+    courseId: string,
+    payload: CourseSchedulePayload,
+  ): Promise<CourseSession[]> {
+    return this.request<CourseSession[]>(`/admin/courses/${courseId}/schedule`, {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  }
+
+  async updateCourseSession(
+    token: string,
+    sessionId: string,
+    payload: Partial<CourseSessionPayload> & { is_active?: boolean },
+  ): Promise<CourseSession> {
+    return this.request<CourseSession>(`/admin/course-sessions/${sessionId}`, {
+      method: "PATCH",
+      token,
+      body: payload,
+    });
+  }
+
+  async deactivateCourseSession(token: string, sessionId: string): Promise<CourseSession> {
+    return this.request<CourseSession>(`/admin/course-sessions/${sessionId}`, {
+      method: "DELETE",
+      token,
+    });
+  }
+
+  async uploadCourseImage(token: string, courseId: string, image: File): Promise<AdminCourse> {
+    const body = new FormData();
+    body.append("image", image);
+    return this.request<AdminCourse>(`/admin/courses/${courseId}/image`, {
+      method: "POST",
+      token,
+      body,
+    });
+  }
+
   async createBooking(token: string, courseSessionId: string): Promise<Booking> {
     return this.request<Booking>("/bookings", {
       method: "POST",
@@ -373,10 +448,16 @@ export class ChironApi {
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const body =
+      options.body === undefined
+        ? undefined
+        : options.body instanceof FormData
+          ? options.body
+          : JSON.stringify(options.body);
     const response = await (this.fetcher ?? fetch)(`${this.baseUrl}${path}`, {
       method: options.method ?? "GET",
       headers: this.headers(options),
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body,
     });
 
     if (!response.ok) {
@@ -391,7 +472,7 @@ export class ChironApi {
       Accept: "application/json",
     };
 
-    if (options.body !== undefined) {
+    if (options.body !== undefined && !(options.body instanceof FormData)) {
       headers["Content-Type"] = "application/json";
     }
 

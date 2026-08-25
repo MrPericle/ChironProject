@@ -186,6 +186,8 @@ h3 {
 
 .login-card {
   display: grid;
+  min-width: 0;
+  width: 100%;
   gap: 18px;
   padding: 18px;
 }
@@ -201,6 +203,7 @@ h3 {
 }
 
 .auth-switch button {
+  min-width: 0;
   min-height: 44px;
   border: 0;
   border-radius: 7px;
@@ -221,6 +224,7 @@ h3 {
 
 .field {
   display: grid;
+  min-width: 0;
   gap: 7px;
   color: #26372d;
   font-weight: 800;
@@ -605,6 +609,22 @@ h3 {
   object-fit: cover;
 }
 
+.course-visual-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background:
+    linear-gradient(135deg, rgba(34, 217, 103, 0.2), transparent 46%),
+    #153d25;
+  color: #78d49a;
+}
+
+.course-visual-placeholder svg {
+  width: 42px;
+  height: 42px;
+}
+
 .course-visual-calisthenics img {
   object-position: center 34%;
 }
@@ -773,6 +793,87 @@ h3 {
   display: none;
 }
 
+.calendar-panel {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(24, 33, 28, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 252, 245, 0.94);
+  box-shadow: 0 18px 42px rgba(24, 33, 28, 0.08);
+}
+
+.weekday-picker {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(42px, 1fr));
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.weekday-picker button {
+  min-width: 42px;
+  min-height: 46px;
+  border: 1px solid rgba(24, 33, 28, 0.14);
+  border-radius: 8px;
+  background: #f6f0e6;
+  color: #4b5b51;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.weekday-picker button span {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+.weekday-picker button.is-selected {
+  border-color: #155b56;
+  background: #155b56;
+  color: #fffaf0;
+}
+
+.calendar-agenda {
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-entry {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 11px;
+  border: 1px solid rgba(24, 33, 28, 0.12);
+  border-radius: 8px;
+  background: #fffefb;
+}
+
+.calendar-entry time {
+  color: #155b56;
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.calendar-entry p {
+  margin: 4px 0 0;
+  color: #536257;
+}
+
+.calendar-capacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #155b56;
+  font-weight: 900;
+}
+
+.calendar-capacity svg {
+  width: 17px;
+  height: 17px;
+}
+
 .backoffice-shell {
   min-height: 100vh;
   padding: 18px;
@@ -933,6 +1034,113 @@ h3 {
   border: 1px solid rgba(24, 33, 28, 0.12);
   border-radius: 8px;
   background: #fffefb;
+}
+
+.admin-course-item {
+  align-items: start;
+}
+
+.admin-course-body {
+  min-width: 0;
+}
+
+.admin-course-item > .course-visual {
+  width: 100%;
+  min-height: 150px;
+}
+
+.image-upload-action {
+  position: relative;
+  width: fit-content;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.image-upload-action input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-field input {
+  min-height: 48px;
+  padding: 9px;
+}
+
+.schedule-form,
+.course-session-admin-list {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.schedule-form {
+  padding: 14px;
+  border: 1px solid rgba(21, 91, 86, 0.2);
+  border-radius: 8px;
+  background: #f6f0e6;
+}
+
+.weekday-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.weekday-checkboxes legend {
+  width: 100%;
+  margin-bottom: 8px;
+  color: #26372d;
+  font-weight: 900;
+}
+
+.weekday-checkboxes label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  border: 1px solid rgba(24, 33, 28, 0.14);
+  border-radius: 8px;
+  background: #fffefb;
+  padding: 0 11px;
+  color: #33443a;
+  font-weight: 800;
+}
+
+.weekday-checkboxes input {
+  width: 20px;
+  height: 20px;
+  margin: 0 7px 0 0;
+  accent-color: #155b56;
+}
+
+.schedule-fields,
+.session-edit-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.course-session-admin {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-left: 4px solid #22d967;
+  border-radius: 6px;
+  background: #edf4ed;
+}
+
+.course-session-admin > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.course-session-admin > div:first-child span {
+  color: #536257;
+  font-size: 0.9rem;
 }
 
 .admin-list-item p {
@@ -1108,6 +1316,31 @@ h3 {
   .app-shell,
   .backoffice-shell {
     background: #07190f;
+  }
+
+  .login-shell {
+    padding: 18px;
+  }
+
+  .login-layout {
+    min-width: 0;
+  }
+
+  .login-copy .eyebrow,
+  .login-lede {
+    color: #9ec8a8;
+  }
+
+  .login-card h2 {
+    color: #162019;
+  }
+
+  .login-card .eyebrow {
+    color: #526157;
+  }
+
+  .login-card .field {
+    color: #26372d;
   }
 
   .app-shell,
@@ -1356,10 +1589,15 @@ h3 {
   }
 
   .mobile-view-courses .side-stack,
+  .mobile-view-courses .user-calendar,
+  .mobile-view-calendar .booking-focus,
+  .mobile-view-calendar .dashboard-grid,
+  .mobile-view-bookings .user-calendar,
   .mobile-view-bookings .booking-focus,
   .mobile-view-bookings .catalog-panel,
   .mobile-view-bookings .subscription-panel,
   .mobile-view-profile .booking-focus,
+  .mobile-view-profile .user-calendar,
   .mobile-view-profile .catalog-panel,
   .mobile-view-profile .bookings-panel {
     display: none;
@@ -1372,6 +1610,78 @@ h3 {
 
   .mobile-view-profile .subscription-panel {
     display: grid;
+  }
+
+  .calendar-panel {
+    border-color: rgba(70, 161, 92, 0.4);
+    background: #12391f;
+    box-shadow: none;
+  }
+
+  .weekday-picker {
+    margin-right: -14px;
+    padding-right: 14px;
+  }
+
+  .weekday-picker button {
+    border-color: rgba(22, 238, 103, 0.12);
+    background: #0d2c18;
+    color: #92b89b;
+  }
+
+  .weekday-picker button.is-selected {
+    border-color: #16ee67;
+    background: #16ee67;
+    color: #082013;
+  }
+
+  .calendar-entry {
+    grid-template-columns: 52px minmax(0, 1fr);
+    border-color: rgba(22, 238, 103, 0.14);
+    background: #0d2c18;
+  }
+
+  .calendar-entry time,
+  .calendar-capacity {
+    color: #16ee67;
+  }
+
+  .calendar-entry p {
+    color: #92b89b;
+  }
+
+  .calendar-entry .primary-action,
+  .calendar-entry .calendar-capacity {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .admin-course-item > .course-visual {
+    min-height: 132px;
+  }
+
+  .schedule-form {
+    border-color: rgba(22, 238, 103, 0.16);
+    background: #0d2c18;
+  }
+
+  .weekday-checkboxes legend {
+    color: #d8ffe3;
+  }
+
+  .weekday-checkboxes label {
+    border-color: rgba(22, 238, 103, 0.14);
+    background: #12391f;
+    color: #b8f9c8;
+  }
+
+  .course-session-admin {
+    border-left-color: #16ee67;
+    background: #0d2c18;
+  }
+
+  .course-session-admin > div:first-child span {
+    color: #92b89b;
   }
 
   .section-heading {
@@ -1626,7 +1936,7 @@ h3 {
     left: 0;
     z-index: 10;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     width: min(100%, 480px);
     margin: 0 auto;
     padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
@@ -1722,6 +2032,21 @@ h3 {
 
   .inline-edit-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .schedule-fields,
+  .session-edit-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-course-item {
+    grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
+  }
+
+  .admin-course-item > .admin-row-actions,
+  .admin-course-item > .schedule-form,
+  .admin-course-item > .course-session-admin-list {
+    grid-column: 1 / -1;
   }
 
   .session-action {

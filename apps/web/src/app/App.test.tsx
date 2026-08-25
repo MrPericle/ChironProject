@@ -196,7 +196,7 @@ function installFetchMock() {
       return jsonResponse({ id: "user-1", email: "mattia@example.com", role: "user" });
     }
 
-    if (url.endsWith("/courses")) {
+    if (url.endsWith("/courses") && method === "GET") {
       return jsonResponse(catalogResponse);
     }
 
@@ -305,6 +305,17 @@ function installFetchMock() {
 
     if (url.endsWith("/admin/courses/course-calisthenics") && method === "PATCH") {
       return jsonResponse({ ...adminCoursesResponse[0], title: "Calisthenics Foundation aggiornato" });
+    }
+
+    if (url.endsWith("/admin/courses/course-martial/image") && method === "POST") {
+      return jsonResponse({
+        ...adminCoursesResponse[0],
+        id: "course-martial",
+        title: "Martial Flow",
+        discipline: "martial_arts",
+        image_url: "/uploads/martial-flow.jpg",
+        sessions: [],
+      });
     }
 
     if (url.endsWith("/admin/courses/course-calisthenics/schedule") && method === "POST") {
@@ -550,12 +561,19 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Descrizione corso"), {
       target: { value: "Tecnica e mobilita." },
     });
+    fireEvent.change(screen.getByLabelText("Foto corso"), {
+      target: { files: [new File(["image"], "martial-flow.jpg", { type: "image/jpeg" })] },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Crea corso" }));
 
     await screen.findByText("Corso creato.");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/courses",
       expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/courses/course-martial/image",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /modifica Calisthenics/i }));
