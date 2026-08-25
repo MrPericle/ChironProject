@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">MAKA symbol</title>
+  <desc id="desc">Circular movement symbol with martial arts and calisthenics figures.</desc>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M207 58A102 102 0 0 0 47 51C20 80 14 121 28 156" stroke="#EF252C" stroke-width="13"/>
+    <path d="M31 168a102 102 0 0 0 176 30c27-30 34-73 18-109" stroke="#0B0B0D" stroke-width="13"/>
+    <path d="M33 157c34-13 55-4 79 14 29 22 66 24 101 1" stroke="#0B0B0D" stroke-width="11"/>
+    <path d="M43 81c39-31 80-40 132-21" stroke="#EF252C" stroke-width="9"/>
+  </g>
+  <g fill="none" stroke="#EF252C" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="90" cy="82" r="11" fill="#EF252C" stroke="none"/>
+    <path d="m88 96-8 29M84 104l-28 17-16-8M81 125l-38 35M84 121l65-30 35-28" stroke-width="14"/>
+  </g>
+  <g fill="none" stroke="#0B0B0D" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="167" cy="132" r="9" fill="#0B0B0D" stroke="none"/>
+    <path d="m156 146-41 4-19-10M158 147l-12 38M177 146l-5 39M117 151l-25 15M91 188h103" stroke-width="11"/>
+  </g>
+  <circle cx="82" cy="190" r="9" fill="#EF252C"/>
+  <circle cx="184" cy="70" r="9" fill="#0B0B0D"/>
+</svg>
