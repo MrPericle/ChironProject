@@ -86,9 +86,9 @@ const disciplineLabels: Record<CourseDiscipline, string> = {
 };
 
 const userStatusLabels: Record<AdminUser["status"], string> = {
-  active: "Attivo",
-  disabled: "Disabilitato",
-  deleted: "Eliminato",
+  active: "Account attivo",
+  disabled: "Account disabilitato",
+  deleted: "Account eliminato",
 };
 
 const courseStatusLabels: Record<CourseStatus, string> = {
@@ -1212,7 +1212,10 @@ function UsersManager({
   async function handleDisable(user: AdminUser): Promise<void> {
     try {
       onUserChange(await api.updateAdminUser(token, user.id, { status: "disabled" }));
-      onNotice({ tone: "success", message: "Utente disabilitato." });
+      onNotice({
+        tone: "success",
+        message: "Account disabilitato. Le prenotazioni attive sono state rilasciate.",
+      });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
     }
@@ -1369,12 +1372,20 @@ function UsersManager({
                 <span className={user.status === "active" ? "admin-status" : "admin-status muted-status"}>
                   {userStatusLabels[user.status]}
                 </span>
-                <p>
+                <p
+                  className={
+                    user.role === "user" && user.subscription?.is_active !== true
+                      ? "membership-state expired-membership"
+                      : "membership-state"
+                  }
+                >
                   {user.role !== "user"
                     ? "Accesso amministrativo senza scadenza"
                     : user.subscription === null
-                      ? "Nessuna iscrizione attiva"
-                      : `Scadenza ${formatDate(user.subscription.expires_on)}`}
+                      ? "Nessuna iscrizione"
+                      : user.subscription.is_active
+                        ? `Iscrizione attiva · scade il ${formatDate(user.subscription.expires_on)}`
+                        : `Iscrizione scaduta il ${formatDate(user.subscription.expires_on)}`}
                 </p>
                 {editingUserId === user.id && userDraft !== null ? (
                   <div className="inline-edit-grid">

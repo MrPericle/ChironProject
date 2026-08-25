@@ -139,6 +139,23 @@ const adminUsersResponse = [
     birth_date: null,
     subscription: null,
   },
+  {
+    id: "user-expired",
+    email: "expired@example.com",
+    role: "user",
+    status: "active",
+    first_name: "Elena",
+    last_name: "Scaduta",
+    phone: null,
+    birth_date: null,
+    subscription: {
+      id: "subscription-expired",
+      starts_on: "2026-06-01",
+      duration_days: 30,
+      expires_on: "2026-07-01",
+      is_active: false,
+    },
+  },
 ];
 
 const adminStatsResponse = {
@@ -730,6 +747,9 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Utenti" }));
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
     expect(screen.getByText("Accesso amministrativo senza scadenza")).toBeInTheDocument();
+    expect(screen.getByText("Iscrizione scaduta il 01/07/2026")).toHaveClass(
+      "expired-membership",
+    );
     fireEvent.click(
       screen.getByRole("button", { name: /gestisci account amministrativo admin@example.com/i }),
     );
@@ -763,7 +783,9 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /disabilita member@example.com/i }));
 
-    await screen.findByText("Utente disabilitato.");
+    await screen.findByText(
+      "Account disabilitato. Le prenotazioni attive sono state rilasciate.",
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/users/user-1",
       expect.objectContaining({ method: "PATCH" }),

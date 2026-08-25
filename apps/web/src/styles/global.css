@@ -1336,6 +1336,15 @@ h3 {
   line-height: 1.45;
 }
 
+.admin-list-item .membership-state {
+  color: #18583f;
+  font-weight: 900;
+}
+
+.admin-list-item .expired-membership {
+  color: #8f1720;
+}
+
 .admin-status {
   display: inline-flex;
   width: fit-content;
@@ -1811,6 +1820,14 @@ h3 {
   .muted-status {
     background: #3a2f1d;
     color: #efd89d;
+  }
+
+  .admin-list-item .membership-state {
+    color: #bdebd4;
+  }
+
+  .admin-list-item .expired-membership {
+    color: #ffbfc2;
   }
 
   .admin-table {
