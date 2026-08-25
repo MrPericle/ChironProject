@@ -2,7 +2,6 @@ import {
   Activity,
   Archive,
   ArrowRight,
-  Bell,
   CalendarDays,
   CalendarCheck,
   CalendarPlus,
@@ -52,6 +51,7 @@ import {
   TokenPair,
   User,
 } from "../lib/api";
+import { accessTokenRefreshDelay } from "../lib/session";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const api = new ChironApi(apiBaseUrl);
@@ -83,6 +83,18 @@ const disciplineLabels: Record<CourseDiscipline, string> = {
   pole_dance: "Pole dance",
   mobility: "Mobilita",
   other: "Altro",
+};
+
+const userStatusLabels: Record<AdminUser["status"], string> = {
+  active: "Attivo",
+  disabled: "Disabilitato",
+  deleted: "Eliminato",
+};
+
+const courseStatusLabels: Record<CourseStatus, string> = {
+  archived: "Archiviato",
+  draft: "Bozza",
+  published: "Pubblicato",
 };
 
 function isBackofficeRole(user: User | null): boolean {
@@ -232,6 +244,58 @@ export function App() {
 
     return () => {
       ignore = true;
+    };
+  }, [session]);
+
+  useEffect(() => {
+    if (session === null) {
+      return;
+    }
+
+    let cancelled = false;
+    let refreshTimer: number | undefined;
+
+    const renewSession = async (): Promise<void> => {
+      try {
+        const renewedSession = await api.refresh(session.refresh_token);
+        if (cancelled) {
+          return;
+        }
+        saveSession(renewedSession);
+        setSession(renewedSession);
+        setUser(renewedSession.user);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        if (error instanceof ApiError && error.status === 401) {
+          localStorage.removeItem(sessionStorageKey);
+          setSession(null);
+          setUser(null);
+          setCourses([]);
+          setBookings([]);
+          setSubscription(null);
+          setLoadState("idle");
+          setNotice({
+            tone: "error",
+            message: "Sessione terminata. Accedi di nuovo per continuare.",
+          });
+          return;
+        }
+        refreshTimer = window.setTimeout(() => void renewSession(), 30_000);
+      }
+    };
+
+    refreshTimer = window.setTimeout(
+      () => void renewSession(),
+      accessTokenRefreshDelay(session.access_token),
+    );
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer !== undefined) {
+        window.clearTimeout(refreshTimer);
+      }
     };
   }, [session]);
 
@@ -567,44 +631,54 @@ function BackofficeScreen({
         <div className="backoffice-layout">
           <nav className="admin-tabs" aria-label="Sezioni backoffice">
             <button
+              aria-label="Dashboard"
               aria-current={activeTab === "dashboard" ? "page" : undefined}
               onClick={() => setActiveTab("dashboard")}
               type="button"
             >
               <Activity aria-hidden="true" />
-              Dashboard
+              <span className="admin-tab-label-full">Dashboard</span>
+              <span className="admin-tab-label-mobile" aria-hidden="true">Home</span>
             </button>
             <button
+              aria-label="Calendario"
               aria-current={activeTab === "calendar" ? "page" : undefined}
               onClick={() => setActiveTab("calendar")}
               type="button"
             >
               <CalendarDays aria-hidden="true" />
-              Calendario
+              <span className="admin-tab-label-full">Calendario</span>
+              <span className="admin-tab-label-mobile" aria-hidden="true">Agenda</span>
             </button>
             <button
+              aria-label="Utenti"
               aria-current={activeTab === "users" ? "page" : undefined}
               onClick={() => setActiveTab("users")}
               type="button"
             >
               <UserRound aria-hidden="true" />
-              Utenti
+              <span className="admin-tab-label-full">Utenti</span>
+              <span className="admin-tab-label-mobile" aria-hidden="true">Utenti</span>
             </button>
             <button
+              aria-label="Corsi"
               aria-current={activeTab === "courses" ? "page" : undefined}
               onClick={() => setActiveTab("courses")}
               type="button"
             >
               <Dumbbell aria-hidden="true" />
-              Corsi
+              <span className="admin-tab-label-full">Corsi</span>
+              <span className="admin-tab-label-mobile" aria-hidden="true">Corsi</span>
             </button>
             <button
+              aria-label="Sedi"
               aria-current={activeTab === "locations" ? "page" : undefined}
               onClick={() => setActiveTab("locations")}
               type="button"
             >
               <MapPin aria-hidden="true" />
-              Sedi
+              <span className="admin-tab-label-full">Sedi</span>
+              <span className="admin-tab-label-mobile" aria-hidden="true">Sedi</span>
             </button>
           </nav>
 
@@ -1281,19 +1355,26 @@ function UsersManager({
           <p className="muted">Nessun utente trovato.</p>
         ) : (
           visibleUsers.map((user) => (
-            <article className="admin-list-item" key={user.id}>
+            <article
+              className={
+                editingUserId === user.id ? "admin-list-item is-editing" : "admin-list-item"
+              }
+              key={user.id}
+            >
               <div>
                 <h3>{user.email}</h3>
                 <p>
                   {[user.first_name, user.last_name].filter(Boolean).join(" ") || "Profilo incompleto"}
                 </p>
                 <span className={user.status === "active" ? "admin-status" : "admin-status muted-status"}>
-                  {user.status}
+                  {userStatusLabels[user.status]}
                 </span>
                 <p>
-                  {user.subscription === null
-                    ? "Nessuna iscrizione attiva"
-                    : `Scadenza ${formatDate(user.subscription.expires_on)}`}
+                  {user.role !== "user"
+                    ? "Accesso amministrativo senza scadenza"
+                    : user.subscription === null
+                      ? "Nessuna iscrizione attiva"
+                      : `Scadenza ${formatDate(user.subscription.expires_on)}`}
                 </p>
                 {editingUserId === user.id && userDraft !== null ? (
                   <div className="inline-edit-grid">
@@ -1361,23 +1442,31 @@ function UsersManager({
                         <option value="deleted">Eliminato</option>
                       </select>
                     </label>
-                    <label className="field">
-                      <span>Inizio iscrizione</span>
-                      <input
-                        type="date"
-                        value={userDraft.starts_on}
-                        onChange={(event) => setUserDraft({ ...userDraft, starts_on: event.target.value })}
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Durata iscrizione</span>
-                      <input
-                        min="1"
-                        type="number"
-                        value={userDraft.duration_days}
-                        onChange={(event) => setUserDraft({ ...userDraft, duration_days: event.target.value })}
-                      />
-                    </label>
+                    {userDraft?.role === "user" ? (
+                      <>
+                        <label className="field">
+                          <span>Inizio iscrizione</span>
+                          <input
+                            type="date"
+                            value={userDraft.starts_on}
+                            onChange={(event) =>
+                              setUserDraft({ ...userDraft, starts_on: event.target.value })
+                            }
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Durata iscrizione</span>
+                          <input
+                            min="1"
+                            type="number"
+                            value={userDraft.duration_days}
+                            onChange={(event) =>
+                              setUserDraft({ ...userDraft, duration_days: event.target.value })
+                            }
+                          />
+                        </label>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1393,15 +1482,17 @@ function UsersManager({
                       <Save aria-hidden="true" />
                       Profilo
                     </button>
-                    <button
-                      aria-label={`Salva iscrizione ${user.email}`}
-                      className="secondary-action"
-                      onClick={() => handleSaveSubscription(user)}
-                      type="button"
-                    >
-                      <CalendarCheck aria-hidden="true" />
-                      Iscrizione
-                    </button>
+                    {userDraft?.role === "user" ? (
+                      <button
+                        aria-label={`Salva iscrizione ${user.email}`}
+                        className="secondary-action"
+                        onClick={() => handleSaveSubscription(user)}
+                        type="button"
+                      >
+                        <CalendarCheck aria-hidden="true" />
+                        Iscrizione
+                      </button>
+                    ) : null}
                     <button
                       aria-label={`Annulla modifica ${user.email}`}
                       className="secondary-action"
@@ -1417,7 +1508,11 @@ function UsersManager({
                   </>
                 ) : (
                   <button
-                    aria-label={`Gestisci utente e iscrizione ${user.email}`}
+                    aria-label={
+                      user.role === "user"
+                        ? `Gestisci utente e iscrizione ${user.email}`
+                        : `Gestisci account amministrativo ${user.email}`
+                    }
                     className="secondary-action"
                     onClick={() => handleEdit(user)}
                     type="button"
@@ -1565,7 +1660,14 @@ function LocationsManager({
           <p className="muted">Nessuna sede presente.</p>
         ) : (
           locations.map((location) => (
-            <article className="admin-list-item" key={location.id}>
+            <article
+              className={
+                editingLocationId === location.id
+                  ? "admin-list-item is-editing"
+                  : "admin-list-item"
+              }
+              key={location.id}
+            >
               <div>
                 <h3>{location.name}</h3>
                 <p>
@@ -1952,7 +2054,7 @@ function CoursesManager({
                     </label>
                   </div>
                 ) : null}
-                <span className="admin-status">{course.status}</span>
+                <span className="admin-status">{courseStatusLabels[course.status]}</span>
                 <label className="secondary-action image-upload-action">
                   <ImagePlus aria-hidden="true" />
                   <span>Aggiorna foto</span>
@@ -2383,13 +2485,6 @@ function AppHeader({ user, onLogout }: { user: User | null; onLogout: () => void
       </a>
       <BrandHeading context="Area utente" />
       <div className="header-actions">
-        <a className="status-link" href={`${apiBaseUrl}/health`}>
-          <Activity aria-hidden="true" />
-          <span>API</span>
-        </a>
-        <button className="icon-button mobile-alert-button" type="button" aria-label="Notifiche">
-          <Bell aria-hidden="true" />
-        </button>
         <div className="user-chip">
           <UserRound aria-hidden="true" />
           <span>{user?.email ?? "Utente"}</span>

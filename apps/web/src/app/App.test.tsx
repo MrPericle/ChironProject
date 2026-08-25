@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { accessTokenRefreshDelay } from "../lib/session";
 import { App } from "./App";
 
 const catalogResponse = [
@@ -127,6 +128,17 @@ const adminUsersResponse = [
       is_active: true,
     },
   },
+  {
+    id: "admin-1",
+    email: "admin@example.com",
+    role: "admin",
+    status: "active",
+    first_name: "Ada",
+    last_name: "Admin",
+    phone: null,
+    birth_date: null,
+    subscription: null,
+  },
 ];
 
 const adminStatsResponse = {
@@ -160,6 +172,12 @@ function jsonResponse(payload: unknown, init?: ResponseInit): Response {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
+}
+
+function accessTokenExpiringAt(expiresAt: number): string {
+  const encode = (value: string) =>
+    btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${encode("{}")}.${encode(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))}.signature`;
 }
 
 function installFetchMock(subscription = subscriptionResponse) {
@@ -209,6 +227,15 @@ function installFetchMock(subscription = subscriptionResponse) {
         },
         { status: 201 },
       );
+    }
+
+    if (url.endsWith("/auth/refresh") && method === "POST") {
+      return jsonResponse({
+        access_token: "renewed-access-token",
+        refresh_token: "renewed-refresh-token",
+        token_type: "bearer",
+        user: { id: "admin-1", email: "admin@example.com", role: "admin" },
+      });
     }
 
     if (url.endsWith("/auth/me")) {
@@ -455,7 +482,43 @@ describe("App", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("calculates a refresh before the access token expires", () => {
+    const now = new Date("2026-08-25T12:00:00Z").getTime();
+    const accessToken = accessTokenExpiringAt(now + 30 * 60_000);
+
+    expect(accessTokenRefreshDelay(accessToken, now)).toBe(29 * 60_000);
+  });
+
+  it("renews an admin session automatically", async () => {
+    vi.useFakeTimers();
+    const fetchMock = installFetchMock();
+    const accessToken = accessTokenExpiringAt(Date.now() + 70_000);
+    localStorage.setItem(
+      "chiron.user.session",
+      JSON.stringify({
+        access_token: accessToken,
+        refresh_token: "admin-refresh-token",
+        token_type: "bearer",
+        user: { id: "admin-1", email: "admin@example.com", role: "admin" },
+      }),
+    );
+
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/auth/refresh",
+      expect.objectContaining({
+        body: JSON.stringify({ refresh_token: "admin-refresh-token" }),
+        method: "POST",
+      }),
+    );
   });
 
   it("starts with an accessible authenticated shell", () => {
@@ -666,6 +729,15 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Utenti" }));
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Accesso amministrativo senza scadenza")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /gestisci account amministrativo admin@example.com/i }),
+    );
+    expect(screen.queryByLabelText("Inizio iscrizione")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /salva iscrizione admin@example.com/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /annulla modifica admin@example.com/i }));
     fireEvent.change(screen.getByLabelText("Email utente"), {
       target: { value: "new.member@example.com" },
     });

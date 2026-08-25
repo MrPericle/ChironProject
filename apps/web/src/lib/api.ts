@@ -260,6 +260,13 @@ export class ChironApi {
     });
   }
 
+  async refresh(refreshToken: string): Promise<TokenPair> {
+    return this.request<TokenPair>("/auth/refresh", {
+      method: "POST",
+      body: { refresh_token: refreshToken },
+    });
+  }
+
   async dashboard(token: string): Promise<UserDashboard> {
     const [user, courses, bookings, subscription] = await Promise.all([
       this.request<User>("/auth/me", { token }),
