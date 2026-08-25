@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from datetime import time
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from chiron_api.db.models import CourseStatus
+from chiron_api.db.models import CourseDiscipline, CourseStatus
 
 
 class LocationCreate(BaseModel):
@@ -33,6 +36,7 @@ class CourseCreate(BaseModel):
     location_id: UUID
     title: str = Field(min_length=1, max_length=180)
     description: str | None = None
+    discipline: CourseDiscipline = CourseDiscipline.OTHER
     instructor_user_id: UUID | None = None
     status: CourseStatus = CourseStatus.DRAFT
 
@@ -41,6 +45,7 @@ class CourseUpdate(BaseModel):
     location_id: UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=180)
     description: str | None = None
+    discipline: CourseDiscipline | None = None
     instructor_user_id: UUID | None = None
     status: CourseStatus | None = None
 
@@ -51,13 +56,24 @@ class CourseResponse(BaseModel):
     instructor_user_id: UUID | None
     title: str
     description: str | None
+    discipline: CourseDiscipline
+    image_url: str | None
     status: CourseStatus
+    sessions: list[CourseSessionResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class CourseSessionCreate(BaseModel):
     weekday: int = Field(ge=0, le=6)
+    starts_at: time
+    ends_at: time
+    capacity: int = Field(gt=0)
+    cancellation_deadline_hours: int = Field(default=24, ge=0)
+
+
+class CourseScheduleCreate(BaseModel):
+    weekdays: list[Annotated[int, Field(ge=0, le=6)]] = Field(min_length=1, max_length=7)
     starts_at: time
     ends_at: time
     capacity: int = Field(gt=0)
@@ -101,5 +117,9 @@ class CatalogCourseResponse(BaseModel):
     location_name: str
     title: str
     description: str | None
+    discipline: CourseDiscipline
+    image_url: str | None
     sessions: list[CatalogSessionResponse]
 
+
+CourseResponse.model_rebuild()

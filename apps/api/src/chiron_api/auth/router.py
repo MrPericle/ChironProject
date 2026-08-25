@@ -15,14 +15,19 @@ from chiron_api.auth.schemas import (
     RegisterRequest,
     TokenPairResponse,
     TwoFactorConfirmRequest,
+    TwoFactorRequiredResponse,
     TwoFactorSetupRequest,
+    TwoFactorSetupRequiredResponse,
     TwoFactorSetupResponse,
+    TwoFactorVerifyRequest,
     UserResponse,
 )
 from chiron_api.auth.secret_store import decrypt_secret, encrypt_secret
 from chiron_api.auth.tokens import (
+    TWO_FACTOR_CHALLENGE_TOKEN_TYPE,
     TWO_FACTOR_SETUP_TOKEN_TYPE,
     consume_refresh_token,
+    create_two_factor_challenge_token,
     create_two_factor_setup_token,
     decode_token,
     is_backoffice_role,
@@ -51,9 +56,15 @@ def get_user_by_email(db: Session, email: str) -> User | None:
     return db.scalar(select(User).where(User.email == normalize_email(email)))
 
 
-def user_from_setup_token(db: Session, setup_token: str, settings: Settings) -> User:
+def user_from_two_factor_token(
+    db: Session,
+    token: str,
+    settings: Settings,
+    *,
+    expected_type: str,
+) -> User:
     try:
-        payload = decode_token(setup_token, settings, expected_type=TWO_FACTOR_SETUP_TOKEN_TYPE)
+        payload = decode_token(token, settings, expected_type=expected_type)
         user_id = UUID(payload["sub"])
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(
@@ -66,6 +77,15 @@ def user_from_setup_token(db: Session, setup_token: str, settings: Settings) -> 
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid setup token")
 
     return user
+
+
+def user_from_setup_token(db: Session, setup_token: str, settings: Settings) -> User:
+    return user_from_two_factor_token(
+        db,
+        setup_token,
+        settings,
+        expected_type=TWO_FACTOR_SETUP_TOKEN_TYPE,
+    )
 
 
 @router.post("/register", response_model=TokenPairResponse, status_code=status.HTTP_201_CREATED)
@@ -91,13 +111,18 @@ def register(
     return build_token_response(db, user, settings)
 
 
-@router.post("/login", response_model=TokenPairResponse | dict)
+@router.post(
+    "/login",
+    response_model=(
+        TokenPairResponse | TwoFactorRequiredResponse | TwoFactorSetupRequiredResponse
+    ),
+)
 def login(
     payload: LoginRequest,
     response: Response,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
-) -> TokenPairResponse | dict:
+) -> TokenPairResponse | TwoFactorRequiredResponse | TwoFactorSetupRequiredResponse:
     user = get_user_by_email(db, payload.email)
     if user is None or user.status != UserStatus.ACTIVE:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -114,13 +139,36 @@ def login(
                 "setup_token": create_two_factor_setup_token(user, settings),
             }
 
-        if payload.totp_code is None:
-            response.status_code = status.HTTP_403_FORBIDDEN
-            return {"requires_2fa": True}
+        response.status_code = status.HTTP_202_ACCEPTED
+        return TwoFactorRequiredResponse(
+            challenge_token=create_two_factor_challenge_token(user, settings),
+        )
 
-        secret = decrypt_secret(two_factor.secret_encrypted, settings.app_secret_key)
-        if not verify_totp_code(secret, payload.totp_code):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid 2FA code")
+    return build_token_response(db, user, settings)
+
+
+@router.post("/2fa/verify", response_model=TokenPairResponse)
+def verify_two_factor(
+    payload: TwoFactorVerifyRequest,
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> TokenPairResponse:
+    user = user_from_two_factor_token(
+        db,
+        payload.challenge_token,
+        settings,
+        expected_type=TWO_FACTOR_CHALLENGE_TOKEN_TYPE,
+    )
+    two_factor = user.admin_2fa
+    if two_factor is None or two_factor.confirmed_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid 2FA challenge",
+        )
+
+    secret = decrypt_secret(two_factor.secret_encrypted, settings.app_secret_key)
+    if not verify_totp_code(secret, payload.totp_code):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid 2FA code")
 
     return build_token_response(db, user, settings)
 

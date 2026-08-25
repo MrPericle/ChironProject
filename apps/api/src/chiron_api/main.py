@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from chiron_api.admin.router import router as admin_router
 from chiron_api.auth.router import router as auth_router
@@ -26,6 +29,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    upload_dir = Path(settings.course_upload_dir)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
 
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:

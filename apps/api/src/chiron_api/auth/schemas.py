@@ -15,7 +15,6 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=256)
-    totp_code: str | None = Field(default=None, min_length=6, max_length=6)
 
 
 class RefreshTokenRequest(BaseModel):
@@ -32,6 +31,11 @@ class TwoFactorSetupRequest(BaseModel):
 
 class TwoFactorConfirmRequest(BaseModel):
     setup_token: str = Field(min_length=32)
+    totp_code: str = Field(min_length=6, max_length=6)
+
+
+class TwoFactorVerifyRequest(BaseModel):
+    challenge_token: str = Field(min_length=32)
     totp_code: str = Field(min_length=6, max_length=6)
 
 
@@ -52,6 +56,7 @@ class TokenPairResponse(BaseModel):
 
 class TwoFactorRequiredResponse(BaseModel):
     requires_2fa: bool = True
+    challenge_token: str
 
 
 class TwoFactorSetupRequiredResponse(BaseModel):

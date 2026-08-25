@@ -30,6 +30,7 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
       WAITLIST_ENABLED: ${WAITLIST_ENABLED:-false}
+      COURSE_UPLOAD_DIR: ${COURSE_UPLOAD_DIR:-/app/uploads}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chiron:chiron_dev_password@db:5432/chiron}
     ports:
       - "${API_PORT:-8000}:8000"
@@ -38,6 +39,7 @@ services:
       - ./apps/api/tests:/app/tests
       - ./apps/api/alembic.ini:/app/alembic.ini
       - ./apps/api/migrations:/app/migrations
+      - ./apps/api/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy

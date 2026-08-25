@@ -28,6 +28,8 @@ coverage/
 # Docker and local data
 *.log
 docker-data/
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep
 
 # IDE
 .idea/

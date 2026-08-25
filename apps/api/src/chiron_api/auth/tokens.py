@@ -13,6 +13,7 @@ from chiron_api.db.models import RefreshToken, User, UserRole, UserStatus, utc_n
 
 ACCESS_TOKEN_TYPE = "access"
 TWO_FACTOR_SETUP_TOKEN_TYPE = "2fa_setup"
+TWO_FACTOR_CHALLENGE_TOKEN_TYPE = "2fa_challenge"
 
 
 def hash_refresh_token(raw_token: str) -> str:
@@ -39,6 +40,19 @@ def create_two_factor_setup_token(user: User, settings: Settings) -> str:
         "sub": str(user.id),
         "role": user.role.value,
         "typ": TWO_FACTOR_SETUP_TOKEN_TYPE,
+        "exp": expires_at,
+        "iat": datetime.now(UTC),
+    }
+    return jwt.encode(payload, settings.app_secret_key, algorithm="HS256")
+
+
+def create_two_factor_challenge_token(user: User, settings: Settings) -> str:
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    payload = {
+        "iss": settings.auth_token_issuer,
+        "sub": str(user.id),
+        "role": user.role.value,
+        "typ": TWO_FACTOR_CHALLENGE_TOKEN_TYPE,
         "exp": expires_at,
         "iat": datetime.now(UTC),
     }

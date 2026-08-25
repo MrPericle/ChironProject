@@ -11,11 +11,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     Time,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
@@ -47,6 +49,14 @@ class CourseStatus(StrEnum):
     DRAFT = "draft"
     PUBLISHED = "published"
     ARCHIVED = "archived"
+
+
+class CourseDiscipline(StrEnum):
+    CALISTHENICS = "calisthenics"
+    MARTIAL_ARTS = "martial_arts"
+    POLE_DANCE = "pole_dance"
+    MOBILITY = "mobility"
+    OTHER = "other"
 
 
 class BookingStatus(StrEnum):
@@ -152,12 +162,21 @@ class Location(Base):
 
 class Course(Base):
     __tablename__ = "courses"
+    __table_args__ = (
+        UniqueConstraint("location_id", "title", name="uq_courses_location_title"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     location_id: Mapped[UUID] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
     instructor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
     title: Mapped[str] = mapped_column(String(180), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    discipline: Mapped[CourseDiscipline] = mapped_column(
+        Enum(CourseDiscipline, name="course_discipline", values_callable=enum_values),
+        default=CourseDiscipline.OTHER,
+        nullable=False,
+    )
+    image_url: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[CourseStatus] = mapped_column(
         Enum(CourseStatus, name="course_status", values_callable=enum_values),
         default=CourseStatus.DRAFT,
@@ -175,6 +194,7 @@ class Course(Base):
     sessions: Mapped[list["CourseSession"]] = relationship(
         back_populates="course",
         cascade="all, delete-orphan",
+        order_by=lambda: (CourseSession.weekday, CourseSession.starts_at),
     )
 
 
@@ -185,6 +205,16 @@ class CourseSession(Base):
         CheckConstraint("capacity > 0", name="capacity_positive"),
         CheckConstraint("ends_at > starts_at", name="time_order"),
         CheckConstraint("cancellation_deadline_hours >= 0", name="cancellation_deadline_positive"),
+        Index(
+            "uq_active_course_session_schedule",
+            "course_id",
+            "weekday",
+            "starts_at",
+            "ends_at",
+            unique=True,
+            postgresql_where=text("is_active = true"),
+            sqlite_where=text("is_active = 1"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
