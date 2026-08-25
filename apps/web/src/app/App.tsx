@@ -538,10 +538,7 @@ function BackofficeScreen({
     <main className="backoffice-shell" id="main-content">
       <div className="backoffice-workspace">
         <header className="backoffice-header">
-          <div>
-            <p className="eyebrow">Backoffice</p>
-            <h1>Backoffice Chiron</h1>
-          </div>
+          <BrandHeading context="Backoffice" />
           <div className="header-actions">
             <div className="user-chip">
               <UserRound aria-hidden="true" />
@@ -869,7 +866,7 @@ function AdminDashboardPanel({
     <div className="backoffice-grid">
       <div className="admin-page-heading admin-panel-wide">
         <div>
-          <p className="eyebrow">Oggi in Chiron</p>
+          <p className="eyebrow">Oggi in MAKA</p>
           <h2>Panoramica attivita</h2>
         </div>
         <span>Aggiornata dai dati di corsi e iscrizioni</span>
@@ -2070,8 +2067,7 @@ function LoginScreen({
       </a>
       <section className="login-layout" aria-labelledby="login-title">
         <div className="login-copy">
-          <p className="eyebrow">ASD movement platform</p>
-          <h1 id="login-title">Chiron Project</h1>
+          <BrandHeading className="brand-heading-login" context="ASD Corpo Libero" titleId="login-title" />
           <p className="login-lede">
             Area utente per corsi, prenotazioni e scadenza informativa
             dell'abbonamento.
@@ -2235,10 +2231,7 @@ function AppHeader({ user, onLogout }: { user: User | null; onLogout: () => void
       <a className="skip-link" href="#catalog-title">
         Vai al catalogo
       </a>
-      <div>
-        <p className="eyebrow">Area utente</p>
-        <h1>Il tuo movimento, oggi</h1>
-      </div>
+      <BrandHeading context="Area utente" />
       <div className="header-actions">
         <a className="status-link" href={`${apiBaseUrl}/health`}>
           <Activity aria-hidden="true" />
@@ -2256,6 +2249,30 @@ function AppHeader({ user, onLogout }: { user: User | null; onLogout: () => void
         </button>
       </div>
     </header>
+  );
+}
+
+function BrandHeading({
+  className = "",
+  context,
+  titleId,
+}: {
+  className?: string;
+  context: string;
+  titleId?: string;
+}) {
+  return (
+    <div className={`brand-heading ${className}`.trim()}>
+      <picture>
+        <source media="(max-width: 619px)" srcSet="/brand/maka-mark-inverse.svg" />
+        <img alt="" className="brand-mark" src="/brand/maka-mark.svg" />
+      </picture>
+      <div>
+        <p className="eyebrow">{context}</p>
+        <h1 id={titleId}>MAKA</h1>
+        <p className="brand-tagline">Martial Arts &amp; Calisthenics</p>
+      </div>
+    </div>
   );
 }
 

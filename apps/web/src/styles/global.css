@@ -1,6 +1,15 @@
 :root {
-  color: #18211c;
-  background: #f3f6f0;
+  --maka-red: #ef252c;
+  --maka-red-dark: #b5121b;
+  --maka-ink: #0b0b0d;
+  --maka-carbon: #18181b;
+  --maka-white: #f7f6f3;
+  --maka-silver: #b8b8bd;
+  --maka-mist: #eeecea;
+  --status-success: #1f6b4c;
+  --status-success-soft: #e7f3ed;
+  color: #18181b;
+  background: #f4f3f1;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -53,8 +62,8 @@ a {
   min-height: 44px;
   padding: 12px 16px;
   border-radius: 8px;
-  background: #18211c;
-  color: #fffaf0;
+  background: #18181b;
+  color: #f7f6f3;
   font-weight: 800;
   transform: translateY(-140%);
 }
@@ -67,8 +76,8 @@ a {
 .app-shell {
   min-height: 100vh;
   background:
-    linear-gradient(180deg, rgba(34, 112, 64, 0.12), rgba(238, 242, 232, 0) 340px),
-    #eef2e8;
+    linear-gradient(180deg, rgba(239, 37, 44, 0.12), rgba(238, 236, 234, 0) 340px),
+    #eeecea;
 }
 
 .login-shell {
@@ -92,9 +101,53 @@ a {
   padding: 28px 0 8px;
 }
 
+.brand-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-heading picture {
+  display: grid;
+  flex: 0 0 auto;
+}
+
+.brand-mark {
+  display: block;
+  width: 62px;
+  height: 62px;
+}
+
+.brand-heading .eyebrow {
+  margin-bottom: 3px;
+}
+
+.brand-heading h1 {
+  line-height: 0.9;
+}
+
+.brand-tagline {
+  margin: 7px 0 0;
+  color: #66666b;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.brand-heading-login {
+  align-items: center;
+  gap: 18px;
+}
+
+.brand-heading-login .brand-mark {
+  width: 108px;
+  height: 108px;
+}
+
 .eyebrow {
   margin: 0 0 8px;
-  color: #526157;
+  color: #66666b;
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -119,21 +172,21 @@ span {
 h1 {
   max-width: 820px;
   margin: 0;
-  color: #162019;
+  color: #0b0b0d;
   font-size: 2.65rem;
   line-height: 1;
 }
 
 h2 {
   margin: 0;
-  color: #162019;
+  color: #0b0b0d;
   font-size: 1.35rem;
   line-height: 1.15;
 }
 
 h3 {
   margin: 0;
-  color: #162019;
+  color: #0b0b0d;
   font-size: 1rem;
   line-height: 1.25;
 }
@@ -141,7 +194,7 @@ h3 {
 .login-lede {
   max-width: 640px;
   margin: 18px 0 0;
-  color: #33443a;
+  color: #3e3e43;
   font-size: 1.06rem;
   line-height: 1.6;
 }
@@ -167,8 +220,8 @@ h3 {
 }
 
 .discipline-strip span {
-  background: #18211c;
-  color: #fffaf0;
+  background: #18181b;
+  color: #f7f6f3;
 }
 
 .login-card,
@@ -178,10 +231,10 @@ h3 {
 .notice,
 .loading-panel,
 .empty-state {
-  border: 1px solid rgba(24, 33, 28, 0.14);
+  border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 8px;
-  background: rgba(255, 252, 245, 0.94);
-  box-shadow: 0 18px 42px rgba(24, 33, 28, 0.08);
+  background: rgba(247, 246, 243, 0.94);
+  box-shadow: 0 18px 42px rgba(11, 11, 13, 0.08);
 }
 
 .login-card {
@@ -197,9 +250,9 @@ h3 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding: 5px;
-  border: 1px solid rgba(24, 33, 28, 0.12);
+  border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
-  background: #f0eadf;
+  background: #e7e5e2;
 }
 
 .auth-switch button {
@@ -208,13 +261,13 @@ h3 {
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: #33443a;
+  color: #3e3e43;
   font-weight: 900;
 }
 
 .auth-switch button.is-selected {
-  background: #18211c;
-  color: #fffaf0;
+  background: #18181b;
+  color: #f7f6f3;
 }
 
 .name-grid {
@@ -226,7 +279,7 @@ h3 {
   display: grid;
   min-width: 0;
   gap: 7px;
-  color: #26372d;
+  color: #303034;
   font-weight: 800;
 }
 
@@ -234,10 +287,10 @@ h3 {
 .field select {
   min-height: 48px;
   width: 100%;
-  border: 1px solid #8d9c91;
+  border: 1px solid #8a8a90;
   border-radius: 8px;
-  background: #fffefb;
-  color: #17201b;
+  background: #ffffff;
+  color: #111113;
   padding: 0 13px;
 }
 
@@ -268,9 +321,9 @@ h3 {
 }
 
 .primary-action {
-  border: 1px solid #15743a;
-  background: #1bbf59;
-  color: #07190f;
+  border: 1px solid #b5121b;
+  background: #ef252c;
+  color: #0b0b0d;
   padding: 0 16px;
 }
 
@@ -288,17 +341,17 @@ h3 {
 }
 
 .secondary-action {
-  border: 1px solid rgba(24, 33, 28, 0.18);
-  background: #fffefb;
-  color: #155b56;
+  border: 1px solid rgba(11, 11, 13, 0.18);
+  background: #ffffff;
+  color: #b5121b;
   padding: 0 13px;
 }
 
 .icon-button {
   width: 44px;
-  border: 1px solid rgba(24, 33, 28, 0.16);
-  background: #fffefb;
-  color: #18211c;
+  border: 1px solid rgba(11, 11, 13, 0.16);
+  background: #ffffff;
+  color: #18181b;
 }
 
 .mobile-alert-button {
@@ -320,8 +373,8 @@ h3 {
 }
 
 .danger-action {
-  border-color: rgba(165, 59, 37, 0.3);
-  color: #8b321f;
+  border-color: rgba(181, 18, 27, 0.3);
+  color: #9d1720;
 }
 
 .app-shell {
@@ -346,17 +399,17 @@ h3 {
 }
 
 .status-link {
-  border: 1px solid rgba(24, 33, 28, 0.16);
-  background: #153d25;
-  color: #fffaf0;
+  border: 1px solid rgba(11, 11, 13, 0.16);
+  background: #18181b;
+  color: #f7f6f3;
   padding: 0 13px;
 }
 
 .user-chip {
   max-width: 100%;
-  border: 1px solid rgba(24, 33, 28, 0.12);
-  background: #edf4ed;
-  color: #203027;
+  border: 1px solid rgba(11, 11, 13, 0.12);
+  background: #f2eded;
+  color: #29292d;
   padding: 0 12px;
 }
 
@@ -376,15 +429,15 @@ h3 {
 }
 
 .notice-success {
-  border-color: rgba(21, 91, 86, 0.32);
-  background: #e7f3ef;
-  color: #0d4d49;
+  border-color: rgba(31, 107, 76, 0.32);
+  background: var(--status-success-soft);
+  color: #18583f;
 }
 
 .notice-error {
-  border-color: rgba(165, 59, 37, 0.32);
-  background: #fff0ea;
-  color: #7c311f;
+  border-color: rgba(181, 18, 27, 0.32);
+  background: #fff0f0;
+  color: #8f1720;
 }
 
 .overview {
@@ -397,27 +450,27 @@ h3 {
   display: grid;
   gap: 14px;
   padding: 16px;
-  border: 1px solid rgba(21, 61, 37, 0.18);
+  border: 1px solid rgba(11, 11, 13, 0.18);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(34, 230, 107, 0.16), transparent 45%),
-    #153d25;
-  color: #f8fff5;
-  box-shadow: 0 18px 42px rgba(16, 24, 21, 0.12);
+    linear-gradient(135deg, rgba(239, 37, 44, 0.16), transparent 45%),
+    #18181b;
+  color: #f7f6f3;
+  box-shadow: 0 18px 42px rgba(11, 11, 13, 0.12);
 }
 
 .booking-focus h2 {
-  color: #f8fff5;
+  color: #f7f6f3;
 }
 
 .booking-focus p {
   margin: 6px 0 0;
-  color: #b9d8bf;
+  color: #d0cfd2;
   line-height: 1.45;
 }
 
 .booking-focus .eyebrow {
-  color: #8dffb5;
+  color: #ff8d93;
 }
 
 .booking-focus-action {
@@ -429,8 +482,8 @@ h3 {
 .booking-focus-action span {
   width: fit-content;
   border-radius: 8px;
-  background: rgba(248, 255, 245, 0.1);
-  color: #d9ffe3;
+  background: rgba(247, 246, 243, 0.1);
+  color: #ffe1e3;
   padding: 7px 10px;
   font-weight: 900;
 }
@@ -438,13 +491,13 @@ h3 {
 .booking-focus-empty {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  background: #153d25;
+  background: #18181b;
 }
 
 .booking-focus-empty svg {
   width: 32px;
   height: 32px;
-  color: #22e66b;
+  color: #ef252c;
 }
 
 .overview article {
@@ -457,16 +510,16 @@ h3 {
 }
 
 .overview svg {
-  color: #a53b25;
+  color: #b5121b;
 }
 
 .overview span {
-  color: #4b5b51;
+  color: #5a5a60;
   font-weight: 800;
 }
 
 .overview strong {
-  color: #162019;
+  color: #0b0b0d;
   font-size: 1.2rem;
 }
 
@@ -504,17 +557,17 @@ h3 {
   width: 42px;
   height: 42px;
   border-radius: 8px;
-  background: #18211c;
-  color: #fffaf0;
+  background: #18181b;
+  color: #f7f6f3;
 }
 
 .filters {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(24, 33, 28, 0.12);
+  border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
-  background: #f0eadf;
+  background: #e7e5e2;
 }
 
 .filter-trigger {
@@ -534,14 +587,14 @@ h3 {
   align-items: center;
   gap: 10px;
   min-height: 48px;
-  color: #26372d;
+  color: #303034;
   font-weight: 900;
 }
 
 .availability-toggle input {
   width: 22px;
   height: 22px;
-  accent-color: #155b56;
+  accent-color: #b5121b;
 }
 
 .quick-filters {
@@ -559,18 +612,18 @@ h3 {
 .quick-filters button {
   min-height: 40px;
   flex: 0 0 auto;
-  border: 1px solid rgba(24, 33, 28, 0.14);
+  border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 999px;
-  background: #fffefb;
-  color: #314339;
+  background: #ffffff;
+  color: #3e3e43;
   padding: 0 14px;
   font-weight: 900;
 }
 
 .quick-filters button.is-selected {
-  border-color: #155b56;
-  background: #155b56;
-  color: #fffaf0;
+  border-color: #b5121b;
+  background: #b5121b;
+  color: #f7f6f3;
 }
 
 .course-list,
@@ -592,14 +645,14 @@ h3 {
   min-height: 138px;
   overflow: hidden;
   border-radius: 8px;
-  background: #173b27;
+  background: #18181b;
 }
 
 .course-visual::after {
   position: absolute;
   inset: 0;
   content: "";
-  background: linear-gradient(90deg, rgba(7, 25, 15, 0.4), transparent 60%);
+  background: linear-gradient(90deg, rgba(11, 11, 13, 0.4), transparent 60%);
 }
 
 .course-visual img {
@@ -615,9 +668,9 @@ h3 {
   height: 100%;
   place-items: center;
   background:
-    linear-gradient(135deg, rgba(34, 217, 103, 0.2), transparent 46%),
-    #153d25;
-  color: #78d49a;
+    linear-gradient(135deg, rgba(239, 37, 44, 0.2), transparent 46%),
+    #18181b;
+  color: #ef7d82;
 }
 
 .course-visual-placeholder svg {
@@ -637,8 +690,8 @@ h3 {
   min-height: 30px;
   padding: 6px 10px;
   border-radius: 8px;
-  background: #16ee67;
-  color: #082013;
+  background: #ef252c;
+  color: #0b0b0d;
   font-size: 0.76rem;
   font-weight: 950;
   text-transform: uppercase;
@@ -673,14 +726,14 @@ h3 {
 .subscription-box p,
 .booking-item p {
   margin: 6px 0 0;
-  color: #536257;
+  color: #66666b;
   line-height: 1.5;
 }
 
 .location-badge {
   width: fit-content;
-  background: #e2efe8;
-  color: #155b56;
+  background: #f6e7e8;
+  color: #b5121b;
 }
 
 .location-badge svg {
@@ -699,7 +752,7 @@ h3 {
   gap: 12px;
   padding: 12px;
   border-radius: 8px;
-  background: #f6f0e6;
+  background: #f2f0ed;
 }
 
 .session-thumb {
@@ -714,13 +767,13 @@ h3 {
 }
 
 .session-day {
-  color: #162019;
+  color: #0b0b0d;
   font-weight: 900;
 }
 
 .session-time {
   margin-top: 3px;
-  color: #4b5b51;
+  color: #5a5a60;
   font-size: 0.92rem;
   font-weight: 800;
 }
@@ -738,12 +791,12 @@ h3 {
 
 .spots {
   width: fit-content;
-  background: #fffefb;
-  color: #155b56;
+  background: #ffffff;
+  color: #b5121b;
 }
 
 .spots.is-full {
-  color: #7c311f;
+  color: #8f1720;
 }
 
 .subscription-box {
@@ -751,12 +804,12 @@ h3 {
   gap: 7px;
   padding: 14px;
   border-radius: 8px;
-  background: #18211c;
-  color: #fffaf0;
+  background: #18181b;
+  color: #f7f6f3;
 }
 
 .subscription-box span {
-  color: #d4e3dc;
+  color: #d6d5d8;
   font-weight: 800;
 }
 
@@ -765,28 +818,28 @@ h3 {
 }
 
 .subscription-box p {
-  color: #e8ded0;
+  color: #cfced1;
 }
 
 .booking-item {
   display: grid;
   gap: 12px;
   padding: 12px;
-  border: 1px solid rgba(24, 33, 28, 0.12);
+  border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
-  background: #fffefb;
+  background: #ffffff;
 }
 
 .booking-status {
   margin-top: 8px;
-  background: #e7f3ef;
-  color: #0d4d49;
+  background: var(--status-success-soft);
+  color: #18583f;
   white-space: nowrap;
 }
 
 .booking-status.cancelled {
-  background: #f2e7dd;
-  color: #6c5a42;
+  background: #eee9e7;
+  color: #6b6262;
 }
 
 .mobile-tabbar {
@@ -797,10 +850,10 @@ h3 {
   display: grid;
   gap: 16px;
   padding: 16px;
-  border: 1px solid rgba(24, 33, 28, 0.14);
+  border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 8px;
-  background: rgba(255, 252, 245, 0.94);
-  box-shadow: 0 18px 42px rgba(24, 33, 28, 0.08);
+  background: rgba(247, 246, 243, 0.94);
+  box-shadow: 0 18px 42px rgba(11, 11, 13, 0.08);
 }
 
 .weekday-picker {
@@ -814,10 +867,10 @@ h3 {
 .weekday-picker button {
   min-width: 42px;
   min-height: 46px;
-  border: 1px solid rgba(24, 33, 28, 0.14);
+  border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 8px;
-  background: #f6f0e6;
-  color: #4b5b51;
+  background: #f2f0ed;
+  color: #5a5a60;
   font-size: 0.78rem;
   font-weight: 900;
 }
@@ -828,9 +881,9 @@ h3 {
 }
 
 .weekday-picker button.is-selected {
-  border-color: #155b56;
-  background: #155b56;
-  color: #fffaf0;
+  border-color: #b5121b;
+  background: #b5121b;
+  color: #f7f6f3;
 }
 
 .calendar-agenda {
@@ -845,27 +898,27 @@ h3 {
   gap: 12px;
   min-height: 72px;
   padding: 11px;
-  border: 1px solid rgba(24, 33, 28, 0.12);
+  border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
-  background: #fffefb;
+  background: #ffffff;
 }
 
 .calendar-entry time {
-  color: #155b56;
+  color: #b5121b;
   font-size: 1.05rem;
   font-weight: 950;
 }
 
 .calendar-entry p {
   margin: 4px 0 0;
-  color: #536257;
+  color: #66666b;
 }
 
 .calendar-capacity {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #155b56;
+  color: #b5121b;
   font-weight: 900;
 }
 
@@ -878,8 +931,8 @@ h3 {
   min-height: 100vh;
   padding: 18px;
   background:
-    linear-gradient(180deg, rgba(34, 112, 64, 0.12), rgba(238, 242, 232, 0) 340px),
-    #eef2e8;
+    linear-gradient(180deg, rgba(239, 37, 44, 0.12), rgba(238, 236, 234, 0) 340px),
+    #eeecea;
 }
 
 .backoffice-workspace {
@@ -921,10 +974,10 @@ h3 {
   gap: 8px;
   min-height: 44px;
   flex: 0 0 auto;
-  border: 1px solid rgba(24, 33, 28, 0.14);
+  border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 999px;
-  background: #fffefb;
-  color: #33443a;
+  background: #ffffff;
+  color: #3e3e43;
   padding: 0 15px;
   font-weight: 900;
 }
@@ -935,9 +988,9 @@ h3 {
 }
 
 .admin-tabs button[aria-current="page"] {
-  border-color: #153d25;
-  background: #153d25;
-  color: #fffaf0;
+  border-color: #18181b;
+  background: #18181b;
+  color: #f7f6f3;
 }
 
 .admin-action-strip {
@@ -945,9 +998,9 @@ h3 {
   flex-wrap: wrap;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(24, 33, 28, 0.12);
+  border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
-  background: rgba(255, 252, 245, 0.72);
+  background: rgba(247, 246, 243, 0.72);
 }
 
 .admin-overview {
@@ -958,10 +1011,10 @@ h3 {
 
 .admin-overview article,
 .admin-panel {
-  border: 1px solid rgba(24, 33, 28, 0.14);
+  border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 8px;
-  background: rgba(255, 252, 245, 0.94);
-  box-shadow: 0 18px 42px rgba(24, 33, 28, 0.08);
+  background: rgba(247, 246, 243, 0.94);
+  box-shadow: 0 18px 42px rgba(11, 11, 13, 0.08);
 }
 
 .admin-overview article {
@@ -976,16 +1029,16 @@ h3 {
 .admin-overview svg {
   width: 20px;
   height: 20px;
-  color: #155b56;
+  color: #b5121b;
 }
 
 .admin-overview span {
-  color: #4b5b51;
+  color: #5a5a60;
   font-weight: 800;
 }
 
 .admin-overview strong {
-  color: #162019;
+  color: #0b0b0d;
   font-size: 1.3rem;
 }
 
@@ -1003,7 +1056,7 @@ h3 {
 }
 
 .admin-page-heading span {
-  color: #526157;
+  color: #66666b;
   font-size: 0.86rem;
   font-weight: 700;
   text-align: right;
@@ -1031,9 +1084,9 @@ h3 {
   display: grid;
   gap: 12px;
   padding: 12px;
-  border: 1px solid rgba(24, 33, 28, 0.12);
+  border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
-  background: #fffefb;
+  background: #ffffff;
 }
 
 .admin-course-item {
@@ -1078,9 +1131,9 @@ h3 {
 
 .schedule-form {
   padding: 14px;
-  border: 1px solid rgba(21, 91, 86, 0.2);
+  border: 1px solid rgba(181, 18, 27, 0.2);
   border-radius: 8px;
-  background: #f6f0e6;
+  background: #f2f0ed;
 }
 
 .weekday-checkboxes {
@@ -1095,7 +1148,7 @@ h3 {
 .weekday-checkboxes legend {
   width: 100%;
   margin-bottom: 8px;
-  color: #26372d;
+  color: #303034;
   font-weight: 900;
 }
 
@@ -1103,11 +1156,11 @@ h3 {
   display: inline-flex;
   align-items: center;
   min-height: 42px;
-  border: 1px solid rgba(24, 33, 28, 0.14);
+  border: 1px solid rgba(11, 11, 13, 0.14);
   border-radius: 8px;
-  background: #fffefb;
+  background: #ffffff;
   padding: 0 11px;
-  color: #33443a;
+  color: #3e3e43;
   font-weight: 800;
 }
 
@@ -1115,7 +1168,7 @@ h3 {
   width: 20px;
   height: 20px;
   margin: 0 7px 0 0;
-  accent-color: #155b56;
+  accent-color: #b5121b;
 }
 
 .schedule-fields,
@@ -1128,9 +1181,9 @@ h3 {
   display: grid;
   gap: 12px;
   padding: 12px;
-  border-left: 4px solid #22d967;
+  border-left: 4px solid #ef252c;
   border-radius: 6px;
-  background: #edf4ed;
+  background: #f2eded;
 }
 
 .course-session-admin > div:first-child {
@@ -1139,13 +1192,13 @@ h3 {
 }
 
 .course-session-admin > div:first-child span {
-  color: #536257;
+  color: #66666b;
   font-size: 0.9rem;
 }
 
 .admin-list-item p {
   margin: 6px 0 0;
-  color: #536257;
+  color: #66666b;
   line-height: 1.45;
 }
 
@@ -1156,16 +1209,16 @@ h3 {
   margin-top: 8px;
   align-items: center;
   border-radius: 8px;
-  background: #e7f3ef;
-  color: #0d4d49;
+  background: #fdebec;
+  color: #98141e;
   padding: 4px 9px;
   font-size: 0.78rem;
   font-weight: 900;
 }
 
 .muted-status {
-  background: #f2e7dd;
-  color: #6c5a42;
+  background: #eee9e7;
+  color: #6b6262;
 }
 
 .admin-row-actions {
@@ -1179,9 +1232,9 @@ h3 {
   gap: 10px;
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid rgba(24, 33, 28, 0.1);
+  border: 1px solid rgba(11, 11, 13, 0.1);
   border-radius: 8px;
-  background: rgba(247, 243, 234, 0.74);
+  background: rgba(242, 240, 237, 0.74);
 }
 
 .performance-list {
@@ -1195,14 +1248,14 @@ h3 {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border: 1px solid rgba(24, 33, 28, 0.12);
+  border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
-  background: #fffefb;
+  background: #ffffff;
 }
 
 .performance-item p {
   margin: 6px 0 0;
-  color: #536257;
+  color: #66666b;
 }
 
 .performance-item strong {
@@ -1211,8 +1264,8 @@ h3 {
   min-width: 46px;
   min-height: 46px;
   border-radius: 8px;
-  background: #153d25;
-  color: #f8fff5;
+  background: #18181b;
+  color: #f7f6f3;
   font-size: 1.4rem;
 }
 
@@ -1222,20 +1275,20 @@ h3 {
   overflow: hidden;
   margin-top: 10px;
   border-radius: 999px;
-  background: #dfe8df;
+  background: #dfdcda;
 }
 
 .performance-track span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #22d967;
+  background: #ef252c;
 }
 
 .admin-table {
   display: grid;
   overflow-x: auto;
-  border: 1px solid rgba(24, 33, 28, 0.12);
+  border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
 }
 
@@ -1247,7 +1300,7 @@ h3 {
 
 .admin-table-row span {
   padding: 12px;
-  border-bottom: 1px solid rgba(24, 33, 28, 0.08);
+  border-bottom: 1px solid rgba(11, 11, 13, 0.08);
 }
 
 .admin-table-row:last-child span {
@@ -1255,8 +1308,8 @@ h3 {
 }
 
 .admin-table-head {
-  background: #f0eadf;
-  color: #4b5b51;
+  background: #e7e5e2;
+  color: #5a5a60;
   font-size: 0.78rem;
   font-weight: 900;
   text-transform: uppercase;
@@ -1273,8 +1326,8 @@ h3 {
 .loader {
   width: 30px;
   height: 30px;
-  border: 4px solid #d9cab6;
-  border-top-color: #155b56;
+  border: 4px solid #c8c5c3;
+  border-top-color: #b5121b;
   border-radius: 50%;
   animation: spin 900ms linear infinite;
 }
@@ -1298,24 +1351,24 @@ h3 {
 
 @media (max-width: 619px) {
   :root {
-    color: #f6fff8;
-    background: #07190f;
+    color: #f7f6f3;
+    background: #0b0b0d;
   }
 
   body {
-    background: #07190f;
+    background: #0b0b0d;
   }
 
   h1,
   h2,
   h3 {
-    color: #f7fff7;
+    color: #f7f6f3;
   }
 
   .login-shell,
   .app-shell,
   .backoffice-shell {
-    background: #07190f;
+    background: #0b0b0d;
   }
 
   .login-shell {
@@ -1328,19 +1381,48 @@ h3 {
 
   .login-copy .eyebrow,
   .login-lede {
-    color: #9ec8a8;
+    color: #b8b8bd;
+  }
+
+  .brand-mark {
+    width: 48px;
+    height: 48px;
+  }
+
+  .brand-heading-login {
+    gap: 12px;
+  }
+
+  .brand-heading-login .brand-mark {
+    width: 74px;
+    height: 74px;
+  }
+
+  .brand-heading-login h1 {
+    font-size: 2.7rem;
+  }
+
+  .brand-tagline {
+    max-width: 180px;
+    color: #b8b8bd;
+    font-size: 0.62rem;
+    line-height: 1.2;
+  }
+
+  .login-card .brand-tagline {
+    color: #66666b;
   }
 
   .login-card h2 {
-    color: #162019;
+    color: #0b0b0d;
   }
 
   .login-card .eyebrow {
-    color: #526157;
+    color: #66666b;
   }
 
   .login-card .field {
-    color: #26372d;
+    color: #303034;
   }
 
   .app-shell,
@@ -1354,8 +1436,8 @@ h3 {
     min-height: 100vh;
     padding: 14px 14px 94px;
     gap: 16px;
-    background: #092316;
-    box-shadow: 0 0 0 1px rgba(34, 230, 107, 0.2);
+    background: #101012;
+    box-shadow: 0 0 0 1px rgba(239, 37, 44, 0.2);
   }
 
   .app-header,
@@ -1368,14 +1450,14 @@ h3 {
     gap: 14px;
     margin: -14px -14px 0;
     padding: 18px 14px 14px;
-    border-bottom: 1px solid rgba(155, 255, 185, 0.1);
-    background: rgba(8, 32, 16, 0.94);
+    border-bottom: 1px solid rgba(255, 141, 147, 0.1);
+    background: rgba(11, 11, 13, 0.94);
     backdrop-filter: blur(14px);
   }
 
   .app-header .eyebrow,
   .backoffice-header .eyebrow {
-    color: #7fbf91;
+    color: #aaa9ae;
     font-size: 0.7rem;
   }
 
@@ -1402,9 +1484,9 @@ h3 {
   .user-chip {
     width: 44px;
     padding: 0;
-    border-color: rgba(22, 238, 103, 0.22);
-    background: #12391f;
-    color: #16ee67;
+    border-color: rgba(239, 37, 44, 0.22);
+    background: #18181b;
+    color: #ef252c;
   }
 
   .user-chip span {
@@ -1417,9 +1499,9 @@ h3 {
   }
 
   .icon-button {
-    border-color: rgba(22, 238, 103, 0.22);
-    background: #12391f;
-    color: #e7ffee;
+    border-color: rgba(239, 37, 44, 0.22);
+    background: #18181b;
+    color: #f7f6f3;
   }
 
   .notice,
@@ -1435,8 +1517,8 @@ h3 {
   .performance-item,
   .admin-list-item,
   .booking-item {
-    border-color: rgba(70, 161, 92, 0.4);
-    background: #12391f;
+    border-color: rgba(181, 18, 27, 0.4);
+    background: #18181b;
     box-shadow: none;
   }
 
@@ -1445,10 +1527,10 @@ h3 {
     align-items: end;
     margin: 0;
     padding: 14px;
-    border-color: rgba(34, 230, 107, 0.28);
+    border-color: rgba(239, 37, 44, 0.28);
     background:
-      linear-gradient(135deg, rgba(34, 230, 107, 0.18), transparent 48%),
-      #12391f;
+      linear-gradient(135deg, rgba(239, 37, 44, 0.18), transparent 48%),
+      #18181b;
   }
 
   .booking-focus-action {
@@ -1462,13 +1544,14 @@ h3 {
   }
 
   .notice-success {
-    background: #12391f;
-    color: #d8ffe3;
+    border-color: rgba(79, 192, 139, 0.32);
+    background: #172b23;
+    color: #d8f7e8;
   }
 
   .notice-error {
-    background: #3a1b1b;
-    color: #ffe6dc;
+    background: #351416;
+    color: #ffe8e9;
   }
 
   .overview,
@@ -1499,7 +1582,7 @@ h3 {
 
   .overview svg,
   .admin-overview svg {
-    color: #16ee67;
+    color: #ef252c;
   }
 
   .overview span,
@@ -1512,7 +1595,7 @@ h3 {
   .subscription-box p,
   .booking-item p,
   .session-time {
-    color: #92b89b;
+    color: #a8a8ad;
   }
 
   .overview article > span,
@@ -1524,7 +1607,7 @@ h3 {
   .overview strong,
   .admin-overview strong,
   .performance-item strong {
-    color: #f7fff7;
+    color: #f7f6f3;
     font-size: 1.1rem;
     line-height: 1.05;
   }
@@ -1535,15 +1618,15 @@ h3 {
   }
 
   .admin-tabs button {
-    border-color: rgba(22, 238, 103, 0.08);
-    background: #12391f;
-    color: #99c4a2;
+    border-color: rgba(239, 37, 44, 0.08);
+    background: #18181b;
+    color: #b8b8bd;
   }
 
   .admin-tabs button[aria-current="page"] {
-    border-color: #16ee67;
-    background: #16ee67;
-    color: #082013;
+    border-color: #ef252c;
+    background: #ef252c;
+    color: #0b0b0d;
   }
 
   .admin-panel,
@@ -1552,13 +1635,13 @@ h3 {
   }
 
   .admin-status {
-    background: #1b4a2a;
-    color: #b8f9c8;
+    background: #29292e;
+    color: #ffd8da;
   }
 
   .inline-edit-grid {
-    border-color: rgba(22, 238, 103, 0.12);
-    background: #0d2c18;
+    border-color: rgba(239, 37, 44, 0.12);
+    background: #111113;
   }
 
   .muted-status {
@@ -1567,16 +1650,16 @@ h3 {
   }
 
   .admin-table {
-    border-color: rgba(22, 238, 103, 0.14);
+    border-color: rgba(239, 37, 44, 0.14);
   }
 
   .admin-table-head {
-    background: #0d2c18;
-    color: #99c4a2;
+    background: #111113;
+    color: #b8b8bd;
   }
 
   .admin-table-row span {
-    border-bottom-color: rgba(22, 238, 103, 0.1);
+    border-bottom-color: rgba(239, 37, 44, 0.1);
   }
 
   .dashboard-grid {
@@ -1613,8 +1696,8 @@ h3 {
   }
 
   .calendar-panel {
-    border-color: rgba(70, 161, 92, 0.4);
-    background: #12391f;
+    border-color: rgba(181, 18, 27, 0.4);
+    background: #18181b;
     box-shadow: none;
   }
 
@@ -1624,30 +1707,30 @@ h3 {
   }
 
   .weekday-picker button {
-    border-color: rgba(22, 238, 103, 0.12);
-    background: #0d2c18;
-    color: #92b89b;
+    border-color: rgba(239, 37, 44, 0.12);
+    background: #111113;
+    color: #a8a8ad;
   }
 
   .weekday-picker button.is-selected {
-    border-color: #16ee67;
-    background: #16ee67;
-    color: #082013;
+    border-color: #ef252c;
+    background: #ef252c;
+    color: #0b0b0d;
   }
 
   .calendar-entry {
     grid-template-columns: 52px minmax(0, 1fr);
-    border-color: rgba(22, 238, 103, 0.14);
-    background: #0d2c18;
+    border-color: rgba(239, 37, 44, 0.14);
+    background: #111113;
   }
 
   .calendar-entry time,
   .calendar-capacity {
-    color: #16ee67;
+    color: #ef252c;
   }
 
   .calendar-entry p {
-    color: #92b89b;
+    color: #a8a8ad;
   }
 
   .calendar-entry .primary-action,
@@ -1661,27 +1744,27 @@ h3 {
   }
 
   .schedule-form {
-    border-color: rgba(22, 238, 103, 0.16);
-    background: #0d2c18;
+    border-color: rgba(239, 37, 44, 0.16);
+    background: #111113;
   }
 
   .weekday-checkboxes legend {
-    color: #d8ffe3;
+    color: #ffd8da;
   }
 
   .weekday-checkboxes label {
-    border-color: rgba(22, 238, 103, 0.14);
-    background: #12391f;
-    color: #b8f9c8;
+    border-color: rgba(239, 37, 44, 0.14);
+    background: #18181b;
+    color: #ffd8da;
   }
 
   .course-session-admin {
-    border-left-color: #16ee67;
-    background: #0d2c18;
+    border-left-color: #ef252c;
+    background: #111113;
   }
 
   .course-session-admin > div:first-child span {
-    color: #92b89b;
+    color: #a8a8ad;
   }
 
   .section-heading {
@@ -1693,13 +1776,13 @@ h3 {
   .section-heading .eyebrow,
   .section-title + .muted,
   .field {
-    color: #99c4a2;
+    color: #b8b8bd;
   }
 
   .section-icon,
   .section-title span {
-    background: #12391f;
-    color: #16ee67;
+    background: #18181b;
+    color: #ef252c;
   }
 
   .filters {
@@ -1716,10 +1799,10 @@ h3 {
     gap: 8px;
     min-height: 46px;
     width: fit-content;
-    border: 1px solid rgba(22, 238, 103, 0.18);
+    border: 1px solid rgba(239, 37, 44, 0.18);
     border-radius: 999px;
-    background: #16ee67;
-    color: #082013;
+    background: #ef252c;
+    color: #0b0b0d;
     padding: 0 16px;
     font-weight: 950;
   }
@@ -1743,9 +1826,9 @@ h3 {
     display: none;
     gap: 12px;
     padding: 12px;
-    border: 1px solid rgba(22, 238, 103, 0.16);
+    border: 1px solid rgba(239, 37, 44, 0.16);
     border-radius: 8px;
-    background: #0d2c18;
+    background: #111113;
   }
 
   .filters-open .filter-panel {
@@ -1759,15 +1842,15 @@ h3 {
 
   .quick-filters button {
     min-height: 44px;
-    border-color: rgba(22, 238, 103, 0.08);
-    background: #12391f;
-    color: #99c4a2;
+    border-color: rgba(239, 37, 44, 0.08);
+    background: #18181b;
+    color: #b8b8bd;
   }
 
   .quick-filters button.is-selected {
-    border-color: #16ee67;
-    background: #16ee67;
-    color: #082013;
+    border-color: #ef252c;
+    background: #ef252c;
+    color: #0b0b0d;
   }
 
   .compact-field {
@@ -1779,9 +1862,9 @@ h3 {
   }
 
   .filters-open .field select {
-    border-color: rgba(22, 238, 103, 0.28);
-    background: #082010;
-    color: #f7fff7;
+    border-color: rgba(239, 37, 44, 0.28);
+    background: #0d0d0f;
+    color: #f7f6f3;
   }
 
   .availability-toggle {
@@ -1789,12 +1872,12 @@ h3 {
     width: fit-content;
     padding: 0 13px;
     border-radius: 999px;
-    background: #12391f;
-    color: #d8ffe3;
+    background: #18181b;
+    color: #ffd8da;
   }
 
   .availability-toggle input {
-    accent-color: #16ee67;
+    accent-color: #ef252c;
   }
 
   .course-list {
@@ -1804,8 +1887,8 @@ h3 {
   .course-card {
     overflow: hidden;
     padding: 0;
-    border-color: rgba(22, 238, 103, 0.18);
-    background: #12391f;
+    border-color: rgba(239, 37, 44, 0.18);
+    background: #18181b;
   }
 
   .course-visual {
@@ -1831,13 +1914,18 @@ h3 {
   .location-badge,
   .spots,
   .booking-status {
-    background: #1b4a2a;
-    color: #b8f9c8;
+    background: #29292e;
+    color: #ffd8da;
+  }
+
+  .booking-status:not(.cancelled) {
+    background: #17382b;
+    color: #bcebd4;
   }
 
   .performance-item strong {
-    background: #1b4a2a;
-    color: #d8ffe3;
+    background: #29292e;
+    color: #ffd8da;
   }
 
   .session-list {
@@ -1848,8 +1936,8 @@ h3 {
     grid-template-columns: 44px minmax(0, 1fr);
     align-items: center;
     gap: 10px;
-    border: 1px solid rgba(22, 238, 103, 0.16);
-    background: #0d2c18;
+    border: 1px solid rgba(239, 37, 44, 0.16);
+    background: #111113;
   }
 
   .admin-page-heading {
@@ -1859,12 +1947,12 @@ h3 {
   }
 
   .admin-page-heading span {
-    color: #92b89b;
+    color: #a8a8ad;
     text-align: left;
   }
 
   .admin-page-heading .eyebrow {
-    color: #7fbf91;
+    color: #aaa9ae;
   }
 
   .admin-row-actions {
@@ -1877,8 +1965,8 @@ h3 {
   }
 
   .danger-action {
-    border-color: rgba(255, 138, 108, 0.36);
-    color: #ffd5c8;
+    border-color: rgba(239, 37, 44, 0.36);
+    color: #ffd3d5;
   }
 
   .session-thumb {
@@ -1887,8 +1975,8 @@ h3 {
     width: 44px;
     height: 44px;
     border-radius: 8px;
-    background: #1b4a2a;
-    color: #16ee67;
+    background: #29292e;
+    color: #ef252c;
   }
 
   .session-thumb svg {
@@ -1897,7 +1985,7 @@ h3 {
   }
 
   .session-day {
-    color: #f7fff7;
+    color: #f7f6f3;
   }
 
   .session-action {
@@ -1907,26 +1995,26 @@ h3 {
   }
 
   .primary-action {
-    border-color: #16ee67;
-    background: #16ee67;
-    color: #082013;
+    border-color: #ef252c;
+    background: #ef252c;
+    color: #0b0b0d;
   }
 
   .secondary-action {
-    border-color: rgba(22, 238, 103, 0.18);
-    background: #1b4a2a;
-    color: #d8ffe3;
+    border-color: rgba(239, 37, 44, 0.18);
+    background: #29292e;
+    color: #ffd8da;
   }
 
   .subscription-box {
     background:
-      linear-gradient(135deg, rgba(22, 238, 103, 0.18), transparent 48%),
-      #0d2c18;
+      linear-gradient(135deg, rgba(239, 37, 44, 0.18), transparent 48%),
+      #111113;
   }
 
   .booking-item {
-    border-color: rgba(22, 238, 103, 0.14);
-    background: #0d2c18;
+    border-color: rgba(239, 37, 44, 0.14);
+    background: #111113;
   }
 
   .mobile-tabbar {
@@ -1940,8 +2028,8 @@ h3 {
     width: min(100%, 480px);
     margin: 0 auto;
     padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
-    border-top: 1px solid rgba(155, 255, 185, 0.12);
-    background: rgba(8, 32, 16, 0.96);
+    border-top: 1px solid rgba(255, 141, 147, 0.12);
+    background: rgba(11, 11, 13, 0.96);
     backdrop-filter: blur(18px);
   }
 
@@ -1953,13 +2041,13 @@ h3 {
     border: 0;
     border-radius: 8px;
     background: transparent;
-    color: #6d9375;
+    color: #77777d;
     font-size: 0.72rem;
     font-weight: 900;
   }
 
   .mobile-tabbar button[aria-current="page"] {
-    color: #16ee67;
+    color: #ef252c;
   }
 
   .mobile-tabbar svg {
@@ -2136,7 +2224,7 @@ h3 {
     overflow: visible;
     padding: 10px;
     border-radius: 8px;
-    background: #173b27;
+    background: #18181b;
   }
 
   .admin-tabs button {
@@ -2145,13 +2233,13 @@ h3 {
     border-color: transparent;
     border-radius: 7px;
     background: transparent;
-    color: #c8d9cd;
+    color: #c6c5c8;
   }
 
   .admin-tabs button[aria-current="page"] {
-    border-color: #22d967;
-    background: #22d967;
-    color: #07190f;
+    border-color: #ef252c;
+    background: #ef252c;
+    color: #0b0b0d;
   }
 }
 

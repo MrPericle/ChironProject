@@ -404,7 +404,7 @@ async function login() {
   });
   fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
 
-  await screen.findByRole("heading", { level: 1, name: "Il tuo movimento, oggi" });
+  await screen.findByRole("heading", { level: 1, name: "MAKA" });
 }
 
 async function loginAdmin() {
@@ -423,7 +423,7 @@ async function loginAdmin() {
   });
   fireEvent.click(screen.getByRole("button", { name: "Conferma codice" }));
 
-  await screen.findByRole("heading", { level: 1, name: "Backoffice Chiron" });
+  await screen.findByRole("heading", { level: 1, name: "MAKA" });
 }
 
 describe("App", () => {
@@ -441,7 +441,7 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByRole("main")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Chiron Project" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "MAKA" })).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "email");
     expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "current-password");
     expect(screen.queryByLabelText("Codice 2FA")).not.toBeInTheDocument();
@@ -461,7 +461,7 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Crea account" }));
 
-    await screen.findByRole("heading", { level: 1, name: "Il tuo movimento, oggi" });
+    await screen.findByRole("heading", { level: 1, name: "MAKA" });
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/auth/register",
       expect.objectContaining({
@@ -510,8 +510,9 @@ describe("App", () => {
     render(<App />);
     await login();
 
-    expect(screen.queryByRole("heading", { level: 1, name: "Backoffice Chiron" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Il tuo movimento, oggi" })).toBeInTheDocument();
+    expect(screen.getByText("Area utente")).toBeInTheDocument();
+    expect(screen.queryByText("Backoffice")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "MAKA" })).toBeInTheDocument();
   });
 
   it("creates and deactivates locations from the backoffice", async () => {
