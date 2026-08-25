@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -28,6 +28,26 @@ def latest_user_subscription(db: Session, user_id: UUID) -> Subscription | None:
         select(Subscription)
         .where(Subscription.user_id == user_id)
         .order_by(Subscription.starts_on.desc(), Subscription.created_at.desc()),
+    )
+
+
+def user_has_active_subscription(
+    db: Session,
+    user_id: UUID,
+    *,
+    target_date: date | None = None,
+) -> bool:
+    check_date = target_date or datetime.now(UTC).date()
+    subscriptions = db.scalars(
+        select(Subscription).where(Subscription.user_id == user_id),
+    ).all()
+    return any(
+        is_subscription_active_on(
+            subscription.starts_on,
+            subscription.duration_days,
+            check_date,
+        )
+        for subscription in subscriptions
     )
 
 

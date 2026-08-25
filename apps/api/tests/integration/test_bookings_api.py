@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from datetime import time
+from datetime import date, time, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -16,6 +16,7 @@ from chiron_api.db.models import (
     CourseSession,
     CourseStatus,
     Location,
+    Subscription,
     User,
 )
 from chiron_api.db.session import get_db_session
@@ -50,10 +51,24 @@ def make_client(*, waitlist_enabled: bool = False) -> tuple[TestClient, sessionm
     return TestClient(app), testing_session_local
 
 
-def create_user(session_factory: sessionmaker[Session], email: str) -> User:
+def create_user(
+    session_factory: sessionmaker[Session],
+    email: str,
+    *,
+    with_active_subscription: bool = True,
+) -> User:
     with session_factory() as session:
         user = User(email=email, password_hash="test-hash")
         session.add(user)
+        session.flush()
+        if with_active_subscription:
+            session.add(
+                Subscription(
+                    user_id=user.id,
+                    starts_on=date.today() - timedelta(days=1),
+                    duration_days=30,
+                ),
+            )
         session.commit()
         session.refresh(user)
         return user
@@ -112,6 +127,25 @@ def test_user_can_create_and_cancel_booking() -> None:
     cancel_response = client.delete(f"/bookings/{booking['id']}", headers=headers_for(user))
     assert cancel_response.status_code == 200
     assert cancel_response.json()["status"] == "cancelled"
+
+
+def test_user_needs_an_active_subscription_to_book() -> None:
+    client, session_factory = make_client()
+    user = create_user(
+        session_factory,
+        "inactive@example.com",
+        with_active_subscription=False,
+    )
+    course_session = create_course_session(session_factory)
+
+    response = client.post(
+        "/bookings",
+        json={"course_session_id": str(course_session.id)},
+        headers=headers_for(user),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Active subscription required"
 
 
 def test_booking_full_session_returns_conflict_without_waitlist() -> None:

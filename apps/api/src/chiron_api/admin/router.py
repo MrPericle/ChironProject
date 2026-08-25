@@ -2,11 +2,12 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import distinct, func, select
+from sqlalchemy import case, distinct, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from chiron_api.admin.schemas import (
+    AdminCourseSessionAttendeeResponse,
     AdminStatsItem,
     AdminStatsResponse,
     AdminSubscriptionCreate,
@@ -267,3 +268,52 @@ def admin_stats(
             for row in location_rows
         ],
     )
+
+
+@router.get(
+    "/course-sessions/{course_session_id}/attendees",
+    response_model=list[AdminCourseSessionAttendeeResponse],
+)
+def list_course_session_attendees(
+    course_session_id: UUID,
+    _: User = backoffice_user,
+    db: Session = Depends(get_db_session),
+) -> list[AdminCourseSessionAttendeeResponse]:
+    if db.get(CourseSession, course_session_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course session not found",
+        )
+
+    status_order = case(
+        (Booking.status == BookingStatus.CONFIRMED, 0),
+        (Booking.status == BookingStatus.WAITLISTED, 1),
+        else_=2,
+    )
+    rows = db.execute(
+        select(Booking, User, UserProfile)
+        .join(User, User.id == Booking.user_id)
+        .outerjoin(UserProfile, UserProfile.user_id == User.id)
+        .where(
+            Booking.course_session_id == course_session_id,
+            Booking.status != BookingStatus.CANCELLED,
+        )
+        .order_by(
+            status_order,
+            UserProfile.last_name,
+            UserProfile.first_name,
+            User.email,
+        ),
+    ).all()
+
+    return [
+        AdminCourseSessionAttendeeResponse(
+            booking_id=booking.id,
+            user_id=user.id,
+            email=user.email,
+            first_name=profile.first_name if profile is not None else None,
+            last_name=profile.last_name if profile is not None else None,
+            status=booking.status,
+        )
+        for booking, user, profile in rows
+    ]

@@ -18,6 +18,7 @@ from chiron_api.db.models import (
     Location,
     Subscription,
     User,
+    UserProfile,
     UserRole,
 )
 from chiron_api.db.session import get_db_session
@@ -160,3 +161,88 @@ def test_staff_can_read_admin_stats() -> None:
     assert payload["courses"][0]["member_count"] == 2
     assert payload["locations"][0]["name"] == "Chiron Roma"
     assert payload["locations"][0]["member_count"] == 2
+
+
+def test_staff_can_list_active_course_session_attendees() -> None:
+    client, session_factory = make_client()
+    staff = create_user(session_factory, email="staff@example.com", role=UserRole.STAFF)
+    member = create_user(session_factory, email="member@example.com")
+    waitlisted = create_user(session_factory, email="waitlist@example.com")
+    cancelled = create_user(session_factory, email="cancelled@example.com")
+
+    with session_factory() as session:
+        session.add_all(
+            [
+                UserProfile(user_id=member.id, first_name="Anna", last_name="Rossi"),
+                UserProfile(user_id=waitlisted.id, first_name="Luca", last_name="Bianchi"),
+            ],
+        )
+        location = Location(name="MAKA Roma", address="Via Roma 1", city="Roma")
+        course = Course(location=location, title="Calisthenics", status=CourseStatus.PUBLISHED)
+        course_session = CourseSession(
+            course=course,
+            weekday=1,
+            starts_at=time(18, 0),
+            ends_at=time(19, 0),
+            capacity=10,
+        )
+        session.add(course_session)
+        session.flush()
+        session.add_all(
+            [
+                Booking(
+                    user_id=member.id,
+                    course_session_id=course_session.id,
+                    status=BookingStatus.CONFIRMED,
+                ),
+                Booking(
+                    user_id=waitlisted.id,
+                    course_session_id=course_session.id,
+                    status=BookingStatus.WAITLISTED,
+                ),
+                Booking(
+                    user_id=cancelled.id,
+                    course_session_id=course_session.id,
+                    status=BookingStatus.CANCELLED,
+                ),
+            ],
+        )
+        session.commit()
+        course_session_id = course_session.id
+
+    response = client.get(
+        f"/admin/course-sessions/{course_session_id}/attendees",
+        headers=headers_for(staff),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "booking_id": response.json()[0]["booking_id"],
+            "user_id": str(member.id),
+            "email": "member@example.com",
+            "first_name": "Anna",
+            "last_name": "Rossi",
+            "status": "confirmed",
+        },
+        {
+            "booking_id": response.json()[1]["booking_id"],
+            "user_id": str(waitlisted.id),
+            "email": "waitlist@example.com",
+            "first_name": "Luca",
+            "last_name": "Bianchi",
+            "status": "waitlisted",
+        },
+    ]
+
+
+def test_member_cannot_list_course_session_attendees() -> None:
+    client, session_factory = make_client()
+    member = create_user(session_factory, email="member@example.com")
+
+    response = client.get(
+        "/admin/course-sessions/00000000-0000-0000-0000-000000000000/attendees",
+        headers=headers_for(member),
+    )
+
+    assert response.status_code == 403

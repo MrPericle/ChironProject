@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from chiron_api.db.models import UserRole, UserStatus
+from chiron_api.db.models import BookingStatus, UserRole, UserStatus
 
 
 class AdminUserCreate(BaseModel):
@@ -68,3 +68,12 @@ class AdminStatsResponse(BaseModel):
     active_members: int
     courses: list[AdminStatsItem]
     locations: list[AdminStatsItem]
+
+
+class AdminCourseSessionAttendeeResponse(BaseModel):
+    booking_id: UUID
+    user_id: UUID
+    email: str
+    first_name: str | None
+    last_name: str | None
+    status: BookingStatus

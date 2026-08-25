@@ -15,6 +15,7 @@ from chiron_api.db.models import (
     User,
     utc_now,
 )
+from chiron_api.subscriptions.service import user_has_active_subscription
 
 
 def confirmed_booking_count(db: Session, course_session_id: UUID) -> int:
@@ -90,6 +91,12 @@ def create_booking(
     course_session_id: UUID,
     settings: Settings,
 ) -> Booking:
+    if not user_has_active_subscription(db, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Active subscription required",
+        )
+
     course_session = get_locked_course_session(db, course_session_id)
     existing_booking = get_existing_booking(db, user.id, course_session_id)
     if existing_booking is not None and existing_booking.status != BookingStatus.CANCELLED:
