@@ -16,7 +16,7 @@ Web app per la gestione corsi di una ASD dedicata al movimento a corpo libero: c
 apps/api      Backend FastAPI
 apps/web      Frontend React/Vite
 docs          Documentazione tecnica e roadmap
-infra         Docker, Nginx e deploy
+infra         Docker, Caddy e deploy
 packages      Codice condiviso futuro
 tests/e2e     Test end-to-end futuri
 ```
@@ -38,4 +38,3 @@ Servizi attesi:
 ## Roadmap
 
 La roadmap incrementale e' in `docs/roadmap/ROADMAP.md`.
-

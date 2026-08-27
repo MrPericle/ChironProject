@@ -10,7 +10,7 @@ Creare una web app production-ready per una ASD che gestisce corsi, sedi, utenti
 - Frontend: React, Vite, TypeScript.
 - Database: PostgreSQL.
 - Test: pytest per backend, Playwright per end-to-end, test component/unit per frontend.
-- Infra: Docker Compose su VPS singolo, reverse proxy Nginx, HTTPS con Let's Encrypt.
+- Infra: Docker Compose su VPS singolo, reverse proxy Caddy, HTTPS automatico.
 - CI/CD: GitHub Actions con lint, test, build e deploy via SSH/Docker Compose.
 
 Motivazione: lo stack resta semplice da gestire su un singolo VPS, ha buona manutenibilita, testabilita alta e non introduce complessita da microservizi o Kubernetes.
@@ -396,11 +396,25 @@ Completato: i corsi hanno una disciplina esplicita e una foto JPEG, PNG o WebP c
 
 ### `feat: calendari utente e backoffice`
 
-Completato: area utente e backoffice dispongono di un calendario settimanale adattivo. L'utente prenota dalla giornata selezionata; l'admin consulta orari, sedi e posti configurati.
+Completato: area utente e backoffice dispongono di un calendario adattivo per data. L'utente prenota la singola lezione selezionata; l'admin consulta orari, sedi, capienza e partecipanti del giorno.
 
 ### `security: login admin 2fa a due passaggi`
 
 Completato: il primo passaggio verifica email e password, il secondo richiede il codice TOTP tramite una challenge breve; il backoffice viene aperto soltanto dopo entrambe le verifiche.
+
+## Incremento completato - Occorrenze datate e consolidamento pre-deploy
+
+### `feat: prenotazioni per singola occorrenza`
+
+Completato: ogni ricorrenza settimanale genera lezioni prenotabili per data. Posti, lista attesa, cancellazione e partecipanti admin sono calcolati sulla singola occorrenza, permettendo allo stesso utente di prenotare settimane diverse dello stesso corso.
+
+### `fix: invarianti iscrizioni, utenti e statistiche`
+
+Completato: le statistiche conteggiano utenti unici abilitati e sole prenotazioni confermate. La disabilitazione o eliminazione di un account libera le prenotazioni future; l'utente puo eliminare il proprio account senza lasciare posti occupati.
+
+### `test: consolida flussi critici prima del deploy`
+
+Completato: test backend e frontend coprono concorrenza, capienza per data, validita dell'iscrizione nella data della lezione, partecipanti admin e rilascio delle prenotazioni.
 
 ## Milestone 9 - CI/CD e deploy VPS
 
@@ -416,9 +430,9 @@ Descrizione: generare immagini Docker per API e web.
 
 Definition of done: immagini buildabili in CI e localmente.
 
-### `chore: configura reverse proxy nginx`
+### `chore: configura reverse proxy caddy`
 
-Descrizione: predisporre Nginx per API, web, HTTPS e redirect HTTP.
+Descrizione: predisporre Caddy per API, web, HTTPS automatico e redirect da `www`.
 
 Definition of done: configurazione documentata e validabile in staging.
 
