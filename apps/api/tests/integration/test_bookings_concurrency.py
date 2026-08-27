@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from chiron_api.bookings.service import create_booking
 from chiron_api.config import Settings
+from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
 from chiron_api.db.models import (
     Booking,
@@ -81,6 +82,13 @@ def test_concurrent_booking_never_overbooks_postgresql() -> None:
             session.refresh(course_session)
             user_ids = [user.id for user in users]
             course_session_id = course_session.id
+            occurs_on = next(
+                occurrence_dates(
+                    course_session.weekday,
+                    starts_on=date.today(),
+                    ends_on=date.today() + timedelta(days=7),
+                ),
+            )
 
         def attempt_booking(user_id):
             with session_factory() as session:
@@ -90,6 +98,7 @@ def test_concurrent_booking_never_overbooks_postgresql() -> None:
                         session,
                         user=user,
                         course_session_id=course_session_id,
+                        occurs_on=occurs_on,
                         settings=Settings(WAITLIST_ENABLED=False),
                     ).status
                 except HTTPException:

@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.tokens import create_access_token
 from chiron_api.config import Settings, get_settings
+from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
 from chiron_api.db.models import (
     Booking,
@@ -105,6 +106,24 @@ def headers_for(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def next_occurrence_date(weekday: int) -> date:
+    return next(
+        occurrence_dates(
+            weekday,
+            starts_on=date.today(),
+            ends_on=date.today() + timedelta(days=7),
+        ),
+    )
+
+
+def booking_payload(course_session: CourseSession, *, weeks_ahead: int = 0) -> dict[str, str]:
+    occurs_on = next_occurrence_date(course_session.weekday) + timedelta(days=7 * weeks_ahead)
+    return {
+        "course_session_id": str(course_session.id),
+        "occurs_on": occurs_on.isoformat(),
+    }
+
+
 def test_user_can_create_and_cancel_booking() -> None:
     client, session_factory = make_client()
     user = create_user(session_factory, "member@example.com")
@@ -112,13 +131,14 @@ def test_user_can_create_and_cancel_booking() -> None:
 
     create_response = client.post(
         "/bookings",
-        json={"course_session_id": str(course_session.id)},
+        json=booking_payload(course_session),
         headers=headers_for(user),
     )
     assert create_response.status_code == 201
     booking = create_response.json()
     assert booking["status"] == "confirmed"
     assert booking["course_session_id"] == str(course_session.id)
+    assert booking["occurs_on"] == booking_payload(course_session)["occurs_on"]
 
     history_response = client.get("/bookings/me", headers=headers_for(user))
     assert history_response.status_code == 200
@@ -140,7 +160,7 @@ def test_user_needs_an_active_subscription_to_book() -> None:
 
     response = client.post(
         "/bookings",
-        json={"course_session_id": str(course_session.id)},
+        json=booking_payload(course_session),
         headers=headers_for(user),
     )
 
@@ -156,14 +176,14 @@ def test_booking_full_session_returns_conflict_without_waitlist() -> None:
 
     first_response = client.post(
         "/bookings",
-        json={"course_session_id": str(course_session.id)},
+        json=booking_payload(course_session),
         headers=headers_for(first_user),
     )
     assert first_response.status_code == 201
 
     second_response = client.post(
         "/bookings",
-        json={"course_session_id": str(course_session.id)},
+        json=booking_payload(course_session),
         headers=headers_for(second_user),
     )
     assert second_response.status_code == 409
@@ -177,12 +197,12 @@ def test_waitlist_can_be_enabled_for_full_session() -> None:
 
     client.post(
         "/bookings",
-        json={"course_session_id": str(course_session.id)},
+        json=booking_payload(course_session),
         headers=headers_for(first_user),
     )
     response = client.post(
         "/bookings",
-        json={"course_session_id": str(course_session.id)},
+        json=booking_payload(course_session),
         headers=headers_for(second_user),
     )
 
@@ -197,12 +217,12 @@ def test_user_cannot_duplicate_active_booking() -> None:
 
     client.post(
         "/bookings",
-        json={"course_session_id": str(course_session.id)},
+        json=booking_payload(course_session),
         headers=headers_for(user),
     )
     response = client.post(
         "/bookings",
-        json={"course_session_id": str(course_session.id)},
+        json=booking_payload(course_session),
         headers=headers_for(user),
     )
 
@@ -227,6 +247,7 @@ def test_cancel_booking_after_deadline_is_rejected() -> None:
         booking = Booking(
             user_id=user.id,
             course_session=course_session,
+            occurs_on=next_occurrence_date(course_session.weekday),
             status=BookingStatus.CONFIRMED,
         )
         session.add_all([location, course, course_session, booking])
@@ -237,3 +258,24 @@ def test_cancel_booking_after_deadline_is_rejected() -> None:
     response = client.delete(f"/bookings/{booking_id}", headers=headers_for(user))
 
     assert response.status_code == 409
+
+
+def test_user_can_book_the_same_schedule_on_different_dates() -> None:
+    client, session_factory = make_client()
+    user = create_user(session_factory, "member@example.com")
+    course_session = create_course_session(session_factory, capacity=1)
+
+    first_response = client.post(
+        "/bookings",
+        json=booking_payload(course_session),
+        headers=headers_for(user),
+    )
+    second_response = client.post(
+        "/bookings",
+        json=booking_payload(course_session, weeks_ahead=1),
+        headers=headers_for(user),
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert first_response.json()["occurs_on"] != second_response.json()["occurs_on"]

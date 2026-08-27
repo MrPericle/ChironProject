@@ -1,3 +1,4 @@
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -7,7 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from chiron_api.auth.dependencies import require_roles
+from chiron_api.bookings.service import confirmed_booking_count, max_confirmed_booking_count
 from chiron_api.config import Settings, get_settings
+from chiron_api.courses.scheduling import local_today, occurrence_dates, occurrence_start_at
 from chiron_api.courses.schemas import (
     CatalogCourseResponse,
     CatalogSessionResponse,
@@ -23,8 +26,6 @@ from chiron_api.courses.schemas import (
     LocationUpdate,
 )
 from chiron_api.db.models import (
-    Booking,
-    BookingStatus,
     Course,
     CourseSession,
     CourseStatus,
@@ -394,7 +395,7 @@ def update_course_session(
         excluding_session_id=course_session.id,
     )
     if "capacity" in data:
-        confirmed_count = confirmed_booking_count(db, course_session.id)
+        confirmed_count = max_confirmed_booking_count(db, course_session.id)
         if data["capacity"] < confirmed_count:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -427,24 +428,14 @@ def deactivate_course_session(
     return course_session
 
 
-def confirmed_booking_count(db: Session, course_session_id: UUID) -> int:
-    return (
-        db.scalar(
-            select(func.count(Booking.id)).where(
-                Booking.course_session_id == course_session_id,
-                Booking.status == BookingStatus.CONFIRMED,
-            ),
-        )
-        or 0
-    )
-
-
 @router.get("/courses", response_model=list[CatalogCourseResponse])
 def list_catalog_courses(
     location_id: UUID | None = None,
     weekday: int | None = Query(default=None, ge=0, le=6),
     available: bool | None = None,
+    on_date: date | None = Query(default=None, alias="occurs_on"),
     db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> list[CatalogCourseResponse]:
     query = (
         select(Course)
@@ -455,6 +446,15 @@ def list_catalog_courses(
     if location_id is not None:
         query = query.where(Course.location_id == location_id)
 
+    today = local_today(settings.app_timezone)
+    horizon = today + timedelta(days=settings.booking_horizon_days)
+    if on_date is not None and not today <= on_date <= horizon:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Occurrence date is outside the booking window",
+        )
+    starts_on = on_date or today
+    ends_on = on_date or horizon
     catalog_courses: list[CatalogCourseResponse] = []
     for course in db.scalars(query).unique().all():
         catalog_sessions: list[CatalogSessionResponse] = []
@@ -464,23 +464,40 @@ def list_catalog_courses(
             if weekday is not None and course_session.weekday != weekday:
                 continue
 
-            booked_spots = confirmed_booking_count(db, course_session.id)
-            available_spots = max(course_session.capacity - booked_spots, 0)
-            if available is True and available_spots <= 0:
-                continue
-            if available is False and available_spots > 0:
-                continue
+            for occurs_on in occurrence_dates(
+                course_session.weekday,
+                starts_on=starts_on,
+                ends_on=ends_on,
+            ):
+                if (
+                    occurrence_start_at(
+                        occurs_on,
+                        course_session.starts_at,
+                        settings.app_timezone,
+                    )
+                    <= datetime.now(UTC)
+                ):
+                    continue
+                booked_spots = confirmed_booking_count(db, course_session.id, occurs_on)
+                available_spots = max(course_session.capacity - booked_spots, 0)
+                if available is True and available_spots <= 0:
+                    continue
+                if available is False and available_spots > 0:
+                    continue
 
-            catalog_sessions.append(
-                CatalogSessionResponse(
-                    id=course_session.id,
-                    weekday=course_session.weekday,
-                    starts_at=course_session.starts_at,
-                    ends_at=course_session.ends_at,
-                    capacity=course_session.capacity,
-                    available_spots=available_spots,
-                ),
-            )
+                catalog_sessions.append(
+                    CatalogSessionResponse(
+                        id=course_session.id,
+                        occurs_on=occurs_on,
+                        weekday=course_session.weekday,
+                        starts_at=course_session.starts_at,
+                        ends_at=course_session.ends_at,
+                        capacity=course_session.capacity,
+                        available_spots=available_spots,
+                    ),
+                )
+
+        catalog_sessions.sort(key=lambda item: (item.occurs_on, item.starts_at))
 
         if catalog_sessions:
             catalog_courses.append(

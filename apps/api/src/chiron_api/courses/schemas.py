@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import time
+from datetime import date, time
 from typing import Annotated
 from uuid import UUID
 
@@ -104,6 +104,7 @@ class CourseSessionResponse(BaseModel):
 
 class CatalogSessionResponse(BaseModel):
     id: UUID
+    occurs_on: date
     weekday: int
     starts_at: time
     ends_at: time

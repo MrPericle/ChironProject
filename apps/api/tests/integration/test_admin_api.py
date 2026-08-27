@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from datetime import date, time
+from datetime import date, time, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.tokens import create_access_token
 from chiron_api.config import get_settings
+from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
 from chiron_api.db.models import (
     Booking,
@@ -67,6 +68,16 @@ def create_user(
 def headers_for(user: User) -> dict[str, str]:
     token = create_access_token(user, get_settings())
     return {"Authorization": f"Bearer {token}"}
+
+
+def next_occurrence_date(weekday: int) -> date:
+    return next(
+        occurrence_dates(
+            weekday,
+            starts_on=date.today(),
+            ends_on=date.today() + timedelta(days=7),
+        ),
+    )
 
 
 def test_admin_can_manage_users_and_subscriptions() -> None:
@@ -143,11 +154,13 @@ def test_disabling_user_releases_confirmed_and_waitlisted_bookings() -> None:
                 Booking(
                     user_id=member.id,
                     course_session_id=confirmed_session.id,
+                    occurs_on=next_occurrence_date(confirmed_session.weekday),
                     status=BookingStatus.CONFIRMED,
                 ),
                 Booking(
                     user_id=member.id,
                     course_session_id=waitlisted_session.id,
+                    occurs_on=next_occurrence_date(waitlisted_session.weekday),
                     status=BookingStatus.WAITLISTED,
                 ),
             ],
@@ -201,11 +214,13 @@ def test_staff_can_read_admin_stats() -> None:
                 Booking(
                     user_id=first_member.id,
                     course_session_id=course_session.id,
+                    occurs_on=next_occurrence_date(course_session.weekday),
                     status=BookingStatus.CONFIRMED,
                 ),
                 Booking(
                     user_id=second_member.id,
                     course_session_id=course_session.id,
+                    occurs_on=next_occurrence_date(course_session.weekday),
                     status=BookingStatus.WAITLISTED,
                 ),
                 Subscription(user_id=first_member.id, starts_on=date(2026, 8, 1)),
@@ -253,21 +268,25 @@ def test_staff_can_list_active_course_session_attendees() -> None:
         )
         session.add(course_session)
         session.flush()
+        occurs_on = next_occurrence_date(course_session.weekday)
         session.add_all(
             [
                 Booking(
                     user_id=member.id,
                     course_session_id=course_session.id,
+                    occurs_on=occurs_on,
                     status=BookingStatus.CONFIRMED,
                 ),
                 Booking(
                     user_id=waitlisted.id,
                     course_session_id=course_session.id,
+                    occurs_on=occurs_on,
                     status=BookingStatus.WAITLISTED,
                 ),
                 Booking(
                     user_id=cancelled.id,
                     course_session_id=course_session.id,
+                    occurs_on=occurs_on,
                     status=BookingStatus.CANCELLED,
                 ),
             ],
@@ -277,6 +296,7 @@ def test_staff_can_list_active_course_session_attendees() -> None:
 
     response = client.get(
         f"/admin/course-sessions/{course_session_id}/attendees",
+        params={"occurs_on": occurs_on.isoformat()},
         headers=headers_for(staff),
     )
 
@@ -307,6 +327,7 @@ def test_member_cannot_list_course_session_attendees() -> None:
 
     response = client.get(
         "/admin/course-sessions/00000000-0000-0000-0000-000000000000/attendees",
+        params={"occurs_on": date.today().isoformat()},
         headers=headers_for(member),
     )
 

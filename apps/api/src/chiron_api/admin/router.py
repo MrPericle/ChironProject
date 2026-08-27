@@ -1,7 +1,7 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case, distinct, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from chiron_api.admin.schemas import (
 from chiron_api.auth.dependencies import require_roles
 from chiron_api.auth.passwords import hash_password
 from chiron_api.bookings.service import cancel_active_user_bookings
+from chiron_api.config import Settings, get_settings
 from chiron_api.db.models import (
     Booking,
     BookingStatus,
@@ -128,6 +129,7 @@ def update_user(
     payload: AdminUserUpdate,
     _: User = backoffice_user,
     db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> AdminUserResponse:
     user = get_user_or_404(db, user_id)
     data = payload.model_dump(exclude_unset=True)
@@ -140,7 +142,7 @@ def update_user(
     if "status" in data:
         user.status = data["status"]
         if user.status in (UserStatus.DISABLED, UserStatus.DELETED):
-            cancel_active_user_bookings(db, user_id=user.id)
+            cancel_active_user_bookings(db, user_id=user.id, settings=settings)
         if user.status != UserStatus.DELETED:
             user.deleted_at = None
 
@@ -170,12 +172,13 @@ def delete_user(
     user_id: UUID,
     _: User = backoffice_user,
     db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> AdminUserResponse:
     user = get_user_or_404(db, user_id)
     user.status = UserStatus.DELETED
     user.deleted_at = datetime.now(UTC)
     user.email = f"deleted-{user.id}@deleted.local"
-    cancel_active_user_bookings(db, user_id=user.id)
+    cancel_active_user_bookings(db, user_id=user.id, settings=settings)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -283,6 +286,7 @@ def admin_stats(
 )
 def list_course_session_attendees(
     course_session_id: UUID,
+    occurs_on: date = Query(),
     _: User = backoffice_user,
     db: Session = Depends(get_db_session),
 ) -> list[AdminCourseSessionAttendeeResponse]:
@@ -303,6 +307,7 @@ def list_course_session_attendees(
         .outerjoin(UserProfile, UserProfile.user_id == User.id)
         .where(
             Booking.course_session_id == course_session_id,
+            Booking.occurs_on == occurs_on,
             Booking.status != BookingStatus.CANCELLED,
         )
         .order_by(

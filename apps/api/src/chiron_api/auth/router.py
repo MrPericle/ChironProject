@@ -206,6 +206,7 @@ def me(current_user: User = Depends(get_current_user)) -> UserResponse:
 def delete_me(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, bool]:
     current_user.email = f"deleted-{current_user.id}@deleted.local"
     current_user.password_hash = "deleted"
@@ -219,7 +220,7 @@ def delete_me(
         current_user.profile.birth_date = None
         db.add(current_user.profile)
 
-    cancel_active_user_bookings(db, user_id=current_user.id)
+    cancel_active_user_bookings(db, user_id=current_user.id, settings=settings)
     revoke_user_refresh_tokens(db, current_user.id)
     db.add(current_user)
     db.commit()

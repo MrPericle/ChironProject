@@ -29,12 +29,12 @@ def test_core_tables_are_registered() -> None:
     }.issubset(Base.metadata.tables.keys())
 
 
-def test_booking_prevents_duplicate_user_session_pairs() -> None:
+def test_booking_prevents_duplicate_user_session_dates() -> None:
     constraints = Booking.__table__.constraints
 
     assert any(
         isinstance(constraint, UniqueConstraint)
-        and set(constraint.columns.keys()) == {"user_id", "course_session_id"}
+        and set(constraint.columns.keys()) == {"user_id", "course_session_id", "occurs_on"}
         for constraint in constraints
     )
 

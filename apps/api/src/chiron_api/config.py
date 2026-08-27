@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
     auth_token_issuer: str = Field(default="chiron-api", alias="AUTH_TOKEN_ISSUER")
     waitlist_enabled: bool = Field(default=False, alias="WAITLIST_ENABLED")
+    app_timezone: str = Field(default="Europe/Rome", alias="APP_TIMEZONE")
+    booking_horizon_days: int = Field(
+        default=28,
+        ge=7,
+        le=180,
+        alias="BOOKING_HORIZON_DAYS",
+    )
     course_upload_dir: str = Field(default="uploads", alias="COURSE_UPLOAD_DIR")
 
     model_config = SettingsConfigDict(

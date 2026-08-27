@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from datetime import time
+from datetime import date, time, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.tokens import create_access_token
 from chiron_api.config import Settings, get_settings
+from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
 from chiron_api.db.models import (
     Booking,
@@ -69,6 +70,16 @@ def create_user(
 def headers_for(user: User) -> dict[str, str]:
     token = create_access_token(user, get_settings())
     return {"Authorization": f"Bearer {token}"}
+
+
+def next_occurrence_date(weekday: int) -> date:
+    return next(
+        occurrence_dates(
+            weekday,
+            starts_on=date.today(),
+            ends_on=date.today() + timedelta(days=7),
+        ),
+    )
 
 
 def test_staff_can_manage_locations() -> None:
@@ -238,11 +249,13 @@ def test_admin_cannot_reduce_capacity_below_confirmed_bookings() -> None:
                 Booking(
                     user_id=first_member.id,
                     course_session_id=course_session.id,
+                    occurs_on=next_occurrence_date(course_session.weekday),
                     status=BookingStatus.CONFIRMED,
                 ),
                 Booking(
                     user_id=second_member.id,
                     course_session_id=course_session.id,
+                    occurs_on=next_occurrence_date(course_session.weekday),
                     status=BookingStatus.CONFIRMED,
                 ),
             ],
@@ -325,10 +338,12 @@ def test_catalog_filters_courses_by_location_weekday_and_availability() -> None:
         session.refresh(location)
         session.refresh(course_session)
         session.refresh(full_session)
+        occurs_on = next_occurrence_date(full_session.weekday)
         session.add(
             Booking(
                 user_id=member.id,
                 course_session_id=full_session.id,
+                occurs_on=occurs_on,
                 status=BookingStatus.CONFIRMED,
             ),
         )
@@ -338,11 +353,17 @@ def test_catalog_filters_courses_by_location_weekday_and_availability() -> None:
 
     response = client.get(
         "/courses",
-        params={"location_id": location_id, "weekday": 3, "available": True},
+        params={
+            "location_id": location_id,
+            "weekday": 3,
+            "available": True,
+            "occurs_on": occurs_on.isoformat(),
+        },
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert [course["title"] for course in payload] == ["Pole Flow"]
     assert payload[0]["discipline"] == "pole_dance"
+    assert payload[0]["sessions"][0]["occurs_on"] == occurs_on.isoformat()
     assert payload[0]["sessions"][0]["available_spots"] == 1

@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from datetime import date, time
+from datetime import date, time, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.tokens import create_access_token
 from chiron_api.config import get_settings
+from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
 from chiron_api.db.models import (
     Booking,
@@ -67,6 +68,16 @@ def headers_for(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def next_occurrence_date(weekday: int) -> date:
+    return next(
+        occurrence_dates(
+            weekday,
+            starts_on=date.today(),
+            ends_on=date.today() + timedelta(days=7),
+        ),
+    )
+
+
 def create_subscription(
     session_factory: sessionmaker[Session],
     *,
@@ -110,6 +121,7 @@ def attach_user_to_location(
             Booking(
                 user_id=user.id,
                 course_session_id=course_session.id,
+                occurs_on=next_occurrence_date(course_session.weekday),
                 status=BookingStatus.CONFIRMED,
             ),
         )

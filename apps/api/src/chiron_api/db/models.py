@@ -239,7 +239,12 @@ class CourseSession(Base):
 class Booking(Base):
     __tablename__ = "bookings"
     __table_args__ = (
-        UniqueConstraint("user_id", "course_session_id", name="uq_bookings_user_session"),
+        UniqueConstraint(
+            "user_id",
+            "course_session_id",
+            "occurs_on",
+            name="uq_bookings_user_session_date",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -247,6 +252,7 @@ class Booking(Base):
     course_session_id: Mapped[UUID] = mapped_column(
         ForeignKey("course_sessions.id", ondelete="CASCADE"),
     )
+    occurs_on: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[BookingStatus] = mapped_column(
         Enum(BookingStatus, name="booking_status", values_callable=enum_values),
         default=BookingStatus.CONFIRMED,

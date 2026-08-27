@@ -24,6 +24,7 @@ def create_user_booking(
         db,
         user=current_user,
         course_session_id=payload.course_session_id,
+        occurs_on=payload.occurs_on,
         settings=settings,
     )
 
@@ -41,6 +42,6 @@ def cancel_user_booking(
     booking_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> Booking:
-    return cancel_booking(db, user=current_user, booking_id=booking_id)
-
+    return cancel_booking(db, user=current_user, booking_id=booking_id, settings=settings)

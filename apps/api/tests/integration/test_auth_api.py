@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from datetime import time
+from datetime import date, time, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.passwords import hash_password
 from chiron_api.auth.totp import generate_totp_code
+from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
 from chiron_api.db.models import (
     Booking,
@@ -64,6 +65,16 @@ def create_user(
 
 def auth_headers(access_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {access_token}"}
+
+
+def next_occurrence_date(weekday: int) -> date:
+    return next(
+        occurrence_dates(
+            weekday,
+            starts_on=date.today(),
+            ends_on=date.today() + timedelta(days=7),
+        ),
+    )
 
 
 def test_register_login_me_refresh_and_logout_flow() -> None:
@@ -217,6 +228,7 @@ def test_delete_me_anonymizes_account_and_releases_bookings() -> None:
         booking = Booking(
             user_id=user.id,
             course_session=course_session,
+            occurs_on=next_occurrence_date(course_session.weekday),
             status=BookingStatus.CONFIRMED,
         )
         session.add_all([location, course, course_session, booking])
