@@ -23,6 +23,15 @@ const catalogResponse = [
         capacity: 10,
         available_spots: 4,
       },
+      {
+        id: "session-calisthenics",
+        occurs_on: "2026-09-07",
+        weekday: 1,
+        starts_at: "18:00:00",
+        ends_at: "19:00:00",
+        capacity: 10,
+        available_spots: 7,
+      },
     ],
   },
   {
@@ -844,6 +853,38 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/bookings/booking-existing",
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("shows one compact booking action and switches the selected occurrence", async () => {
+    const fetchMock = installFetchMock({
+      ...subscriptionResponse,
+      duration_days: 60,
+      expires_on: "2026-09-30",
+    });
+
+    render(<App />);
+    await login();
+
+    const courseCard = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    expect(within(courseCard).getAllByRole("button", { name: "Prenota" })).toHaveLength(1);
+
+    fireEvent.change(within(courseCard).getByLabelText("Lezione Calisthenics Foundation"), {
+      target: { value: "session-calisthenics:2026-09-07" },
+    });
+    expect(within(courseCard).getByText("7 posti liberi")).toBeInTheDocument();
+    fireEvent.click(within(courseCard).getByRole("button", { name: "Prenota" }));
+
+    await screen.findByText("Prenotazione confermata.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/bookings",
+      expect.objectContaining({
+        body: JSON.stringify({
+          course_session_id: "session-calisthenics",
+          occurs_on: "2026-09-07",
+        }),
+        method: "POST",
+      }),
     );
   });
 

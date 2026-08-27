@@ -2796,69 +2796,136 @@ function CourseCatalog({
   return (
     <div className="course-list">
       {courses.map((course) => (
-        <article className="course-card" key={course.id} aria-label={course.title}>
-          <CourseVisual discipline={course.discipline} imageUrl={course.image_url} />
-          <div className="course-card-header">
-            <div>
-              <h3>{course.title}</h3>
-              <p>{course.description ?? "Sessione di movimento a corpo libero."}</p>
-            </div>
-            <div className="course-meta-row">
-              <span className="location-badge">
-                <MapPin aria-hidden="true" />
-                {course.location_name}
-              </span>
-              <span className="spots">
-                {course.sessions.length} lezioni prenotabili
-              </span>
-            </div>
-          </div>
-
-          <div className="session-list">
-            {course.sessions.map((session) => {
-              const isFull = session.available_spots <= 0;
-              const canBook = canBookOccurrence(subscription, session);
-              const isPending = pendingSessionId === occurrenceKey(session);
-              return (
-                <div className="session-row" key={occurrenceKey(session)}>
-                  <div className="session-thumb" aria-hidden="true">
-                    <Dumbbell />
-                  </div>
-                  <div>
-                    <span className="session-day">
-                      {weekdays[session.weekday]} {formatDate(session.occurs_on)}
-                    </span>
-                    <span className="session-time">
-                      <Clock3 aria-hidden="true" />
-                      {formatTime(session.starts_at)} - {formatTime(session.ends_at)}
-                    </span>
-                  </div>
-                  <div className="session-action">
-                    <span className={isFull ? "spots is-full" : "spots"}>
-                      {isFull ? "Completo" : `${session.available_spots} posti`}
-                    </span>
-                    <button
-                      className={isFull ? "secondary-action" : "primary-action"}
-                      disabled={!canBook || isPending}
-                      onClick={() => onCreateBooking(course, session)}
-                      type="button"
-                    >
-                      {isPending
-                        ? "Invio"
-                        : !canBook
-                          ? "Iscrizione richiesta"
-                          : isFull
-                            ? "Lista attesa"
-                            : "Prenota"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </article>
+        <CourseBookingCard
+          course={course}
+          key={course.id}
+          onCreateBooking={onCreateBooking}
+          pendingSessionId={pendingSessionId}
+          subscription={subscription}
+        />
       ))}
     </div>
+  );
+}
+
+function CourseBookingCard({
+  course,
+  pendingSessionId,
+  subscription,
+  onCreateBooking,
+}: {
+  course: CatalogCourse;
+  pendingSessionId: string | null;
+  subscription: SubscriptionInfo | null;
+  onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
+}) {
+  const sessions = useMemo(
+    () =>
+      [...course.sessions].sort((left, right) =>
+        `${left.occurs_on}:${left.starts_at}`.localeCompare(
+          `${right.occurs_on}:${right.starts_at}`,
+        ),
+      ),
+    [course.sessions],
+  );
+  const [selectedSessionKey, setSelectedSessionKey] = useState(
+    sessions[0] === undefined ? "" : occurrenceKey(sessions[0]),
+  );
+
+  useEffect(() => {
+    if (!sessions.some((session) => occurrenceKey(session) === selectedSessionKey)) {
+      setSelectedSessionKey(sessions[0] === undefined ? "" : occurrenceKey(sessions[0]));
+    }
+  }, [selectedSessionKey, sessions]);
+
+  const selectedSession =
+    sessions.find((session) => occurrenceKey(session) === selectedSessionKey) ?? sessions[0];
+
+  if (selectedSession === undefined) {
+    return null;
+  }
+
+  const selectedDate = dateFromIso(selectedSession.occurs_on);
+  const month = new Intl.DateTimeFormat("it-IT", { month: "short" })
+    .format(selectedDate)
+    .replace(".", "");
+  const isFull = selectedSession.available_spots <= 0;
+  const canBook = canBookOccurrence(subscription, selectedSession);
+  const isPending = pendingSessionId === occurrenceKey(selectedSession);
+
+  return (
+    <article className="course-card" aria-label={course.title}>
+      <CourseVisual discipline={course.discipline} imageUrl={course.image_url} />
+      <div className="course-card-header">
+        <div>
+          <h3>{course.title}</h3>
+          <p>{course.description ?? "Sessione di movimento a corpo libero."}</p>
+        </div>
+        <div className="course-meta-row">
+          <span className="location-badge">
+            <MapPin aria-hidden="true" />
+            {course.location_name}
+          </span>
+          <span className="spots">{sessions.length} date disponibili</span>
+        </div>
+      </div>
+
+      <div className="session-booking-control">
+        <label className="session-picker">
+          <span>
+            <CalendarDays aria-hidden="true" />
+            Scegli la lezione
+          </span>
+          <select
+            aria-label={`Lezione ${course.title}`}
+            onChange={(event) => setSelectedSessionKey(event.target.value)}
+            value={occurrenceKey(selectedSession)}
+          >
+            {sessions.map((session) => (
+              <option key={occurrenceKey(session)} value={occurrenceKey(session)}>
+                {weekdays[session.weekday].slice(0, 3)} {formatDate(session.occurs_on).slice(0, 5)} ·{" "}
+                {formatTime(session.starts_at)} ·{" "}
+                {session.available_spots > 0
+                  ? `${session.available_spots} posti`
+                  : "Lista attesa"}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="session-booking-dock" aria-live="polite">
+          <time className="session-date-tile" dateTime={selectedSession.occurs_on}>
+            <span>{weekdays[selectedSession.weekday].slice(0, 3)}</span>
+            <strong>{selectedDate.getDate()}</strong>
+            <small>{month}</small>
+          </time>
+          <div className="session-booking-details">
+            <strong>{weekdays[selectedSession.weekday]}</strong>
+            <span className="session-booking-time">
+              <Clock3 aria-hidden="true" />
+              {formatTime(selectedSession.starts_at)} - {formatTime(selectedSession.ends_at)}
+            </span>
+            <span className={isFull ? "session-availability is-full" : "session-availability"}>
+              {isFull ? "Lista attesa disponibile" : `${selectedSession.available_spots} posti liberi`}
+            </span>
+          </div>
+          <button
+            className={isFull ? "secondary-action" : "primary-action"}
+            disabled={!canBook || isPending}
+            onClick={() => onCreateBooking(course, selectedSession)}
+            type="button"
+          >
+            {isPending
+              ? "Invio"
+              : !canBook
+                ? "Iscrizione richiesta"
+                : isFull
+                  ? "Lista attesa"
+                  : "Prenota"}
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }
 
