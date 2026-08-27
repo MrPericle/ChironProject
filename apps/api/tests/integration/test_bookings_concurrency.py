@@ -1,6 +1,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import time
+from datetime import date, time, timedelta
 from uuid import uuid4
 
 import pytest
@@ -18,6 +18,7 @@ from chiron_api.db.models import (
     CourseSession,
     CourseStatus,
     Location,
+    Subscription,
     User,
 )
 
@@ -65,6 +66,17 @@ def test_concurrent_booking_never_overbooks_postgresql() -> None:
                 for index in range(8)
             ]
             session.add_all([location, course, course_session, *users])
+            session.flush()
+            session.add_all(
+                [
+                    Subscription(
+                        user_id=user.id,
+                        starts_on=date.today() - timedelta(days=1),
+                        duration_days=30,
+                    )
+                    for user in users
+                ],
+            )
             session.commit()
             session.refresh(course_session)
             user_ids = [user.id for user in users]

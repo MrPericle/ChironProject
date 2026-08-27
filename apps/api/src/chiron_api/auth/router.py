@@ -36,6 +36,7 @@ from chiron_api.auth.tokens import (
     revoke_user_refresh_tokens,
 )
 from chiron_api.auth.totp import build_otpauth_uri, generate_totp_secret, verify_totp_code
+from chiron_api.bookings.service import cancel_active_user_bookings
 from chiron_api.config import Settings, get_settings
 from chiron_api.db.models import AdminTwoFactor, User, UserProfile, UserRole, UserStatus
 from chiron_api.db.session import get_db_session
@@ -218,6 +219,7 @@ def delete_me(
         current_user.profile.birth_date = None
         db.add(current_user.profile)
 
+    cancel_active_user_bookings(db, user_id=current_user.id)
     revoke_user_refresh_tokens(db, current_user.id)
     db.add(current_user)
     db.commit()

@@ -234,20 +234,23 @@ def admin_stats(
     db: Session = Depends(get_db_session),
 ) -> AdminStatsResponse:
     today = datetime.now(UTC).date()
-    active_members = 0
-    for subscription in db.scalars(select(Subscription)).all():
+    active_member_ids: set[UUID] = set()
+    subscriptions = db.scalars(
+        select(Subscription).join(User).where(User.status == UserStatus.ACTIVE),
+    ).all()
+    for subscription in subscriptions:
         if is_subscription_active_on(
             subscription.starts_on,
             subscription.duration_days,
             today,
         ):
-            active_members += 1
+            active_member_ids.add(subscription.user_id)
 
     course_rows = db.execute(
         select(Course.id, Course.title, func.count(distinct(Booking.user_id)))
         .join(CourseSession, CourseSession.course_id == Course.id)
         .join(Booking, Booking.course_session_id == CourseSession.id)
-        .where(Booking.status != BookingStatus.CANCELLED)
+        .where(Booking.status == BookingStatus.CONFIRMED)
         .group_by(Course.id, Course.title)
         .order_by(func.count(distinct(Booking.user_id)).desc(), Course.title),
     ).all()
@@ -256,13 +259,13 @@ def admin_stats(
         .join(Course, Course.location_id == Location.id)
         .join(CourseSession, CourseSession.course_id == Course.id)
         .join(Booking, Booking.course_session_id == CourseSession.id)
-        .where(Booking.status != BookingStatus.CANCELLED)
+        .where(Booking.status == BookingStatus.CONFIRMED)
         .group_by(Location.id, Location.name)
         .order_by(func.count(distinct(Booking.user_id)).desc(), Location.name),
     ).all()
 
     return AdminStatsResponse(
-        active_members=active_members,
+        active_members=len(active_member_ids),
         courses=[
             AdminStatsItem(id=row[0], name=row[1], member_count=row[2])
             for row in course_rows

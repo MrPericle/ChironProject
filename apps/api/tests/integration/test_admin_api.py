@@ -209,8 +209,12 @@ def test_staff_can_read_admin_stats() -> None:
                     status=BookingStatus.WAITLISTED,
                 ),
                 Subscription(user_id=first_member.id, starts_on=date(2026, 8, 1)),
+                Subscription(user_id=first_member.id, starts_on=date(2026, 8, 2)),
+                Subscription(user_id=second_member.id, starts_on=date(2026, 8, 1)),
             ],
         )
+        second_member_record = session.get(User, second_member.id)
+        second_member_record.status = UserStatus.DISABLED
         session.commit()
 
     response = client.get("/admin/stats", headers=headers_for(staff))
@@ -219,9 +223,9 @@ def test_staff_can_read_admin_stats() -> None:
     payload = response.json()
     assert payload["active_members"] == 1
     assert payload["courses"][0]["name"] == "Calisthenics"
-    assert payload["courses"][0]["member_count"] == 2
+    assert payload["courses"][0]["member_count"] == 1
     assert payload["locations"][0]["name"] == "Chiron Roma"
-    assert payload["locations"][0]["member_count"] == 2
+    assert payload["locations"][0]["member_count"] == 1
 
 
 def test_staff_can_list_active_course_session_attendees() -> None:

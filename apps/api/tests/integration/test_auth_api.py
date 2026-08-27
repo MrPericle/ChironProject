@@ -1,14 +1,24 @@
 from collections.abc import Generator
+from datetime import time
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.passwords import hash_password
 from chiron_api.auth.totp import generate_totp_code
 from chiron_api.db.base import Base
-from chiron_api.db.models import User, UserRole
+from chiron_api.db.models import (
+    Booking,
+    BookingStatus,
+    Course,
+    CourseSession,
+    CourseStatus,
+    Location,
+    User,
+    UserRole,
+)
 from chiron_api.db.session import get_db_session
 from chiron_api.main import create_app
 
@@ -181,8 +191,8 @@ def test_admin_must_complete_2fa_before_backoffice_access() -> None:
     assert totp_login_response.json()["user"]["role"] == "admin"
 
 
-def test_delete_me_anonymizes_account() -> None:
-    client, _ = make_client()
+def test_delete_me_anonymizes_account_and_releases_bookings() -> None:
+    client, session_factory = make_client()
     tokens = client.post(
         "/auth/register",
         json={
@@ -193,6 +203,26 @@ def test_delete_me_anonymizes_account() -> None:
         },
     ).json()
 
+    with session_factory() as session:
+        user = session.scalar(select(User).where(User.email == "privacy@example.com"))
+        location = Location(name="MAKA Roma", address="Via Roma 1", city="Roma")
+        course = Course(location=location, title="Calisthenics", status=CourseStatus.PUBLISHED)
+        course_session = CourseSession(
+            course=course,
+            weekday=1,
+            starts_at=time(18, 0),
+            ends_at=time(19, 0),
+            capacity=10,
+        )
+        booking = Booking(
+            user_id=user.id,
+            course_session=course_session,
+            status=BookingStatus.CONFIRMED,
+        )
+        session.add_all([location, course, course_session, booking])
+        session.commit()
+        booking_id = booking.id
+
     response = client.delete("/auth/me", headers=auth_headers(tokens["access_token"]))
 
     assert response.status_code == 200
@@ -200,3 +230,7 @@ def test_delete_me_anonymizes_account() -> None:
 
     me_response = client.get("/auth/me", headers=auth_headers(tokens["access_token"]))
     assert me_response.status_code == 401
+    with session_factory() as session:
+        booking = session.get(Booking, booking_id)
+        assert booking.status == BookingStatus.CANCELLED
+        assert booking.cancelled_at is not None
