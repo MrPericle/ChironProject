@@ -16,6 +16,7 @@ const catalogResponse = [
     sessions: [
       {
         id: "session-calisthenics",
+        occurs_on: "2026-08-31",
         weekday: 1,
         starts_at: "18:00:00",
         ends_at: "19:00:00",
@@ -35,6 +36,7 @@ const catalogResponse = [
     sessions: [
       {
         id: "session-pole",
+        occurs_on: "2026-09-02",
         weekday: 3,
         starts_at: "20:00:00",
         ends_at: "21:00:00",
@@ -50,6 +52,7 @@ const bookingsResponse = [
     id: "booking-existing",
     user_id: "user-1",
     course_session_id: "session-pole",
+    occurs_on: "2026-09-02",
     status: "confirmed",
     created_at: "2026-08-20T12:00:00Z",
     cancelled_at: null,
@@ -291,7 +294,10 @@ function installFetchMock(subscription = subscriptionResponse) {
       return jsonResponse(adminStatsResponse);
     }
 
-    if (url.endsWith("/admin/course-sessions/session-calisthenics/attendees") && method === "GET") {
+    if (
+      url.includes("/admin/course-sessions/session-calisthenics/attendees?occurs_on=") &&
+      method === "GET"
+    ) {
       return jsonResponse(adminAttendeesResponse);
     }
 
@@ -418,11 +424,13 @@ function installFetchMock(subscription = subscriptionResponse) {
     }
 
     if (url.endsWith("/bookings") && method === "POST") {
+      const body = JSON.parse(init?.body?.toString() ?? "{}") as { occurs_on?: string };
       return jsonResponse(
         {
           id: "booking-new",
           user_id: "user-1",
           course_session_id: "session-calisthenics",
+          occurs_on: body.occurs_on,
           status: "confirmed",
           created_at: "2026-08-24T12:00:00Z",
           cancelled_at: null,
@@ -614,7 +622,7 @@ describe("App", () => {
     await loginAdmin();
 
     fireEvent.click(screen.getByRole("button", { name: "Calendario" }));
-    fireEvent.click(screen.getByRole("button", { name: "Lun" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lunedi 31/08/2026" }));
     fireEvent.click(screen.getByRole("button", { name: "Prenotati" }));
 
     expect(await screen.findByText("Mario Rossi")).toBeInTheDocument();
@@ -622,7 +630,7 @@ describe("App", () => {
     expect(screen.getByText("1 confermati")).toBeInTheDocument();
     expect(screen.getByText("1 in lista d'attesa")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/admin/course-sessions/session-calisthenics/attendees",
+      "http://localhost:8000/admin/course-sessions/session-calisthenics/attendees?occurs_on=2026-08-31",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -819,7 +827,13 @@ describe("App", () => {
     await screen.findByText("Prenotazione confermata.");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/bookings",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        body: JSON.stringify({
+          course_session_id: "session-calisthenics",
+          occurs_on: "2026-08-31",
+        }),
+        method: "POST",
+      }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /cancella Pole Flow/i }));
@@ -850,5 +864,17 @@ describe("App", () => {
       "http://localhost:8000/bookings",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("disables lessons scheduled after the membership expires", async () => {
+    installFetchMock();
+
+    render(<App />);
+    await login();
+
+    const poleCard = screen.getByRole("article", { name: "Pole Flow" });
+    expect(
+      within(poleCard).getByRole("button", { name: "Iscrizione richiesta" }),
+    ).toBeDisabled();
   });
 });

@@ -131,6 +131,40 @@ function formatTime(value: string): string {
   return value.slice(0, 5);
 }
 
+function localIsoDate(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateFromIso(value: string): Date {
+  return new Date(`${value}T12:00:00`);
+}
+
+function upcomingDates(days = 14): string[] {
+  const today = new Date();
+  return Array.from({ length: days }, (_, offset) => {
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+    return localIsoDate(date);
+  });
+}
+
+function occurrenceKey(session: Pick<CatalogSession, "id" | "occurs_on">): string {
+  return `${session.id}:${session.occurs_on}`;
+}
+
+function canBookOccurrence(
+  subscription: SubscriptionInfo | null,
+  session: CatalogSession,
+): boolean {
+  return (
+    subscription?.is_active === true &&
+    session.occurs_on >= subscription.starts_on &&
+    session.occurs_on <= subscription.expires_on
+  );
+}
+
 function absoluteImageUrl(imageUrl: string | null): string | null {
   if (imageUrl === null) {
     return null;
@@ -141,7 +175,10 @@ function absoluteImageUrl(imageUrl: string | null): string | null {
 }
 
 function activeBookings(bookings: Booking[]): Booking[] {
-  return bookings.filter((booking) => booking.status !== "cancelled");
+  const today = localIsoDate();
+  return bookings.filter(
+    (booking) => booking.status !== "cancelled" && booking.occurs_on >= today,
+  );
 }
 
 function courseForSession(courses: CatalogCourse[], sessionId: string): CatalogCourse | undefined {
@@ -153,7 +190,8 @@ function sessionForBooking(
   booking: Booking,
 ): CatalogSession | undefined {
   return courseForSession(courses, booking.course_session_id)?.sessions.find(
-    (session) => session.id === booking.course_session_id,
+    (session) =>
+      session.id === booking.course_session_id && session.occurs_on === booking.occurs_on,
   );
 }
 
@@ -309,7 +347,6 @@ export function App() {
 
   const visibleCourses = useMemo(() => filteredCourses(courses, filters), [courses, filters]);
   const activeBookingCount = activeBookings(bookings).length;
-  const canBook = subscription?.is_active === true;
 
   async function handleLogin(email: string, password: string): Promise<string | null> {
     setNotice(null);
@@ -386,16 +423,23 @@ export function App() {
     if (session === null) {
       return;
     }
-    if (!canBook) {
-      setNotice({ tone: "error", message: "Serve un'iscrizione attiva per prenotare." });
+    if (!canBookOccurrence(subscription, courseSession)) {
+      setNotice({
+        tone: "error",
+        message: "Serve un'iscrizione valida nella data della lezione per prenotare.",
+      });
       return;
     }
 
-    setPendingSessionId(courseSession.id);
+    setPendingSessionId(occurrenceKey(courseSession));
     setNotice(null);
 
     try {
-      const booking = await api.createBooking(session.access_token, courseSession.id);
+      const booking = await api.createBooking(
+        session.access_token,
+        courseSession.id,
+        courseSession.occurs_on,
+      );
       setBookings((current) => [booking, ...current]);
       setNotice({
         tone: "success",
@@ -481,15 +525,15 @@ export function App() {
               subscription={subscription}
             />
             <BookingFocus
-              canBook={canBook}
               courses={visibleCourses}
               pendingSessionId={pendingSessionId}
+              subscription={subscription}
               onCreateBooking={handleCreateBooking}
             />
             <WeeklyCalendar
-              canBook={canBook}
               courses={courses}
               pendingSessionId={pendingSessionId}
+              subscription={subscription}
               onCreateBooking={handleCreateBooking}
             />
             <div className="dashboard-grid">
@@ -505,9 +549,9 @@ export function App() {
                   onChange={setFilters}
                 />
                 <CourseCatalog
-                  canBook={canBook}
                   courses={visibleCourses}
                   pendingSessionId={pendingSessionId}
+                  subscription={subscription}
                   onCreateBooking={handleCreateBooking}
                 />
               </section>
@@ -756,25 +800,30 @@ function availableBookingCandidate(courses: CatalogCourse[]): {
   course: CatalogCourse;
   session: CatalogSession;
 } | null {
-  for (const course of courses) {
-    const session = course.sessions.find((item) => item.available_spots > 0);
-    if (session !== undefined) {
-      return { course, session };
-    }
-  }
-
-  return null;
+  return (
+    courses
+      .flatMap((course) =>
+        course.sessions
+          .filter((session) => session.available_spots > 0)
+          .map((session) => ({ course, session })),
+      )
+      .sort((left, right) =>
+        `${left.session.occurs_on}:${left.session.starts_at}`.localeCompare(
+          `${right.session.occurs_on}:${right.session.starts_at}`,
+        ),
+      )[0] ?? null
+  );
 }
 
 function BookingFocus({
-  canBook,
   courses,
   pendingSessionId,
+  subscription,
   onCreateBooking,
 }: {
-  canBook: boolean;
   courses: CatalogCourse[];
   pendingSessionId: string | null;
+  subscription: SubscriptionInfo | null;
   onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
 }) {
   const candidate = availableBookingCandidate(courses);
@@ -793,7 +842,12 @@ function BookingFocus({
   }
 
   const { course, session } = candidate;
-  const isPending = pendingSessionId === session.id;
+  const canBook = canBookOccurrence(subscription, session);
+  const membershipMessage =
+    subscription?.is_active === true
+      ? "L'iscrizione non copre la data della lezione."
+      : "Attiva l'iscrizione per prenotare.";
+  const isPending = pendingSessionId === occurrenceKey(session);
 
   return (
     <section
@@ -804,10 +858,11 @@ function BookingFocus({
         <p className="eyebrow">Prenotazione rapida</p>
         <h2 id="booking-focus-title">{course.title}</h2>
         <p>
-          {weekdays[session.weekday]} · {formatTime(session.starts_at)} - {formatTime(session.ends_at)} ·{" "}
+          {weekdays[session.weekday]} {formatDate(session.occurs_on)} · {formatTime(session.starts_at)} -{" "}
+          {formatTime(session.ends_at)} ·{" "}
           {course.location_name}
         </p>
-        {!canBook ? <p className="booking-lock-message">Attiva l'iscrizione per prenotare.</p> : null}
+        {!canBook ? <p className="booking-lock-message">{membershipMessage}</p> : null}
       </div>
       <div className="booking-focus-action">
         <span>{canBook ? `${session.available_spots} posti liberi` : "Iscrizione non attiva"}</span>
@@ -825,46 +880,62 @@ function BookingFocus({
   );
 }
 
-function WeekdayPicker({
-  selectedWeekday,
+function DatePicker({
+  dates,
+  selectedDate,
   onChange,
 }: {
-  selectedWeekday: number;
-  onChange: (weekday: number) => void;
+  dates: string[];
+  selectedDate: string;
+  onChange: (date: string) => void;
 }) {
   return (
-    <div className="weekday-picker" role="group" aria-label="Giorno del calendario">
-      {weekdays.map((weekday, index) => (
-        <button
-          aria-pressed={selectedWeekday === index}
-          className={selectedWeekday === index ? "is-selected" : ""}
-          key={weekday}
-          onClick={() => onChange(index)}
-          type="button"
-        >
-          <span>{weekday.slice(0, 3)}</span>
-        </button>
-      ))}
+    <div className="date-picker" role="group" aria-label="Data del calendario">
+      {dates.map((date) => {
+        const parsedDate = dateFromIso(date);
+        const weekday = weekdays[parsedDate.getDay()];
+        const month = new Intl.DateTimeFormat("it-IT", { month: "short" })
+          .format(parsedDate)
+          .replace(".", "");
+        return (
+          <button
+            aria-label={`${weekday} ${formatDate(date)}`}
+            aria-pressed={selectedDate === date}
+            className={selectedDate === date ? "is-selected" : ""}
+            key={date}
+            onClick={() => onChange(date)}
+            type="button"
+          >
+            <span>{weekday.slice(0, 3)}</span>
+            <strong>{parsedDate.getDate()}</strong>
+            <small>{month}</small>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 function WeeklyCalendar({
-  canBook,
   courses,
   pendingSessionId,
+  subscription,
   onCreateBooking,
 }: {
-  canBook: boolean;
   courses: CatalogCourse[];
   pendingSessionId: string | null;
+  subscription: SubscriptionInfo | null;
   onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
 }) {
-  const [selectedWeekday, setSelectedWeekday] = useState(new Date().getDay());
+  const dates = useMemo(() => upcomingDates(), []);
+  const firstOccurrenceDate = courses
+    .flatMap((course) => course.sessions.map((session) => session.occurs_on))
+    .sort()[0];
+  const [selectedDate, setSelectedDate] = useState(firstOccurrenceDate ?? dates[0]);
   const entries = courses
     .flatMap((course) =>
       course.sessions
-        .filter((session) => session.weekday === selectedWeekday)
+        .filter((session) => session.occurs_on === selectedDate)
         .map((session) => ({ course, session })),
     )
     .sort((left, right) => left.session.starts_at.localeCompare(right.session.starts_at));
@@ -873,37 +944,41 @@ function WeeklyCalendar({
     <section className="panel calendar-panel user-calendar" aria-labelledby="weekly-calendar-title">
       <SectionTitle
         icon={<CalendarDays aria-hidden="true" />}
-        title="Calendario settimanale"
+        title="Calendario lezioni"
         id="weekly-calendar-title"
       />
-      <WeekdayPicker selectedWeekday={selectedWeekday} onChange={setSelectedWeekday} />
+      <DatePicker dates={dates} selectedDate={selectedDate} onChange={setSelectedDate} />
       <div className="calendar-agenda">
         {entries.length === 0 ? (
-          <p className="muted">Nessuna lezione programmata per {weekdays[selectedWeekday].toLowerCase()}.</p>
+          <p className="muted">Nessuna lezione programmata per il {formatDate(selectedDate)}.</p>
         ) : (
-          entries.map(({ course, session }) => (
-            <article className="calendar-entry" key={session.id}>
-              <time>{formatTime(session.starts_at)}</time>
-              <div>
-                <h3>{course.title}</h3>
-                <p>
-                  {course.location_name} · {formatTime(session.starts_at)} - {formatTime(session.ends_at)}
-                </p>
-              </div>
-              <button
-                className="primary-action"
-                disabled={!canBook || pendingSessionId === session.id}
-                onClick={() => onCreateBooking(course, session)}
-                type="button"
-              >
-                {!canBook
-                  ? "Iscrizione richiesta"
-                  : session.available_spots > 0
-                    ? "Prenota"
-                    : "Lista attesa"}
-              </button>
-            </article>
-          ))
+          entries.map(({ course, session }) => {
+            const canBook = canBookOccurrence(subscription, session);
+            return (
+              <article className="calendar-entry" key={occurrenceKey(session)}>
+                <time>{formatTime(session.starts_at)}</time>
+                <div>
+                  <h3>{course.title}</h3>
+                  <p>
+                    {course.location_name} · {formatTime(session.starts_at)} -{" "}
+                    {formatTime(session.ends_at)}
+                  </p>
+                </div>
+                <button
+                  className="primary-action"
+                  disabled={!canBook || pendingSessionId === occurrenceKey(session)}
+                  onClick={() => onCreateBooking(course, session)}
+                  type="button"
+                >
+                  {!canBook
+                    ? "Iscrizione richiesta"
+                    : session.available_spots > 0
+                      ? "Prenota"
+                      : "Lista attesa"}
+                </button>
+              </article>
+            );
+          })
         )}
       </div>
     </section>
@@ -919,9 +994,19 @@ function AdminCalendarPanel({
   locations: Location[];
   token: string;
 }) {
-  const [selectedWeekday, setSelectedWeekday] = useState(new Date().getDay());
-  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
-  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+  const dates = useMemo(() => upcomingDates(), []);
+  const firstScheduledDate = dates.find((date) => {
+    const weekday = dateFromIso(date).getDay();
+    return courses.some(
+      (course) =>
+        course.status !== "archived" &&
+        course.sessions.some((session) => session.is_active && session.weekday === weekday),
+    );
+  });
+  const [selectedDate, setSelectedDate] = useState(firstScheduledDate ?? dates[0]);
+  const selectedWeekday = dateFromIso(selectedDate).getDay();
+  const [expandedOccurrenceKey, setExpandedOccurrenceKey] = useState<string | null>(null);
+  const [loadingOccurrenceKey, setLoadingOccurrenceKey] = useState<string | null>(null);
   const [attendeesBySession, setAttendeesBySession] = useState<
     Record<string, AdminCourseSessionAttendee[]>
   >({});
@@ -936,34 +1021,43 @@ function AdminCalendarPanel({
     )
     .sort((left, right) => left.session.starts_at.localeCompare(right.session.starts_at));
 
-  async function loadAttendees(sessionId: string): Promise<void> {
-    setLoadingSessionId(sessionId);
+  async function loadAttendees(
+    sessionId: string,
+    occursOn: string,
+    entryKey: string,
+  ): Promise<void> {
+    setLoadingOccurrenceKey(entryKey);
     setAttendeeErrors((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[entryKey];
       return next;
     });
 
     try {
-      const attendees = await api.courseSessionAttendees(token, sessionId);
-      setAttendeesBySession((current) => ({ ...current, [sessionId]: attendees }));
+      const attendees = await api.courseSessionAttendees(token, sessionId, occursOn);
+      setAttendeesBySession((current) => ({ ...current, [entryKey]: attendees }));
     } catch (error) {
-      setAttendeeErrors((current) => ({ ...current, [sessionId]: describeError(error) }));
+      setAttendeeErrors((current) => ({ ...current, [entryKey]: describeError(error) }));
     } finally {
-      setLoadingSessionId(null);
+      setLoadingOccurrenceKey(null);
     }
   }
 
-  function toggleAttendees(sessionId: string): void {
-    if (expandedSessionId === sessionId) {
-      setExpandedSessionId(null);
+  function toggleAttendees(sessionId: string, entryKey: string): void {
+    if (expandedOccurrenceKey === entryKey) {
+      setExpandedOccurrenceKey(null);
       return;
     }
 
-    setExpandedSessionId(sessionId);
-    if (attendeesBySession[sessionId] === undefined) {
-      void loadAttendees(sessionId);
+    setExpandedOccurrenceKey(entryKey);
+    if (attendeesBySession[entryKey] === undefined) {
+      void loadAttendees(sessionId, selectedDate, entryKey);
     }
+  }
+
+  function selectDate(date: string): void {
+    setSelectedDate(date);
+    setExpandedOccurrenceKey(null);
   }
 
   return (
@@ -975,20 +1069,21 @@ function AdminCalendarPanel({
         </div>
         <span>{entries.length} lezioni nel giorno selezionato</span>
       </div>
-      <WeekdayPicker selectedWeekday={selectedWeekday} onChange={setSelectedWeekday} />
+      <DatePicker dates={dates} selectedDate={selectedDate} onChange={selectDate} />
       <div className="calendar-agenda">
         {entries.length === 0 ? (
-          <p className="muted">Nessuna ricorrenza attiva per {weekdays[selectedWeekday].toLowerCase()}.</p>
+          <p className="muted">Nessuna lezione attiva per il {formatDate(selectedDate)}.</p>
         ) : (
           entries.map(({ course, session }) => {
-            const isExpanded = expandedSessionId === session.id;
-            const attendees = attendeesBySession[session.id];
+            const entryKey = `${session.id}:${selectedDate}`;
+            const isExpanded = expandedOccurrenceKey === entryKey;
+            const attendees = attendeesBySession[entryKey];
             const confirmedCount = attendees?.filter((item) => item.status === "confirmed").length ?? 0;
             const waitlistedCount = attendees?.filter((item) => item.status === "waitlisted").length ?? 0;
-            const panelId = `session-attendees-${session.id}`;
+            const panelId = `session-attendees-${session.id}-${selectedDate}`;
 
             return (
-              <article className="calendar-entry admin-calendar-entry" key={session.id}>
+              <article className="calendar-entry admin-calendar-entry" key={entryKey}>
                 <time>{formatTime(session.starts_at)}</time>
                 <div>
                   <h3>{course.title}</h3>
@@ -1006,7 +1101,7 @@ function AdminCalendarPanel({
                     aria-controls={panelId}
                     aria-expanded={isExpanded}
                     className="secondary-action attendee-toggle"
-                    onClick={() => toggleAttendees(session.id)}
+                    onClick={() => toggleAttendees(session.id, entryKey)}
                     type="button"
                   >
                     Prenotati
@@ -1016,13 +1111,13 @@ function AdminCalendarPanel({
 
                 {isExpanded ? (
                   <div className="attendee-panel" id={panelId} aria-live="polite">
-                    {loadingSessionId === session.id ? <p>Carico i partecipanti...</p> : null}
-                    {attendeeErrors[session.id] !== undefined ? (
+                    {loadingOccurrenceKey === entryKey ? <p>Carico i partecipanti...</p> : null}
+                    {attendeeErrors[entryKey] !== undefined ? (
                       <div className="attendee-error">
-                        <p>{attendeeErrors[session.id]}</p>
+                        <p>{attendeeErrors[entryKey]}</p>
                         <button
                           className="secondary-action"
-                          onClick={() => void loadAttendees(session.id)}
+                          onClick={() => void loadAttendees(session.id, selectedDate, entryKey)}
                           type="button"
                         >
                           Riprova
@@ -2678,14 +2773,14 @@ function CatalogFilters({
 }
 
 function CourseCatalog({
-  canBook,
   courses,
   pendingSessionId,
+  subscription,
   onCreateBooking,
 }: {
-  canBook: boolean;
   courses: CatalogCourse[];
   pendingSessionId: string | null;
+  subscription: SubscriptionInfo | null;
   onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
 }) {
   if (courses.length === 0) {
@@ -2714,7 +2809,7 @@ function CourseCatalog({
                 {course.location_name}
               </span>
               <span className="spots">
-                {course.sessions.reduce((total, session) => total + session.available_spots, 0)} posti totali
+                {course.sessions.length} lezioni prenotabili
               </span>
             </div>
           </div>
@@ -2722,14 +2817,17 @@ function CourseCatalog({
           <div className="session-list">
             {course.sessions.map((session) => {
               const isFull = session.available_spots <= 0;
-              const isPending = pendingSessionId === session.id;
+              const canBook = canBookOccurrence(subscription, session);
+              const isPending = pendingSessionId === occurrenceKey(session);
               return (
-                <div className="session-row" key={session.id}>
+                <div className="session-row" key={occurrenceKey(session)}>
                   <div className="session-thumb" aria-hidden="true">
                     <Dumbbell />
                   </div>
                   <div>
-                    <span className="session-day">{weekdays[session.weekday]}</span>
+                    <span className="session-day">
+                      {weekdays[session.weekday]} {formatDate(session.occurs_on)}
+                    </span>
                     <span className="session-time">
                       <Clock3 aria-hidden="true" />
                       {formatTime(session.starts_at)} - {formatTime(session.ends_at)}
@@ -2847,8 +2945,8 @@ function BookingsPanel({
                   <h3>{title}</h3>
                   <p>
                     {session !== undefined
-                      ? `${weekdays[session.weekday]} ${formatTime(session.starts_at)}`
-                      : "Orario non disponibile"}
+                      ? `${weekdays[session.weekday]} ${formatDate(booking.occurs_on)} · ${formatTime(session.starts_at)}`
+                      : `${formatDate(booking.occurs_on)} · Orario non disponibile`}
                   </p>
                   <span className={isCancelled ? "booking-status cancelled" : "booking-status"}>
                     {isCancelled ? "Cancellata" : booking.status === "waitlisted" ? "Lista attesa" : "Confermata"}

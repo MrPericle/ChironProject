@@ -37,6 +37,7 @@ export type LoginResult = TokenPair | TwoFactorChallenge | TwoFactorSetupRequire
 
 export type CatalogSession = {
   id: string;
+  occurs_on: string;
   weekday: number;
   starts_at: string;
   ends_at: string;
@@ -61,6 +62,7 @@ export type Booking = {
   id: string;
   user_id: string;
   course_session_id: string;
+  occurs_on: string;
   status: BookingStatus;
   created_at: string;
   cancelled_at: string | null;
@@ -441,9 +443,10 @@ export class ChironApi {
   async courseSessionAttendees(
     token: string,
     sessionId: string,
+    occursOn: string,
   ): Promise<AdminCourseSessionAttendee[]> {
     return this.request<AdminCourseSessionAttendee[]>(
-      `/admin/course-sessions/${sessionId}/attendees`,
+      `/admin/course-sessions/${sessionId}/attendees?occurs_on=${encodeURIComponent(occursOn)}`,
       { token },
     );
   }
@@ -458,11 +461,15 @@ export class ChironApi {
     });
   }
 
-  async createBooking(token: string, courseSessionId: string): Promise<Booking> {
+  async createBooking(
+    token: string,
+    courseSessionId: string,
+    occursOn: string,
+  ): Promise<Booking> {
     return this.request<Booking>("/bookings", {
       method: "POST",
       token,
-      body: { course_session_id: courseSessionId },
+      body: { course_session_id: courseSessionId, occurs_on: occursOn },
     });
   }
 
