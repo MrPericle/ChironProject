@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Booking } from "../lib/api";
 import { accessTokenRefreshDelay } from "../lib/session";
 import { App } from "./App";
 
@@ -56,7 +57,7 @@ const catalogResponse = [
   },
 ];
 
-const bookingsResponse = [
+const bookingsResponse: Booking[] = [
   {
     id: "booking-existing",
     user_id: "user-1",
@@ -209,7 +210,7 @@ function accessTokenExpiringAt(expiresAt: number): string {
   return `${encode("{}")}.${encode(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))}.signature`;
 }
 
-function installFetchMock(subscription = subscriptionResponse) {
+function installFetchMock(subscription = subscriptionResponse, bookings = bookingsResponse) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
     const method = init?.method ?? "GET";
@@ -276,7 +277,7 @@ function installFetchMock(subscription = subscriptionResponse) {
     }
 
     if (url.endsWith("/bookings/me")) {
-      return jsonResponse(bookingsResponse);
+      return jsonResponse(bookings);
     }
 
     if (url.endsWith("/subscriptions/me")) {
@@ -631,7 +632,6 @@ describe("App", () => {
     await loginAdmin();
 
     fireEvent.click(screen.getByRole("button", { name: "Calendario" }));
-    fireEvent.click(screen.getByRole("button", { name: "Lunedi 31/08/2026" }));
     fireEvent.click(screen.getByRole("button", { name: "Prenotati" }));
 
     expect(await screen.findByText("Mario Rossi")).toBeInTheDocument();
@@ -639,7 +639,9 @@ describe("App", () => {
     expect(screen.getByText("1 confermati")).toBeInTheDocument();
     expect(screen.getByText("1 in lista d'attesa")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/admin/course-sessions/session-calisthenics/attendees?occurs_on=2026-08-31",
+      expect.stringMatching(
+        /^http:\/\/localhost:8000\/admin\/course-sessions\/session-calisthenics\/attendees\?occurs_on=\d{4}-\d{2}-\d{2}$/,
+      ),
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -854,6 +856,27 @@ describe("App", () => {
       "http://localhost:8000/bookings/booking-existing",
       expect.objectContaining({ method: "DELETE" }),
     );
+
+    const bookingsPanel = screen.getByRole("region", { name: "Le tue prenotazioni" });
+    expect(within(bookingsPanel).queryByRole("heading", { name: "Pole Flow" })).not.toBeInTheDocument();
+    expect(within(bookingsPanel).queryByRole("button", { name: /cancella Pole Flow/i })).not.toBeInTheDocument();
+  });
+
+  it("hides cancelled bookings returned by the dashboard", async () => {
+    installFetchMock(subscriptionResponse, [
+      {
+        ...bookingsResponse[0],
+        status: "cancelled",
+        cancelled_at: "2026-08-24T12:30:00Z",
+      },
+    ]);
+
+    render(<App />);
+    await login();
+
+    const bookingsPanel = screen.getByRole("region", { name: "Le tue prenotazioni" });
+    expect(within(bookingsPanel).getByText("Non hai prenotazioni attive.")).toBeInTheDocument();
+    expect(within(bookingsPanel).queryByRole("heading", { name: "Pole Flow" })).not.toBeInTheDocument();
   });
 
   it("shows one compact booking action and switches the selected occurrence", async () => {

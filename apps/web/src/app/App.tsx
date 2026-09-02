@@ -464,10 +464,8 @@ export function App() {
     setNotice(null);
 
     try {
-      const cancelledBooking = await api.cancelBooking(session.access_token, booking.id);
-      setBookings((current) =>
-        current.map((item) => (item.id === cancelledBooking.id ? cancelledBooking : item)),
-      );
+      await api.cancelBooking(session.access_token, booking.id);
+      setBookings((current) => current.filter((item) => item.id !== booking.id));
       setNotice({ tone: "success", message: "Prenotazione cancellata." });
     } catch (error) {
       setNotice({ tone: "error", message: describeError(error) });
@@ -2994,17 +2992,18 @@ function BookingsPanel({
   pendingBookingId: string | null;
   onCancelBooking: (booking: Booking) => void;
 }) {
+  const visibleBookings = bookings.filter((booking) => booking.status !== "cancelled");
+
   return (
     <section className="panel compact-panel bookings-panel" aria-labelledby="bookings-title">
       <SectionTitle icon={<CalendarCheck aria-hidden="true" />} title="Le tue prenotazioni" id="bookings-title" />
-      {bookings.length === 0 ? (
-        <p className="muted">Non hai ancora prenotazioni.</p>
+      {visibleBookings.length === 0 ? (
+        <p className="muted">Non hai prenotazioni attive.</p>
       ) : (
         <div className="booking-list">
-          {bookings.map((booking) => {
+          {visibleBookings.map((booking) => {
             const course = courseForSession(courses, booking.course_session_id);
             const session = sessionForBooking(courses, booking);
-            const isCancelled = booking.status === "cancelled";
             const title = course?.title ?? "Sessione";
             return (
               <article className="booking-item" key={booking.id}>
@@ -3015,22 +3014,20 @@ function BookingsPanel({
                       ? `${weekdays[session.weekday]} ${formatDate(booking.occurs_on)} · ${formatTime(session.starts_at)}`
                       : `${formatDate(booking.occurs_on)} · Orario non disponibile`}
                   </p>
-                  <span className={isCancelled ? "booking-status cancelled" : "booking-status"}>
-                    {isCancelled ? "Cancellata" : booking.status === "waitlisted" ? "Lista attesa" : "Confermata"}
+                  <span className="booking-status">
+                    {booking.status === "waitlisted" ? "Lista attesa" : "Confermata"}
                   </span>
                 </div>
-                {!isCancelled ? (
-                  <button
-                    aria-label={`Cancella ${title}`}
-                    className="secondary-action"
-                    disabled={pendingBookingId === booking.id}
-                    onClick={() => onCancelBooking(booking)}
-                    type="button"
-                  >
-                    <RotateCcw aria-hidden="true" />
-                    {pendingBookingId === booking.id ? "Cancello" : "Cancella"}
-                  </button>
-                ) : null}
+                <button
+                  aria-label={`Cancella ${title}`}
+                  className="secondary-action"
+                  disabled={pendingBookingId === booking.id}
+                  onClick={() => onCancelBooking(booking)}
+                  type="button"
+                >
+                  <RotateCcw aria-hidden="true" />
+                  {pendingBookingId === booking.id ? "Cancello" : "Cancella"}
+                </button>
               </article>
             );
           })}
