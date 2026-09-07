@@ -827,6 +827,8 @@ describe("App", () => {
   });
 
   it("books and cancels a session with clear status feedback", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-25T12:00:00"));
     const fetchMock = installFetchMock();
 
     render(<App />);
@@ -870,6 +872,19 @@ describe("App", () => {
         cancelled_at: "2026-08-24T12:30:00Z",
       },
     ]);
+
+    render(<App />);
+    await login();
+
+    const bookingsPanel = screen.getByRole("region", { name: "Le tue prenotazioni" });
+    expect(within(bookingsPanel).getByText("Non hai prenotazioni attive.")).toBeInTheDocument();
+    expect(within(bookingsPanel).queryByRole("heading", { name: "Pole Flow" })).not.toBeInTheDocument();
+  });
+
+  it("hides a booking after the lesson end time on the same day", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-02T21:01:00"));
+    installFetchMock();
 
     render(<App />);
     await login();

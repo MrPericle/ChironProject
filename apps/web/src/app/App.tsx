@@ -174,13 +174,6 @@ function absoluteImageUrl(imageUrl: string | null): string | null {
     : `${apiBaseUrl}${imageUrl}`;
 }
 
-function activeBookings(bookings: Booking[]): Booking[] {
-  const today = localIsoDate();
-  return bookings.filter(
-    (booking) => booking.status !== "cancelled" && booking.occurs_on >= today,
-  );
-}
-
 function courseForSession(courses: CatalogCourse[], sessionId: string): CatalogCourse | undefined {
   return courses.find((course) => course.sessions.some((session) => session.id === sessionId));
 }
@@ -193,6 +186,52 @@ function sessionForBooking(
     (session) =>
       session.id === booking.course_session_id && session.occurs_on === booking.occurs_on,
   );
+}
+
+function bookingEndsAt(courses: CatalogCourse[], booking: Booking): Date | null {
+  const courseSession = sessionForBooking(courses, booking);
+  if (courseSession === undefined) {
+    return null;
+  }
+
+  const endsAt = new Date(`${booking.occurs_on}T${courseSession.ends_at}`);
+  return Number.isNaN(endsAt.getTime()) ? null : endsAt;
+}
+
+function activeBookings(
+  bookings: Booking[],
+  courses: CatalogCourse[],
+  now = new Date(),
+): Booking[] {
+  const today = localIsoDate(now);
+  return bookings.filter((booking) => {
+    if (booking.status === "cancelled") {
+      return false;
+    }
+
+    const endsAt = bookingEndsAt(courses, booking);
+    return endsAt === null ? booking.occurs_on >= today : endsAt.getTime() > now.getTime();
+  });
+}
+
+function nextBookingExpiration(
+  bookings: Booking[],
+  courses: CatalogCourse[],
+  now = new Date(),
+): Date | null {
+  return bookings.reduce<Date | null>((nextExpiration, booking) => {
+    if (booking.status === "cancelled") {
+      return nextExpiration;
+    }
+
+    const endsAt = bookingEndsAt(courses, booking);
+    if (endsAt === null || endsAt.getTime() <= now.getTime()) {
+      return nextExpiration;
+    }
+    return nextExpiration === null || endsAt.getTime() < nextExpiration.getTime()
+      ? endsAt
+      : nextExpiration;
+  }, null);
 }
 
 function describeError(error: unknown): string {
@@ -247,6 +286,7 @@ export function App() {
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const [pendingBookingId, setPendingBookingId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<MobileView>("courses");
+  const [bookingClockTick, setBookingClockTick] = useState(0);
 
   useEffect(() => {
     if (session === null) {
@@ -337,6 +377,21 @@ export function App() {
     };
   }, [session]);
 
+  useEffect(() => {
+    const now = new Date();
+    const nextExpiration = nextBookingExpiration(bookings, courses, now);
+    if (nextExpiration === null) {
+      return;
+    }
+
+    const millisecondsUntilExpiration = nextExpiration.getTime() - now.getTime() + 100;
+    const timer = window.setTimeout(
+      () => setBookingClockTick(bookingClockTick + 1),
+      Math.min(Math.max(millisecondsUntilExpiration, 100), 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [bookingClockTick, bookings, courses]);
+
   const locations = useMemo(() => {
     const uniqueLocations = new Map<string, string>();
     for (const course of courses) {
@@ -346,7 +401,8 @@ export function App() {
   }, [courses]);
 
   const visibleCourses = useMemo(() => filteredCourses(courses, filters), [courses, filters]);
-  const activeBookingCount = activeBookings(bookings).length;
+  const currentBookings = activeBookings(bookings, courses);
+  const activeBookingCount = currentBookings.length;
 
   async function handleLogin(email: string, password: string): Promise<string | null> {
     setNotice(null);
@@ -557,7 +613,7 @@ export function App() {
               <aside className="side-stack" aria-label="Area personale">
                 <SubscriptionPanel subscription={subscription} />
                 <BookingsPanel
-                  bookings={bookings}
+                  bookings={currentBookings}
                   courses={courses}
                   pendingBookingId={pendingBookingId}
                   onCancelBooking={handleCancelBooking}
