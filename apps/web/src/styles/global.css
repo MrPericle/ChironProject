@@ -209,6 +209,7 @@ h3 {
 .discipline-strip span,
 .location-badge,
 .spots,
+.course-access-badge,
 .booking-status {
   display: inline-flex;
   align-items: center;
@@ -735,6 +736,14 @@ h3 {
   gap: 8px;
 }
 
+.course-access-meta,
+.admin-course-flags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .course-card h3 {
   font-size: 1.08rem;
 }
@@ -759,6 +768,12 @@ h3 {
   width: 15px;
   height: 15px;
   margin-right: 5px;
+}
+
+.course-access-badge {
+  width: fit-content;
+  background: #e4f3eb;
+  color: #18583f;
 }
 
 .session-booking-control {
@@ -1329,6 +1344,41 @@ h3 {
   padding: 9px;
 }
 
+.course-access-toggle {
+  display: flex;
+  grid-column: 1 / -1;
+  min-height: 64px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(11, 11, 13, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #303034;
+}
+
+.course-access-toggle input,
+.schedule-mode-selector input {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: #b5121b;
+}
+
+.course-access-toggle > span {
+  display: grid;
+  gap: 3px;
+}
+
+.course-access-toggle strong {
+  font-size: 0.9rem;
+}
+
+.course-access-toggle small {
+  color: #66666b;
+  line-height: 1.35;
+}
+
 .schedule-form,
 .course-session-admin-list {
   display: grid;
@@ -1341,6 +1391,49 @@ h3 {
   border: 1px solid rgba(181, 18, 27, 0.2);
   border-radius: 8px;
   background: #f2f0ed;
+}
+
+.schedule-mode-selector {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.schedule-mode-selector legend {
+  margin-bottom: 8px;
+  color: #303034;
+  font-weight: 900;
+}
+
+.schedule-mode-selector > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.schedule-mode-selector label {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border: 1px solid rgba(11, 11, 13, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #3e3e43;
+  font-weight: 800;
+}
+
+.schedule-mode-selector label:has(input:checked) {
+  border-color: #b5121b;
+  background: #fdebec;
+  color: #98141e;
+}
+
+.single-date-field {
+  width: min(100%, 360px);
 }
 
 .weekday-checkboxes {
@@ -1409,6 +1502,16 @@ h3 {
   font-size: 0.9rem;
 }
 
+.course-session-admin > div:first-child small {
+  width: fit-content;
+  color: #8f1720;
+  font-weight: 900;
+}
+
+.schedule-empty-state {
+  margin: 0;
+}
+
 .admin-list-item p {
   margin: 6px 0 0;
   color: #66666b;
@@ -1441,6 +1544,11 @@ h3 {
 .muted-status {
   background: #eee9e7;
   color: #6b6262;
+}
+
+.open-course-status {
+  background: #e4f3eb;
+  color: #18583f;
 }
 
 .admin-row-actions {
@@ -1901,6 +2009,12 @@ h3 {
     color: #efd89d;
   }
 
+  .open-course-status,
+  .course-access-badge {
+    background: #173326;
+    color: #bdebd4;
+  }
+
   .admin-list-item .membership-state {
     color: #bdebd4;
   }
@@ -2071,6 +2185,32 @@ h3 {
     background: #111113;
   }
 
+  .course-access-toggle {
+    border-color: rgba(239, 37, 44, 0.16);
+    background: #111113;
+    color: #f7f6f3;
+  }
+
+  .course-access-toggle small {
+    color: #a8a8ad;
+  }
+
+  .schedule-mode-selector legend {
+    color: #ffd8da;
+  }
+
+  .schedule-mode-selector label {
+    border-color: rgba(239, 37, 44, 0.14);
+    background: #18181b;
+    color: #ffd8da;
+  }
+
+  .schedule-mode-selector label:has(input:checked) {
+    border-color: #ef252c;
+    background: #ef252c;
+    color: #0b0b0d;
+  }
+
   .weekday-checkboxes legend {
     color: #ffd8da;
   }
@@ -2094,6 +2234,10 @@ h3 {
 
   .course-session-admin > div:first-child span {
     color: #a8a8ad;
+  }
+
+  .course-session-admin > div:first-child small {
+    color: #ffbfc2;
   }
 
   .section-heading {
@@ -2470,6 +2614,10 @@ h3 {
   }
 
   .is-booking-locked .booking-focus-action {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-mode-selector > div {
     grid-template-columns: minmax(0, 1fr);
   }
 }

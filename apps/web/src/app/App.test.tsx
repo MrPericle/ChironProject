@@ -14,6 +14,7 @@ const catalogResponse = [
     description: "Forza, controllo e progressioni a corpo libero.",
     discipline: "calisthenics",
     image_url: "/uploads/calisthenics.jpg",
+    requires_active_subscription: true,
     sessions: [
       {
         id: "session-calisthenics",
@@ -43,6 +44,7 @@ const catalogResponse = [
     description: "Tecnica e transizioni fluide.",
     discipline: "pole_dance",
     image_url: null,
+    requires_active_subscription: true,
     sessions: [
       {
         id: "session-pole",
@@ -95,12 +97,14 @@ const adminCoursesResponse = [
     description: "Forza e controllo.",
     discipline: "calisthenics",
     image_url: "/uploads/calisthenics.jpg",
+    requires_active_subscription: true,
     status: "published",
     sessions: [
       {
         id: "session-calisthenics",
         course_id: "course-calisthenics",
         weekday: 1,
+        occurs_on: null,
         starts_at: "18:00:00",
         ends_at: "19:00:00",
         capacity: 10,
@@ -210,7 +214,11 @@ function accessTokenExpiringAt(expiresAt: number): string {
   return `${encode("{}")}.${encode(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))}.signature`;
 }
 
-function installFetchMock(subscription = subscriptionResponse, bookings = bookingsResponse) {
+function installFetchMock(
+  subscription = subscriptionResponse,
+  bookings = bookingsResponse,
+  catalog = catalogResponse,
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
     const method = init?.method ?? "GET";
@@ -273,7 +281,7 @@ function installFetchMock(subscription = subscriptionResponse, bookings = bookin
     }
 
     if (url.endsWith("/courses") && !url.endsWith("/admin/courses") && method === "GET") {
-      return jsonResponse(catalogResponse);
+      return jsonResponse(catalog);
     }
 
     if (url.endsWith("/bookings/me")) {
@@ -370,6 +378,9 @@ function installFetchMock(subscription = subscriptionResponse, bookings = bookin
     }
 
     if (url.endsWith("/admin/courses") && method === "POST") {
+      const body = JSON.parse(init?.body?.toString() ?? "{}") as {
+        requires_active_subscription?: boolean;
+      };
       return jsonResponse(
         {
           id: "course-martial",
@@ -379,6 +390,7 @@ function installFetchMock(subscription = subscriptionResponse, bookings = bookin
           description: "Tecnica e mobilita.",
           discipline: "martial_arts",
           image_url: null,
+          requires_active_subscription: body.requires_active_subscription ?? true,
           status: "published",
           sessions: [],
         },
@@ -397,6 +409,7 @@ function installFetchMock(subscription = subscriptionResponse, bookings = bookin
         title: "Martial Flow",
         discipline: "martial_arts",
         image_url: "/uploads/martial-flow.jpg",
+        requires_active_subscription: false,
         sessions: [],
       });
     }
@@ -408,6 +421,7 @@ function installFetchMock(subscription = subscriptionResponse, bookings = bookin
             id: "session-wednesday",
             course_id: "course-calisthenics",
             weekday: 3,
+            occurs_on: null,
             starts_at: "18:00",
             ends_at: "19:00",
             capacity: 12,
@@ -418,6 +432,7 @@ function installFetchMock(subscription = subscriptionResponse, bookings = bookin
             id: "session-friday",
             course_id: "course-calisthenics",
             weekday: 5,
+            occurs_on: null,
             starts_at: "18:00",
             ends_at: "19:00",
             capacity: 12,
@@ -425,6 +440,30 @@ function installFetchMock(subscription = subscriptionResponse, bookings = bookin
             is_active: true,
           },
         ],
+        { status: 201 },
+      );
+    }
+
+    if (url.endsWith("/admin/courses/course-calisthenics/sessions") && method === "POST") {
+      const body = JSON.parse(init?.body?.toString() ?? "{}") as {
+        occurs_on?: string;
+        starts_at?: string;
+        ends_at?: string;
+        capacity?: number;
+        cancellation_deadline_hours?: number;
+      };
+      return jsonResponse(
+        {
+          id: "session-single",
+          course_id: "course-calisthenics",
+          weekday: 0,
+          occurs_on: body.occurs_on,
+          starts_at: body.starts_at,
+          ends_at: body.ends_at,
+          capacity: body.capacity,
+          cancellation_deadline_hours: body.cancellation_deadline_hours,
+          is_active: true,
+        },
         { status: 201 },
       );
     }
@@ -707,12 +746,16 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Foto corso"), {
       target: { files: [new File(["image"], "martial-flow.jpg", { type: "image/jpeg" })] },
     });
+    fireEvent.click(screen.getByRole("checkbox", { name: /richiede iscrizione attiva/i }));
     fireEvent.click(screen.getByRole("button", { name: "Crea corso" }));
 
     await screen.findByText("Corso creato.");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/courses",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        body: expect.stringContaining('"requires_active_subscription":false'),
+        method: "POST",
+      }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/courses/course-martial/image",
@@ -731,10 +774,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /configura orari Calisthenics/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Mercoledi" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Venerdi" }));
-    fireEvent.change(screen.getByLabelText("Ora inizio ricorrenza"), {
+    fireEvent.change(screen.getByLabelText("Ora inizio"), {
       target: { value: "18:00" },
     });
-    fireEvent.change(screen.getByLabelText("Ora fine ricorrenza"), {
+    fireEvent.change(screen.getByLabelText("Ora fine"), {
       target: { value: "19:00" },
     });
     fireEvent.change(screen.getByLabelText("Posti per lezione"), {
@@ -748,13 +791,28 @@ describe("App", () => {
       expect.objectContaining({ method: "POST" }),
     );
 
+    fireEvent.click(screen.getByRole("radio", { name: "Data singola" }));
+    fireEvent.change(screen.getByLabelText("Data della lezione"), {
+      target: { value: "2026-09-20" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi lezione" }));
+
+    await screen.findByText("Lezione singola creata.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/courses/course-calisthenics/sessions",
+      expect.objectContaining({
+        body: expect.stringContaining('"occurs_on":"2026-09-20"'),
+        method: "POST",
+      }),
+    );
+
     fireEvent.click(screen.getByRole("button", { name: "Modifica Lunedi 18:00" }));
     fireEvent.change(screen.getByLabelText("Capienza Lunedi 18:00"), {
       target: { value: "14" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Salva Lunedi 18:00" }));
 
-    await screen.findByText("Ricorrenza aggiornata.");
+    await screen.findByText("Lezione aggiornata.");
   });
 
   it("manages users and subscriptions from a dedicated backoffice tab", async () => {
@@ -943,6 +1001,26 @@ describe("App", () => {
       "http://localhost:8000/bookings",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("keeps courses open to non-members bookable", async () => {
+    const openCatalog = catalogResponse.map((course) =>
+      course.id === "course-calisthenics"
+        ? { ...course, requires_active_subscription: false }
+        : course,
+    );
+    installFetchMock(
+      { ...subscriptionResponse, is_active: false },
+      bookingsResponse,
+      openCatalog,
+    );
+
+    render(<App />);
+    await login();
+
+    const calisthenicsCard = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    expect(within(calisthenicsCard).getByText("Aperto a tutti")).toBeInTheDocument();
+    expect(within(calisthenicsCard).getByRole("button", { name: "Prenota" })).toBeEnabled();
   });
 
   it("disables lessons scheduled after the membership expires", async () => {

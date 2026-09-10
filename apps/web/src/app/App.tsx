@@ -76,6 +76,7 @@ type AuthMode = "login" | "register";
 
 type MobileView = "courses" | "calendar" | "bookings" | "profile";
 type AdminTab = "dashboard" | "calendar" | "users" | "courses" | "locations";
+type ScheduleMode = "weekly" | "single";
 
 const disciplineLabels: Record<CourseDiscipline, string> = {
   calisthenics: "Calisthenics",
@@ -157,7 +158,11 @@ function occurrenceKey(session: Pick<CatalogSession, "id" | "occurs_on">): strin
 function canBookOccurrence(
   subscription: SubscriptionInfo | null,
   session: CatalogSession,
+  requiresActiveSubscription: boolean,
 ): boolean {
+  if (!requiresActiveSubscription) {
+    return true;
+  }
   return (
     subscription?.is_active === true &&
     session.occurs_on >= subscription.starts_on &&
@@ -479,7 +484,7 @@ export function App() {
     if (session === null) {
       return;
     }
-    if (!canBookOccurrence(subscription, courseSession)) {
+    if (!canBookOccurrence(subscription, courseSession, course.requires_active_subscription)) {
       setNotice({
         tone: "error",
         message: "Serve un'iscrizione valida nella data della lezione per prenotare.",
@@ -896,7 +901,11 @@ function BookingFocus({
   }
 
   const { course, session } = candidate;
-  const canBook = canBookOccurrence(subscription, session);
+  const canBook = canBookOccurrence(
+    subscription,
+    session,
+    course.requires_active_subscription,
+  );
   const membershipMessage =
     subscription?.is_active === true
       ? "L'iscrizione non copre la data della lezione."
@@ -1007,7 +1016,11 @@ function WeeklyCalendar({
           <p className="muted">Nessuna lezione programmata per il {formatDate(selectedDate)}.</p>
         ) : (
           entries.map(({ course, session }) => {
-            const canBook = canBookOccurrence(subscription, session);
+            const canBook = canBookOccurrence(
+              subscription,
+              session,
+              course.requires_active_subscription,
+            );
             return (
               <article className="calendar-entry" key={occurrenceKey(session)}>
                 <time>{formatTime(session.starts_at)}</time>
@@ -1048,13 +1061,27 @@ function AdminCalendarPanel({
   locations: Location[];
   token: string;
 }) {
-  const dates = useMemo(() => upcomingDates(), []);
+  const dates = useMemo(() => {
+    const visibleDates = upcomingDates(28);
+    const today = visibleDates[0];
+    const singleDates = courses.flatMap((course) =>
+      course.sessions
+        .map((session) => session.occurs_on)
+        .filter((occursOn): occursOn is string => occursOn !== null && occursOn >= today),
+    );
+    return [...new Set([...visibleDates, ...singleDates])].sort();
+  }, [courses]);
   const firstScheduledDate = dates.find((date) => {
     const weekday = dateFromIso(date).getDay();
     return courses.some(
       (course) =>
         course.status !== "archived" &&
-        course.sessions.some((session) => session.is_active && session.weekday === weekday),
+        course.sessions.some(
+          (session) =>
+            session.is_active &&
+            (session.occurs_on === date ||
+              (session.occurs_on === null && session.weekday === weekday)),
+        ),
     );
   });
   const [selectedDate, setSelectedDate] = useState(firstScheduledDate ?? dates[0]);
@@ -1070,7 +1097,12 @@ function AdminCalendarPanel({
     .filter((course) => course.status !== "archived")
     .flatMap((course) =>
       course.sessions
-        .filter((session) => session.is_active && session.weekday === selectedWeekday)
+        .filter(
+          (session) =>
+            session.is_active &&
+            (session.occurs_on === selectedDate ||
+              (session.occurs_on === null && session.weekday === selectedWeekday)),
+        )
         .map((session) => ({ course, session })),
     )
     .sort((left, right) => left.session.starts_at.localeCompare(right.session.starts_at));
@@ -1924,11 +1956,14 @@ function CoursesManager({
   const [locationId, setLocationId] = useState("");
   const [status, setStatus] = useState<CourseStatus>("published");
   const [discipline, setDiscipline] = useState<CourseDiscipline>("calisthenics");
+  const [requiresActiveSubscription, setRequiresActiveSubscription] = useState(true);
   const [courseImage, setCourseImage] = useState<File | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [courseDraft, setCourseDraft] = useState<CoursePayload | null>(null);
   const [schedulingCourseId, setSchedulingCourseId] = useState<string | null>(null);
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("weekly");
   const [scheduleWeekdays, setScheduleWeekdays] = useState<number[]>([]);
+  const [scheduleDate, setScheduleDate] = useState(localIsoDate());
   const [scheduleStartsAt, setScheduleStartsAt] = useState("18:00");
   const [scheduleEndsAt, setScheduleEndsAt] = useState("19:00");
   const [scheduleCapacity, setScheduleCapacity] = useState("12");
@@ -1951,6 +1986,7 @@ function CoursesManager({
         title,
         description: description || null,
         discipline,
+        requires_active_subscription: requiresActiveSubscription,
         status,
       });
       const savedCourse =
@@ -1958,6 +1994,7 @@ function CoursesManager({
       onCourseChange(savedCourse);
       setTitle("");
       setDescription("");
+      setRequiresActiveSubscription(true);
       setCourseImage(null);
       onNotice({ tone: "success", message: "Corso creato." });
     } catch (error) {
@@ -1967,21 +2004,39 @@ function CoursesManager({
 
   async function handleCreateSchedule(event: FormEvent<HTMLFormElement>, course: AdminCourse): Promise<void> {
     event.preventDefault();
-    if (scheduleWeekdays.length === 0) {
+    if (scheduleMode === "weekly" && scheduleWeekdays.length === 0) {
       onNotice({ tone: "error", message: "Seleziona almeno un giorno." });
       return;
     }
+    if (scheduleMode === "single" && scheduleDate === "") {
+      onNotice({ tone: "error", message: "Seleziona la data della lezione." });
+      return;
+    }
     try {
-      const sessions = await api.createCourseSchedule(token, course.id, {
-        weekdays: scheduleWeekdays,
+      const sessionDetails = {
         starts_at: scheduleStartsAt,
         ends_at: scheduleEndsAt,
         capacity: Number(scheduleCapacity),
         cancellation_deadline_hours: Number(scheduleDeadline),
-      });
+      };
+      const sessions =
+        scheduleMode === "weekly"
+          ? await api.createCourseSchedule(token, course.id, {
+              ...sessionDetails,
+              weekdays: scheduleWeekdays,
+            })
+          : [
+              await api.createCourseSession(token, course.id, {
+                ...sessionDetails,
+                occurs_on: scheduleDate,
+              }),
+            ];
       onCourseChange({ ...course, sessions: [...course.sessions, ...sessions] });
       setScheduleWeekdays([]);
-      onNotice({ tone: "success", message: "Ricorrenze create." });
+      onNotice({
+        tone: "success",
+        message: scheduleMode === "weekly" ? "Ricorrenze create." : "Lezione singola creata.",
+      });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
     }
@@ -2016,7 +2071,9 @@ function CoursesManager({
     }
     try {
       const updated = await api.updateCourseSession(token, sessionDraft.id, {
-        weekday: sessionDraft.weekday,
+        ...(sessionDraft.occurs_on === null
+          ? { weekday: sessionDraft.weekday }
+          : { occurs_on: sessionDraft.occurs_on }),
         starts_at: sessionDraft.starts_at,
         ends_at: sessionDraft.ends_at,
         capacity: Number(sessionDraft.capacity),
@@ -2028,7 +2085,7 @@ function CoursesManager({
       });
       setEditingSessionId(null);
       setSessionDraft(null);
-      onNotice({ tone: "success", message: "Ricorrenza aggiornata." });
+      onNotice({ tone: "success", message: "Lezione aggiornata." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
     }
@@ -2041,7 +2098,7 @@ function CoursesManager({
         ...course,
         sessions: course.sessions.map((item) => (item.id === updated.id ? updated : item)),
       });
-      onNotice({ tone: "success", message: "Ricorrenza disattivata." });
+      onNotice({ tone: "success", message: "Lezione disattivata." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
     }
@@ -2062,6 +2119,7 @@ function CoursesManager({
       description: course.description,
       discipline: course.discipline,
       location_id: course.location_id,
+      requires_active_subscription: course.requires_active_subscription,
       status: course.status,
       title: course.title,
     });
@@ -2122,6 +2180,17 @@ function CoursesManager({
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
+        </label>
+        <label className="course-access-toggle">
+          <input
+            checked={requiresActiveSubscription}
+            onChange={(event) => setRequiresActiveSubscription(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            <strong>Richiede iscrizione attiva</strong>
+            <small>Disattiva per aprire le prenotazioni anche a chi non e iscritto.</small>
+          </span>
         </label>
         <label className="field file-field">
           <span>Foto corso</span>
@@ -2212,9 +2281,36 @@ function CoursesManager({
                         <option value="archived">Archiviato</option>
                       </select>
                     </label>
+                    <label className="course-access-toggle">
+                      <input
+                        checked={courseDraft.requires_active_subscription}
+                        onChange={(event) =>
+                          setCourseDraft({
+                            ...courseDraft,
+                            requires_active_subscription: event.target.checked,
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>Richiede iscrizione attiva</strong>
+                        <small>Disattiva per rendere il corso aperto a tutti.</small>
+                      </span>
+                    </label>
                   </div>
                 ) : null}
-                <span className="admin-status">{courseStatusLabels[course.status]}</span>
+                <div className="admin-course-flags">
+                  <span className="admin-status">{courseStatusLabels[course.status]}</span>
+                  <span
+                    className={
+                      course.requires_active_subscription
+                        ? "admin-status muted-status"
+                        : "admin-status open-course-status"
+                    }
+                  >
+                    {course.requires_active_subscription ? "Iscrizione richiesta" : "Aperto a tutti"}
+                  </span>
+                </div>
                 <label className="secondary-action image-upload-action">
                   <ImagePlus aria-hidden="true" />
                   <span>Aggiorna foto</span>
@@ -2272,22 +2368,58 @@ function CoursesManager({
               </div>
               {schedulingCourseId === course.id ? (
                 <form className="schedule-form" onSubmit={(event) => handleCreateSchedule(event, course)}>
-                  <fieldset className="weekday-checkboxes">
-                    <legend>Giorni ricorrenti</legend>
-                    {weekdays.map((weekday, weekdayIndex) => (
-                      <label key={weekday}>
+                  <fieldset className="schedule-mode-selector">
+                    <legend>Tipo di pianificazione</legend>
+                    <div>
+                      <label>
                         <input
-                          checked={scheduleWeekdays.includes(weekdayIndex)}
-                          onChange={() => toggleScheduleWeekday(weekdayIndex)}
-                          type="checkbox"
+                          checked={scheduleMode === "weekly"}
+                          name={`schedule-mode-${course.id}`}
+                          onChange={() => setScheduleMode("weekly")}
+                          type="radio"
                         />
-                        <span>{weekday}</span>
+                        <span>Ricorrenza settimanale</span>
                       </label>
-                    ))}
+                      <label>
+                        <input
+                          checked={scheduleMode === "single"}
+                          name={`schedule-mode-${course.id}`}
+                          onChange={() => setScheduleMode("single")}
+                          type="radio"
+                        />
+                        <span>Data singola</span>
+                      </label>
+                    </div>
                   </fieldset>
+                  {scheduleMode === "weekly" ? (
+                    <fieldset className="weekday-checkboxes">
+                      <legend>Giorni ricorrenti</legend>
+                      {weekdays.map((weekday, weekdayIndex) => (
+                        <label key={weekday}>
+                          <input
+                            checked={scheduleWeekdays.includes(weekdayIndex)}
+                            onChange={() => toggleScheduleWeekday(weekdayIndex)}
+                            type="checkbox"
+                          />
+                          <span>{weekday}</span>
+                        </label>
+                      ))}
+                    </fieldset>
+                  ) : (
+                    <label className="field single-date-field">
+                      <span>Data della lezione</span>
+                      <input
+                        min={localIsoDate()}
+                        onChange={(event) => setScheduleDate(event.target.value)}
+                        required
+                        type="date"
+                        value={scheduleDate}
+                      />
+                    </label>
+                  )}
                   <div className="schedule-fields">
                     <label className="field">
-                      <span>Ora inizio ricorrenza</span>
+                      <span>Ora inizio</span>
                       <input
                         onChange={(event) => setScheduleStartsAt(event.target.value)}
                         required
@@ -2296,7 +2428,7 @@ function CoursesManager({
                       />
                     </label>
                     <label className="field">
-                      <span>Ora fine ricorrenza</span>
+                      <span>Ora fine</span>
                       <input
                         onChange={(event) => setScheduleEndsAt(event.target.value)}
                         required
@@ -2327,13 +2459,20 @@ function CoursesManager({
                   </div>
                   <button className="primary-action" type="submit">
                     <CalendarPlus aria-hidden="true" />
-                    Salva ricorrenze
+                    {scheduleMode === "weekly" ? "Salva ricorrenze" : "Aggiungi lezione"}
                   </button>
                 </form>
               ) : null}
               <div className="course-session-admin-list">
+                {course.sessions.every((session) => !session.is_active) ? (
+                  <p className="muted schedule-empty-state">
+                    Nessuna lezione pianificata. Il corso puo restare senza ricorrenze.
+                  </p>
+                ) : null}
                 {course.sessions.filter((session) => session.is_active).map((session) => {
-                  const sessionLabel = `${weekdays[session.weekday]} ${formatTime(session.starts_at)}`;
+                  const sessionLabel = session.occurs_on
+                    ? `${formatDate(session.occurs_on)} ${formatTime(session.starts_at)}`
+                    : `${weekdays[session.weekday]} ${formatTime(session.starts_at)}`;
                   const isEditing = editingSessionId === session.id && sessionDraft !== null;
                   return (
                     <article className="course-session-admin" key={session.id}>
@@ -2342,22 +2481,37 @@ function CoursesManager({
                         <span>
                           {formatTime(session.starts_at)} - {formatTime(session.ends_at)} · {session.capacity} posti
                         </span>
+                        <small>{session.occurs_on ? "Data singola" : "Ricorrenza settimanale"}</small>
                       </div>
                       {isEditing ? (
                         <div className="session-edit-fields">
-                          <label className="field">
-                            <span>{`Giorno ${sessionLabel}`}</span>
-                            <select
-                              onChange={(event) =>
-                                setSessionDraft({ ...sessionDraft, weekday: Number(event.target.value) })
-                              }
-                              value={sessionDraft.weekday}
-                            >
-                              {weekdays.map((weekday, weekdayIndex) => (
-                                <option key={weekday} value={weekdayIndex}>{weekday}</option>
-                              ))}
-                            </select>
-                          </label>
+                          {sessionDraft.occurs_on === null ? (
+                            <label className="field">
+                              <span>{`Giorno ${sessionLabel}`}</span>
+                              <select
+                                onChange={(event) =>
+                                  setSessionDraft({ ...sessionDraft, weekday: Number(event.target.value) })
+                                }
+                                value={sessionDraft.weekday}
+                              >
+                                {weekdays.map((weekday, weekdayIndex) => (
+                                  <option key={weekday} value={weekdayIndex}>{weekday}</option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : (
+                            <label className="field">
+                              <span>{`Data ${sessionLabel}`}</span>
+                              <input
+                                min={localIsoDate()}
+                                onChange={(event) =>
+                                  setSessionDraft({ ...sessionDraft, occurs_on: event.target.value })
+                                }
+                                type="date"
+                                value={sessionDraft.occurs_on}
+                              />
+                            </label>
+                          )}
                           <label className="field">
                             <span>{`Inizio ${sessionLabel}`}</span>
                             <input
@@ -2904,7 +3058,11 @@ function CourseBookingCard({
     .format(selectedDate)
     .replace(".", "");
   const isFull = selectedSession.available_spots <= 0;
-  const canBook = canBookOccurrence(subscription, selectedSession);
+  const canBook = canBookOccurrence(
+    subscription,
+    selectedSession,
+    course.requires_active_subscription,
+  );
   const isPending = pendingSessionId === occurrenceKey(selectedSession);
 
   return (
@@ -2916,10 +3074,15 @@ function CourseBookingCard({
           <p>{course.description ?? "Sessione di movimento a corpo libero."}</p>
         </div>
         <div className="course-meta-row">
-          <span className="location-badge">
-            <MapPin aria-hidden="true" />
-            {course.location_name}
-          </span>
+          <div className="course-access-meta">
+            <span className="location-badge">
+              <MapPin aria-hidden="true" />
+              {course.location_name}
+            </span>
+            {!course.requires_active_subscription ? (
+              <span className="course-access-badge">Aperto a tutti</span>
+            ) : null}
+          </div>
           <span className="spots">{sessions.length} date disponibili</span>
         </div>
       </div>

@@ -53,6 +53,7 @@ export type CatalogCourse = {
   description: string | null;
   discipline: CourseDiscipline;
   image_url: string | null;
+  requires_active_subscription: boolean;
   sessions: CatalogSession[];
 };
 
@@ -152,6 +153,7 @@ export type AdminCourse = {
   description: string | null;
   discipline: CourseDiscipline;
   image_url: string | null;
+  requires_active_subscription: boolean;
   status: CourseStatus;
   sessions: CourseSession[];
 };
@@ -161,26 +163,30 @@ export type CoursePayload = {
   title: string;
   description: string | null;
   discipline: CourseDiscipline;
+  requires_active_subscription: boolean;
   status: CourseStatus;
 };
 
 export type CourseUpdatePayload = Partial<CoursePayload>;
 
 export type CourseSessionPayload = {
-  weekday: number;
+  weekday?: number;
+  occurs_on?: string | null;
   starts_at: string;
   ends_at: string;
   capacity: number;
   cancellation_deadline_hours: number;
 };
 
-export type CourseSession = CourseSessionPayload & {
+export type CourseSession = Omit<CourseSessionPayload, "weekday" | "occurs_on"> & {
   id: string;
   course_id: string;
+  weekday: number;
+  occurs_on: string | null;
   is_active: boolean;
 };
 
-export type CourseSchedulePayload = Omit<CourseSessionPayload, "weekday"> & {
+export type CourseSchedulePayload = Omit<CourseSessionPayload, "weekday" | "occurs_on"> & {
   weekdays: number[];
 };
 
