@@ -44,6 +44,11 @@ jobs:
       - name: Lint
         run: ruff check src tests
 
+      - name: Apply migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://chiron:chiron_dev_password@localhost:5432/chiron
+        run: alembic upgrade head
+
       - name: Test
         env:
           BOOKING_DATABASE_URL: postgresql+psycopg://chiron:chiron_dev_password@localhost:5432/chiron
@@ -63,9 +68,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint
         run: npm run lint
@@ -76,12 +83,28 @@ jobs:
       - name: Build
         run: npm run build
 
-  compose:
-    name: Docker Compose
+  production-images:
+    name: Production images
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate compose file
+      - name: Validate development Compose file
         run: docker compose config
+
+      - name: Validate production Compose file
+        run: docker compose --env-file .env.production.example -f docker-compose.prod.yml config --quiet
+
+      - name: Validate Caddyfile
+        run: >-
+          docker run --rm
+          -e ACME_EMAIL=admin@example.it
+          -e APP_DOMAIN=example.it
+          -e API_DOMAIN=api.example.it
+          -v "$PWD/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
+          caddy:2-alpine
+          caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Build production images
+        run: docker compose --env-file .env.production.example -f docker-compose.prod.yml build api web
