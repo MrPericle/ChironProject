@@ -34,7 +34,6 @@ import {
   AdminCourse,
   AdminCourseSessionAttendee,
   AdminStats,
-  AdminSubscriptionInfo,
   AdminUser,
   ApiError,
   Booking,
@@ -73,6 +72,9 @@ type Notice = {
 };
 
 type AuthMode = "login" | "register";
+type TwoFactorStep =
+  | { kind: "verify"; token: string }
+  | { kind: "setup"; token: string; secret: string; otpauthUri: string };
 
 type MobileView = "courses" | "calendar" | "bookings" | "profile";
 type AdminTab = "dashboard" | "calendar" | "users" | "courses" | "locations";
@@ -90,6 +92,12 @@ const userStatusLabels: Record<AdminUser["status"], string> = {
   active: "Account attivo",
   disabled: "Account disabilitato",
   deleted: "Account eliminato",
+};
+
+const userRoleLabels: Record<AdminUser["role"], string> = {
+  admin: "Amministratore",
+  staff: "Collaboratore",
+  user: "Utente",
 };
 
 const courseStatusLabels: Record<CourseStatus, string> = {
@@ -303,11 +311,12 @@ export function App() {
     }
 
     let ignore = false;
-    setLoadState("loading");
 
-    api
-      .dashboard(session.access_token)
-      .then((dashboard) => {
+    const loadDashboard = (showLoading: boolean): void => {
+      if (showLoading) {
+        setLoadState("loading");
+      }
+      api.dashboard(session.access_token).then((dashboard) => {
         if (ignore) {
           return;
         }
@@ -321,12 +330,32 @@ export function App() {
         if (ignore) {
           return;
         }
+        if (error instanceof ApiError && error.status === 401) {
+          localStorage.removeItem(sessionStorageKey);
+          setSession(null);
+          setUser(null);
+          setCourses([]);
+          setBookings([]);
+          setSubscription(null);
+          setLoadState("idle");
+          setNotice({
+            tone: "error",
+            message: "Profilo o permessi aggiornati. Accedi di nuovo per continuare.",
+          });
+          return;
+        }
         setNotice({ tone: "error", message: describeError(error) });
         setLoadState("error");
       });
+    };
+
+    loadDashboard(true);
+    const refreshOnFocus = (): void => loadDashboard(false);
+    window.addEventListener("focus", refreshOnFocus);
 
     return () => {
       ignore = true;
+      window.removeEventListener("focus", refreshOnFocus);
     };
   }, [session]);
 
@@ -409,7 +438,7 @@ export function App() {
   const currentBookings = activeBookings(bookings, courses);
   const activeBookingCount = currentBookings.length;
 
-  async function handleLogin(email: string, password: string): Promise<string | null> {
+  async function handleLogin(email: string, password: string): Promise<TwoFactorStep | null> {
     setNotice(null);
     setLoadState("loading");
 
@@ -417,15 +446,17 @@ export function App() {
       const result = await api.login({ email, password });
       if ("requires_2fa" in result) {
         setLoadState("idle");
-        return result.challenge_token;
+        return { kind: "verify", token: result.challenge_token };
       }
       if ("requires_2fa_setup" in result) {
+        const setup = await api.setupTwoFactor(result.setup_token);
         setLoadState("idle");
-        setNotice({
-          tone: "error",
-          message: "Il 2FA admin deve essere configurato prima del primo accesso.",
-        });
-        return null;
+        return {
+          kind: "setup",
+          token: result.setup_token,
+          secret: setup.secret,
+          otpauthUri: setup.otpauth_uri,
+        };
       }
       const nextSession = result;
       saveSession(nextSession);
@@ -439,11 +470,14 @@ export function App() {
     }
   }
 
-  async function handleVerifyTwoFactor(challengeToken: string, totpCode: string): Promise<boolean> {
+  async function handleVerifyTwoFactor(step: TwoFactorStep, totpCode: string): Promise<boolean> {
     setNotice(null);
     setLoadState("loading");
     try {
-      const nextSession = await api.verifyTwoFactor(challengeToken, totpCode);
+      const nextSession =
+        step.kind === "setup"
+          ? await api.confirmTwoFactor(step.token, totpCode)
+          : await api.verifyTwoFactor(step.token, totpCode);
       saveSession(nextSession);
       setSession(nextSession);
       setUser(nextSession.user);
@@ -644,26 +678,25 @@ function BackofficeScreen({
 }) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [courses, setCourses] = useState<AdminCourse[]>([]);
-  const [subscriptions, setSubscriptions] = useState<AdminSubscriptionInfo[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [notice, setNotice] = useState<Notice | null>(null);
+  const isAdmin = user.role === "admin";
 
   useEffect(() => {
     let ignore = false;
     setLoadState("loading");
 
     api
-      .adminDashboard(session.access_token)
+      .adminDashboard(session.access_token, user.role)
       .then((dashboard) => {
         if (ignore) {
           return;
         }
         setLocations(dashboard.locations);
         setCourses(dashboard.courses);
-        setSubscriptions(dashboard.subscriptions);
         setUsers(dashboard.users);
         setStats(dashboard.stats);
         setLoadState("ready");
@@ -679,10 +712,16 @@ function BackofficeScreen({
     return () => {
       ignore = true;
     };
-  }, [session.access_token]);
+  }, [session.access_token, user.role]);
+
+  useEffect(() => {
+    if (!isAdmin && activeTab === "users") {
+      setActiveTab("dashboard");
+    }
+  }, [activeTab, isAdmin]);
 
   const activeLocations = locations.filter((location) => location.is_active);
-  const activeMembers = subscriptions.filter((subscription) => subscription.is_active).length;
+  const activeMembers = stats?.active_members ?? 0;
   const publishedCourses = courses.filter((course) => course.status === "published").length;
 
   function upsertLocation(location: Location): void {
@@ -703,6 +742,16 @@ function BackofficeScreen({
       }
       return current.map((item) => (item.id === course.id ? course : item));
     });
+  }
+
+  function removeCourse(courseId: string): void {
+    setCourses((current) => current.filter((course) => course.id !== courseId));
+    setStats((current) =>
+      current === null
+        ? current
+        : { ...current, courses: current.courses.filter((course) => course.id !== courseId) },
+    );
+    void api.adminStats(session.access_token).then(setStats).catch(() => undefined);
   }
 
   function upsertUser(user: AdminUser): void {
@@ -732,7 +781,11 @@ function BackofficeScreen({
         </header>
 
         <div className="backoffice-layout">
-          <nav className="admin-tabs" aria-label="Sezioni backoffice">
+          <nav
+            className="admin-tabs"
+            aria-label="Sezioni backoffice"
+            data-tab-count={isAdmin ? "5" : "4"}
+          >
             <button
               aria-label="Dashboard"
               aria-current={activeTab === "dashboard" ? "page" : undefined}
@@ -753,16 +806,18 @@ function BackofficeScreen({
               <span className="admin-tab-label-full">Calendario</span>
               <span className="admin-tab-label-mobile" aria-hidden="true">Agenda</span>
             </button>
-            <button
-              aria-label="Utenti"
-              aria-current={activeTab === "users" ? "page" : undefined}
-              onClick={() => setActiveTab("users")}
-              type="button"
-            >
-              <UserRound aria-hidden="true" />
-              <span className="admin-tab-label-full">Utenti</span>
-              <span className="admin-tab-label-mobile" aria-hidden="true">Utenti</span>
-            </button>
+            {isAdmin ? (
+              <button
+                aria-label="Utenti"
+                aria-current={activeTab === "users" ? "page" : undefined}
+                onClick={() => setActiveTab("users")}
+                type="button"
+              >
+                <UserRound aria-hidden="true" />
+                <span className="admin-tab-label-full">Utenti</span>
+                <span className="admin-tab-label-mobile" aria-hidden="true">Utenti</span>
+              </button>
+            ) : null}
             <button
               aria-label="Corsi"
               aria-current={activeTab === "courses" ? "page" : undefined}
@@ -817,7 +872,7 @@ function BackofficeScreen({
                     token={session.access_token}
                   />
                 ) : null}
-                {activeTab === "users" ? (
+                {isAdmin && activeTab === "users" ? (
                   <UsersManager
                     onNotice={setNotice}
                     onUserChange={upsertUser}
@@ -830,6 +885,7 @@ function BackofficeScreen({
                     courses={courses}
                     locations={activeLocations}
                     onCourseChange={upsertCourse}
+                    onCourseDelete={removeCourse}
                     onNotice={setNotice}
                     token={session.access_token}
                   />
@@ -1560,14 +1616,17 @@ function UsersManager({
                       : "membership-state"
                   }
                 >
-                  {user.role !== "user"
-                    ? "Accesso amministrativo senza scadenza"
+                  {user.role === "admin"
+                    ? "Accesso amministratore senza scadenza"
+                    : user.role === "staff"
+                      ? "Collaboratore corsi · nessun accesso alla gestione utenti"
                     : user.subscription === null
                       ? "Nessuna iscrizione"
                       : user.subscription.is_active
                         ? `Iscrizione attiva · scade il ${formatDate(user.subscription.expires_on)}`
                         : `Iscrizione scaduta il ${formatDate(user.subscription.expires_on)}`}
                 </p>
+                <span className="admin-status role-status">{userRoleLabels[user.role]}</span>
                 {editingUserId === user.id && userDraft !== null ? (
                   <div className="inline-edit-grid">
                     <label className="field">
@@ -1617,8 +1676,8 @@ function UsersManager({
                         }
                       >
                         <option value="user">Utente</option>
-                        <option value="staff">Staff</option>
-                        <option value="admin">Admin</option>
+                        <option value="staff">Collaboratore corsi</option>
+                        <option value="admin">Amministratore</option>
                       </select>
                     </label>
                     <label className="field">
@@ -1942,12 +2001,14 @@ function CoursesManager({
   courses,
   locations,
   onCourseChange,
+  onCourseDelete,
   onNotice,
   token,
 }: {
   courses: AdminCourse[];
   locations: Location[];
   onCourseChange: (course: AdminCourse) => void;
+  onCourseDelete: (courseId: string) => void;
   onNotice: (notice: Notice) => void;
   token: string;
 }) {
@@ -1970,6 +2031,8 @@ function CoursesManager({
   const [scheduleDeadline, setScheduleDeadline] = useState("24");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [sessionDraft, setSessionDraft] = useState<CourseSession | null>(null);
+  const [confirmingDeleteCourseId, setConfirmingDeleteCourseId] = useState<string | null>(null);
+  const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
 
   const selectedLocationId = locationId || locations[0]?.id || "";
 
@@ -2113,6 +2176,30 @@ function CoursesManager({
     }
   }
 
+  async function handleDeleteCourse(course: AdminCourse): Promise<void> {
+    setDeletingCourseId(course.id);
+    try {
+      await api.deleteCourse(token, course.id);
+      onCourseDelete(course.id);
+      setConfirmingDeleteCourseId(null);
+      if (editingCourseId === course.id) {
+        setEditingCourseId(null);
+        setCourseDraft(null);
+      }
+      if (schedulingCourseId === course.id) {
+        setSchedulingCourseId(null);
+      }
+      onNotice({
+        tone: "success",
+        message: "Corso eliminato definitivamente insieme a lezioni e prenotazioni.",
+      });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    } finally {
+      setDeletingCourseId(null);
+    }
+  }
+
   function handleEditCourse(course: AdminCourse): void {
     setEditingCourseId(course.id);
     setCourseDraft({
@@ -2210,8 +2297,8 @@ function CoursesManager({
         {courses.length === 0 ? (
           <p className="muted">Nessun corso presente.</p>
         ) : (
-          courses.map((course, index) => (
-            <article className="admin-list-item admin-course-item" key={`${course.id}-${index}`}>
+          courses.map((course) => (
+            <article className="admin-list-item admin-course-item" key={course.id}>
               <CourseVisual discipline={course.discipline} imageUrl={course.image_url} />
               <div className="admin-course-body">
                 <h3>{course.title}</h3>
@@ -2357,7 +2444,7 @@ function CoursesManager({
                 </button>
                 {course.status !== "archived" ? (
                   <button
-                    className="secondary-action danger-action"
+                    className="secondary-action"
                     onClick={() => handleArchive(course)}
                     type="button"
                   >
@@ -2365,7 +2452,54 @@ function CoursesManager({
                     Archivia
                   </button>
                 ) : null}
+                <button
+                  aria-expanded={confirmingDeleteCourseId === course.id}
+                  aria-label={`Elimina definitivamente ${course.title}`}
+                  className="secondary-action danger-action permanent-delete-trigger"
+                  onClick={() => setConfirmingDeleteCourseId(course.id)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" />
+                  Elimina definitivamente
+                </button>
               </div>
+              {confirmingDeleteCourseId === course.id ? (
+                <div
+                  className="destructive-confirmation"
+                  role="alert"
+                  aria-labelledby={`delete-course-${course.id}`}
+                >
+                  <div>
+                    <strong id={`delete-course-${course.id}`}>
+                      Eliminare definitivamente “{course.title}”?
+                    </strong>
+                    <p>
+                      Verranno eliminate tutte le lezioni, le prenotazioni e le foto del corso.
+                      Questa operazione non puo essere annullata.
+                    </p>
+                  </div>
+                  <div className="destructive-confirmation-actions">
+                    <button
+                      className="secondary-action"
+                      disabled={deletingCourseId === course.id}
+                      onClick={() => setConfirmingDeleteCourseId(null)}
+                      type="button"
+                    >
+                      <XCircle aria-hidden="true" />
+                      Annulla
+                    </button>
+                    <button
+                      className="primary-action permanent-delete-action"
+                      disabled={deletingCourseId === course.id}
+                      onClick={() => handleDeleteCourse(course)}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" />
+                      {deletingCourseId === course.id ? "Eliminazione" : "Conferma eliminazione"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {schedulingCourseId === course.id ? (
                 <form className="schedule-form" onSubmit={(event) => handleCreateSchedule(event, course)}>
                   <fieldset className="schedule-mode-selector">
@@ -2594,14 +2728,14 @@ function LoginScreen({
   onVerifyTwoFactor,
 }: {
   notice: Notice | null;
-  onLogin: (email: string, password: string) => Promise<string | null>;
+  onLogin: (email: string, password: string) => Promise<TwoFactorStep | null>;
   onRegister: (payload: {
     email: string;
     firstName: string;
     lastName: string;
     password: string;
   }) => Promise<void>;
-  onVerifyTwoFactor: (challengeToken: string, totpCode: string) => Promise<boolean>;
+  onVerifyTwoFactor: (step: TwoFactorStep, totpCode: string) => Promise<boolean>;
 }) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
@@ -2609,17 +2743,16 @@ function LoginScreen({
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
-  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [twoFactorStep, setTwoFactorStep] = useState<TwoFactorStep | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSubmitting(true);
-    if (challengeToken !== null) {
-      await onVerifyTwoFactor(challengeToken, totpCode);
+    if (twoFactorStep !== null) {
+      await onVerifyTwoFactor(twoFactorStep, totpCode);
     } else if (mode === "login") {
-      const nextChallenge = await onLogin(email, password);
-      setChallengeToken(nextChallenge);
+      setTwoFactorStep(await onLogin(email, password));
     } else {
       await onRegister({ email, firstName, lastName, password });
     }
@@ -2648,18 +2781,26 @@ function LoginScreen({
         <form className="login-card" id="login-form" onSubmit={handleSubmit}>
           <div>
             <p className="eyebrow">
-              {challengeToken !== null ? "Verifica amministratore" : mode === "login" ? "Bentornato" : "Nuovo iscritto"}
+              {twoFactorStep?.kind === "setup"
+                ? "Proteggi il tuo accesso"
+                : twoFactorStep?.kind === "verify"
+                  ? "Verifica backoffice"
+                  : mode === "login"
+                    ? "Bentornato"
+                    : "Nuovo iscritto"}
             </p>
             <h2>
-              {challengeToken !== null
-                ? "Conferma accesso"
+              {twoFactorStep?.kind === "setup"
+                ? "Configura il 2FA"
+                : twoFactorStep?.kind === "verify"
+                  ? "Conferma accesso"
                 : mode === "login"
                   ? "Entra nell'area utente"
                   : "Crea account utente"}
             </h2>
           </div>
 
-          {challengeToken === null ? (
+          {twoFactorStep === null ? (
           <div className="auth-switch" role="tablist" aria-label="Accesso area utente">
             <button
               aria-selected={mode === "login"}
@@ -2689,7 +2830,7 @@ function LoginScreen({
             </div>
           ) : null}
 
-          {mode === "register" && challengeToken === null ? (
+          {mode === "register" && twoFactorStep === null ? (
             <div className="name-grid">
               <label className="field">
                 <span>Nome</span>
@@ -2717,7 +2858,7 @@ function LoginScreen({
             </div>
           ) : null}
 
-          {challengeToken === null ? <label className="field">
+          {twoFactorStep === null ? <label className="field">
             <span>Email</span>
             <input
               autoComplete="email"
@@ -2730,7 +2871,7 @@ function LoginScreen({
             />
           </label> : null}
 
-          {challengeToken === null ? <label className="field">
+          {twoFactorStep === null ? <label className="field">
             <span>Password</span>
             <input
               autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -2743,7 +2884,25 @@ function LoginScreen({
             />
           </label> : null}
 
-          {challengeToken !== null ? (
+          {twoFactorStep?.kind === "setup" ? (
+            <div className="two-factor-setup">
+              <p>Registra la chiave nell'app autenticatore, poi inserisci il codice generato.</p>
+              <label className="field">
+                <span>Chiave manuale 2FA</span>
+                <input
+                  onFocus={(event) => event.currentTarget.select()}
+                  readOnly
+                  value={twoFactorStep.secret}
+                />
+              </label>
+              <a className="secondary-action" href={twoFactorStep.otpauthUri}>
+                <ShieldCheck aria-hidden="true" />
+                Apri nell'autenticatore
+              </a>
+            </div>
+          ) : null}
+
+          {twoFactorStep !== null ? (
             <label className="field">
               <span>Codice 2FA</span>
               <input
@@ -2765,19 +2924,21 @@ function LoginScreen({
             <span>
               {submitting
                 ? "Operazione in corso"
-                : challengeToken !== null
-                  ? "Conferma codice"
+                : twoFactorStep?.kind === "setup"
+                  ? "Attiva e accedi"
+                  : twoFactorStep?.kind === "verify"
+                    ? "Conferma codice"
                 : mode === "login"
                   ? "Entra nell'area utente"
                   : "Crea account"}
             </span>
             <ArrowRight aria-hidden="true" />
           </button>
-          {challengeToken !== null ? (
+          {twoFactorStep !== null ? (
             <button
               className="secondary-action"
               onClick={() => {
-                setChallengeToken(null);
+                setTwoFactorStep(null);
                 setTotpCode("");
               }}
               type="button"

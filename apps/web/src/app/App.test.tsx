@@ -226,11 +226,19 @@ function installFetchMock(
     if (url.endsWith("/auth/login") && method === "POST") {
       const body = JSON.parse(init?.body?.toString() ?? "{}") as { email?: string };
       const isAdmin = body.email === "admin@example.com";
+      const isNewCollaborator = body.email === "collaborator@example.com";
 
       if (isAdmin) {
         return jsonResponse(
           { requires_2fa: true, challenge_token: "challenge-token" },
           { status: 202 },
+        );
+      }
+
+      if (isNewCollaborator) {
+        return jsonResponse(
+          { requires_2fa_setup: true, setup_token: "staff-setup-token" },
+          { status: 403 },
         );
       }
 
@@ -252,6 +260,22 @@ function installFetchMock(
         refresh_token: "admin-refresh-token",
         token_type: "bearer",
         user: { id: "admin-1", email: "admin@example.com", role: "admin" },
+      });
+    }
+
+    if (url.endsWith("/auth/2fa/setup") && method === "POST") {
+      return jsonResponse({
+        secret: "JBSWY3DPEHPK3PXP",
+        otpauth_uri: "otpauth://totp/MAKA:collaborator@example.com?secret=JBSWY3DPEHPK3PXP",
+      });
+    }
+
+    if (url.endsWith("/auth/2fa/confirm") && method === "POST") {
+      return jsonResponse({
+        access_token: "staff-access-token",
+        refresh_token: "staff-refresh-token",
+        token_type: "bearer",
+        user: { id: "staff-1", email: "collaborator@example.com", role: "staff" },
       });
     }
 
@@ -337,7 +361,11 @@ function installFetchMock(
     }
 
     if (url.endsWith("/admin/users/user-1") && method === "PATCH") {
-      return jsonResponse({ ...adminUsersResponse[0], status: "disabled" });
+      const body = JSON.parse(init?.body?.toString() ?? "{}") as {
+        role?: "admin" | "staff" | "user";
+        status?: "active" | "disabled" | "deleted";
+      };
+      return jsonResponse({ ...adminUsersResponse[0], ...body });
     }
 
     if (url.endsWith("/admin/users/user-1") && method === "DELETE") {
@@ -400,6 +428,14 @@ function installFetchMock(
 
     if (url.endsWith("/admin/courses/course-calisthenics") && method === "PATCH") {
       return jsonResponse({ ...adminCoursesResponse[0], title: "Calisthenics Foundation aggiornato" });
+    }
+
+    if (url.endsWith("/admin/courses/course-calisthenics/archive") && method === "POST") {
+      return jsonResponse({ ...adminCoursesResponse[0], status: "archived" });
+    }
+
+    if (url.endsWith("/admin/courses/course-calisthenics") && method === "DELETE") {
+      return jsonResponse({ id: "course-calisthenics", deleted: true });
     }
 
     if (url.endsWith("/admin/courses/course-martial/image") && method === "POST") {
@@ -636,6 +672,34 @@ describe("App", () => {
     );
   });
 
+  it("lets a new collaborator configure 2FA after entering credentials", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "collaborator@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "password-segreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
+
+    await screen.findByRole("heading", { name: "Configura il 2FA" });
+    expect(screen.getByLabelText("Chiave manuale 2FA")).toHaveValue("JBSWY3DPEHPK3PXP");
+    fireEvent.change(screen.getByLabelText("Codice 2FA"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Attiva e accedi" }));
+
+    await screen.findByRole("heading", { level: 2, name: "Corsi migliori" });
+    expect(screen.queryByRole("button", { name: "Utenti" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/auth/2fa/confirm",
+      expect.objectContaining({
+        body: JSON.stringify({ setup_token: "staff-setup-token", totp_code: "123456" }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("loads catalog, bookings and subscription after login", async () => {
     installFetchMock();
 
@@ -662,6 +726,35 @@ describe("App", () => {
     expect(within(overview).getByText("Iscritti attivi")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Corsi migliori" })).toBeInTheDocument();
     expect(screen.getAllByText("8 iscritti collegati")).toHaveLength(2);
+  });
+
+  it("keeps collaborators in course management without loading user data", async () => {
+    const fetchMock = installFetchMock();
+    localStorage.setItem(
+      "chiron.user.session",
+      JSON.stringify({
+        access_token: "staff-access-token",
+        refresh_token: "staff-refresh-token",
+        token_type: "bearer",
+        user: { id: "staff-1", email: "staff@example.com", role: "staff" },
+      }),
+    );
+
+    render(<App />);
+
+    await screen.findByRole("heading", { level: 2, name: "Corsi migliori" });
+    expect(screen.queryByRole("button", { name: "Utenti" })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "http://localhost:8000/admin/users",
+      expect.anything(),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "http://localhost:8000/admin/subscriptions",
+      expect.anything(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    expect(screen.getByRole("heading", { name: "Corsi e sessioni" })).toBeInTheDocument();
   });
 
   it("shows course session attendees from the admin calendar", async () => {
@@ -815,6 +908,38 @@ describe("App", () => {
     await screen.findByText("Lezione aggiornata.");
   });
 
+  it("requires confirmation and removes a permanently deleted course from the UI", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Elimina definitivamente Calisthenics Foundation",
+      }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Verranno eliminate tutte le lezioni, le prenotazioni e le foto del corso.",
+    );
+    expect(screen.getByRole("heading", { name: "Calisthenics Foundation" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Conferma eliminazione" }));
+
+    await screen.findByText(
+      "Corso eliminato definitivamente insieme a lezioni e prenotazioni.",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Calisthenics Foundation" }),
+    ).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/courses/course-calisthenics",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
   it("manages users and subscriptions from a dedicated backoffice tab", async () => {
     const fetchMock = installFetchMock();
 
@@ -823,7 +948,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Utenti" }));
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
-    expect(screen.getByText("Accesso amministrativo senza scadenza")).toBeInTheDocument();
+    expect(screen.getByText("Accesso amministratore senza scadenza")).toBeInTheDocument();
     expect(screen.getByText("Iscrizione scaduta il 01/07/2026")).toHaveClass(
       "expired-membership",
     );
@@ -866,6 +991,31 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/users/user-1",
       expect.objectContaining({ method: "PATCH" }),
+    );
+  });
+
+  it("lets an admin appoint a user as course collaborator", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Utenti" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /gestisci utente e iscrizione member@example.com/i,
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Ruolo"), { target: { value: "staff" } });
+    fireEvent.click(screen.getByRole("button", { name: /salva utente member@example.com/i }));
+
+    await screen.findByText("Utente aggiornato.");
+    expect(screen.getByText("Collaboratore")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/users/user-1",
+      expect.objectContaining({
+        body: expect.stringContaining('"role":"staff"'),
+        method: "PATCH",
+      }),
     );
   });
 

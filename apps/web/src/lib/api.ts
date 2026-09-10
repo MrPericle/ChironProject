@@ -33,6 +33,11 @@ export type TwoFactorSetupRequired = {
   setup_token: string;
 };
 
+export type TwoFactorSetup = {
+  secret: string;
+  otpauth_uri: string;
+};
+
 export type LoginResult = TokenPair | TwoFactorChallenge | TwoFactorSetupRequired;
 
 export type CatalogSession = {
@@ -226,7 +231,13 @@ export type AdminDashboard = {
   stats: AdminStats;
 };
 
+export type CourseDeleteResult = {
+  id: string;
+  deleted: true;
+};
+
 type RequestOptions = {
+  acceptedStatuses?: number[];
   token?: string;
   body?: unknown;
   method?: "GET" | "POST" | "PATCH" | "DELETE";
@@ -249,6 +260,7 @@ export class ChironApi {
 
   async login(payload: LoginPayload): Promise<LoginResult> {
     return this.request<LoginResult>("/auth/login", {
+      acceptedStatuses: [403],
       method: "POST",
       body: payload,
     });
@@ -258,6 +270,20 @@ export class ChironApi {
     return this.request<TokenPair>("/auth/2fa/verify", {
       method: "POST",
       body: { challenge_token: challengeToken, totp_code: totpCode },
+    });
+  }
+
+  async setupTwoFactor(setupToken: string): Promise<TwoFactorSetup> {
+    return this.request<TwoFactorSetup>("/auth/2fa/setup", {
+      method: "POST",
+      body: { setup_token: setupToken },
+    });
+  }
+
+  async confirmTwoFactor(setupToken: string, totpCode: string): Promise<TokenPair> {
+    return this.request<TokenPair>("/auth/2fa/confirm", {
+      method: "POST",
+      body: { setup_token: setupToken, totp_code: totpCode },
     });
   }
 
@@ -286,16 +312,27 @@ export class ChironApi {
     return { user, courses, bookings, subscription };
   }
 
-  async adminDashboard(token: string): Promise<AdminDashboard> {
-    const [locations, courses, subscriptions, users, stats] = await Promise.all([
+  async adminDashboard(token: string, role: UserRole): Promise<AdminDashboard> {
+    const [locations, courses, stats] = await Promise.all([
       this.request<Location[]>("/admin/locations", { token }),
       this.request<AdminCourse[]>("/admin/courses", { token }),
-      this.request<AdminSubscriptionInfo[]>("/admin/subscriptions", { token }),
-      this.request<AdminUser[]>("/admin/users", { token }),
       this.request<AdminStats>("/admin/stats", { token }),
     ]);
 
+    if (role !== "admin") {
+      return { locations, courses, subscriptions: [], users: [], stats };
+    }
+
+    const [subscriptions, users] = await Promise.all([
+      this.request<AdminSubscriptionInfo[]>("/admin/subscriptions", { token }),
+      this.request<AdminUser[]>("/admin/users", { token }),
+    ]);
+
     return { locations, courses, subscriptions, users, stats };
+  }
+
+  async adminStats(token: string): Promise<AdminStats> {
+    return this.request<AdminStats>("/admin/stats", { token });
   }
 
   async createLocation(token: string, payload: LocationPayload): Promise<Location> {
@@ -397,7 +434,14 @@ export class ChironApi {
   }
 
   async archiveCourse(token: string, courseId: string): Promise<AdminCourse> {
-    return this.request<AdminCourse>(`/admin/courses/${courseId}`, {
+    return this.request<AdminCourse>(`/admin/courses/${courseId}/archive`, {
+      method: "POST",
+      token,
+    });
+  }
+
+  async deleteCourse(token: string, courseId: string): Promise<CourseDeleteResult> {
+    return this.request<CourseDeleteResult>(`/admin/courses/${courseId}`, {
       method: "DELETE",
       token,
     });
@@ -499,7 +543,7 @@ export class ChironApi {
       body,
     });
 
-    if (!response.ok) {
+    if (!response.ok && !options.acceptedStatuses?.includes(response.status)) {
       throw new ApiError(await errorMessage(response), response.status);
     }
 

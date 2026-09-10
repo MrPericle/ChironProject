@@ -278,6 +278,25 @@ h3 {
   gap: 12px;
 }
 
+.two-factor-setup {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(181, 18, 27, 0.22);
+  border-radius: 8px;
+  background: #f2f0ed;
+}
+
+.two-factor-setup p {
+  margin: 0;
+  color: #4f4f54;
+  line-height: 1.5;
+}
+
+.two-factor-setup .secondary-action {
+  width: 100%;
+}
+
 .field {
   display: grid;
   min-width: 0;
@@ -387,6 +406,12 @@ h3 {
 .danger-action {
   border-color: rgba(181, 18, 27, 0.3);
   color: #9d1720;
+}
+
+.permanent-delete-action {
+  border-color: #7f1118;
+  background: #7f1118;
+  color: #ffffff;
 }
 
 .app-shell {
@@ -1541,6 +1566,10 @@ h3 {
   font-weight: 900;
 }
 
+.role-status {
+  margin-left: 6px;
+}
+
 .muted-status {
   background: #eee9e7;
   color: #6b6262;
@@ -1552,6 +1581,31 @@ h3 {
 }
 
 .admin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.destructive-confirmation {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(181, 18, 27, 0.38);
+  border-radius: 8px;
+  background: #fff3f3;
+}
+
+.destructive-confirmation strong {
+  color: #7f1118;
+}
+
+.destructive-confirmation p {
+  margin: 5px 0 0;
+  color: #5f3033;
+}
+
+.destructive-confirmation-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1957,6 +2011,10 @@ h3 {
     border-top: 1px solid rgba(255, 141, 147, 0.12);
     background: rgba(11, 11, 13, 0.96);
     backdrop-filter: blur(18px);
+  }
+
+  .admin-tabs[data-tab-count="4"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .admin-tabs button {
@@ -2501,6 +2559,32 @@ h3 {
     grid-column: 1 / -1;
   }
 
+  .permanent-delete-trigger {
+    grid-column: 1 / -1;
+  }
+
+  .destructive-confirmation {
+    border-color: rgba(239, 37, 44, 0.42);
+    background: #351416;
+  }
+
+  .destructive-confirmation strong {
+    color: #ffe8e9;
+  }
+
+  .destructive-confirmation p {
+    color: #ffc8cb;
+  }
+
+  .destructive-confirmation-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .destructive-confirmation-actions button {
+    width: 100%;
+  }
+
   .admin-form > .primary-action,
   .schedule-form > .primary-action,
   .session-edit-fields > .primary-action {
@@ -2720,9 +2804,23 @@ h3 {
   }
 
   .admin-course-item > .admin-row-actions,
+  .admin-course-item > .destructive-confirmation,
   .admin-course-item > .schedule-form,
   .admin-course-item > .course-session-admin-list {
     grid-column: 1 / -1;
+  }
+
+  .destructive-confirmation {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .destructive-confirmation-actions {
+    flex-wrap: nowrap;
+  }
+
+  .permanent-delete-trigger {
+    grid-column: auto;
   }
 
 }
