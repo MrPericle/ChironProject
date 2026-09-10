@@ -4,6 +4,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 !apps/api/.env.example
 !apps/web/.env.example
 
@@ -28,6 +29,7 @@ coverage/
 # Docker and local data
 *.log
 docker-data/
+backups/
 apps/api/uploads/*
 !apps/api/uploads/.gitkeep
 

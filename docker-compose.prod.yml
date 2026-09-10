@@ -1,0 +1,124 @@
+name: maka
+
+x-logging: &default-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging: *default-logging
+
+  api:
+    image: maka-api:${IMAGE_TAG:-local}
+    build:
+      context: ./apps/api
+      target: production
+    environment:
+      APP_ENV: ${APP_ENV}
+      APP_NAME: ${APP_NAME}
+      APP_CORS_ORIGINS: ${APP_CORS_ORIGINS}
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS}
+      AUTH_TOKEN_ISSUER: ${AUTH_TOKEN_ISSUER}
+      WAITLIST_ENABLED: ${WAITLIST_ENABLED}
+      APP_TIMEZONE: ${APP_TIMEZONE}
+      BOOKING_HORIZON_DAYS: ${BOOKING_HORIZON_DAYS}
+      COURSE_UPLOAD_DIR: ${COURSE_UPLOAD_DIR}
+      DATABASE_URL: ${DATABASE_URL}
+    volumes:
+      - course_uploads:/app/uploads
+    networks:
+      - edge
+      - database
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    logging: *default-logging
+
+  web:
+    image: maka-web:${IMAGE_TAG:-local}
+    build:
+      context: ./apps/web
+      target: production
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL}
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    logging: *default-logging
+
+networks:
+  edge:
+  database:
+    internal: true
+
+volumes:
+  postgres_data:
+  course_uploads:
+  caddy_data:
+  caddy_config:
