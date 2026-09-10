@@ -151,26 +151,31 @@ privacy WHOIS e le regole di registrazione dipendono dall'estensione scelta.
 
 Il cliente non deve inviare al tecnico password o codici 2FA DigitalOcean.
 
-## 5. Blocco di rilascio: modifiche necessarie al repository
+## 5. Blocco di rilascio: stato dei prerequisiti
 
-Prima di creare dati reali in produzione il tecnico deve aggiungere e verificare:
+Al 10 settembre 2026 sono presenti e validati localmente:
 
-- `docker-compose.prod.yml` senza bind mount del codice e senza hot reload;
-- immagini buildate usando i target `production` di API e frontend;
-- un `Caddyfile` per dominio, HTTPS e redirect da `www`;
-- supporto del Dockerfile web a `VITE_API_BASE_URL` come build argument;
+- `docker-compose.prod.yml` senza bind mount del codice o hot reload;
+- immagini API e web costruite usando i target `production`;
+- configurazione Caddy per app, API, HTTPS e redirect da `www`;
+- `VITE_API_BASE_URL` incorporato nel frontend tramite build argument;
 - esposizione pubblica delle sole porte `80` e `443` di Caddy;
-- rete Docker privata per API e database;
-- volumi persistenti per PostgreSQL, upload e certificati Caddy;
+- rete privata per PostgreSQL e volumi persistenti per dati, upload e Caddy;
 - healthcheck, restart policy e limiti alla crescita dei log;
-- file `.env.production` ignorato da Git e leggibile solo dall'utente deploy;
+- `.env.production.example`, mentre `.env.production` resta ignorato da Git;
 - comando idempotente per creare o promuovere il primo amministratore;
-- backup automatico di database e immagini, con una copia esterna;
-- procedura di restore provata in un ambiente isolato;
-- smoke test della release e procedura di rollback.
+- script di backup e verifica restore per database e immagini;
+- pipeline CI con lint, test, migrazioni e build delle immagini production.
 
-Questa guida descrive il risultato atteso, ma tali artefatti non sono ancora
-tutti presenti nel repository al momento della stesura.
+Prima dell'apertura al pubblico restano da eseguire insieme:
+
+- creazione e configurazione del VPS e dei DNS;
+- compilazione sicura di `.env.production` con segreti reali;
+- primo deploy staging e smoke test esterni;
+- copia cifrata dei backup fuori dal VPS e relativa retention;
+- prova di restore nello staging;
+- configurazione del deploy GitHub tramite environment protetto;
+- collaudo e approvazione del passaggio in produzione.
 
 ## 6. Creazione dell'infrastruttura DigitalOcean
 
@@ -424,17 +429,19 @@ puntano al server e le porte 80 e 443 sono raggiungibili.
 
 ### Primo amministratore
 
-Il repository non dispone ancora di un comando CLI di bootstrap verificato. La
-forma seguente e' un obiettivo da implementare, non un comando oggi eseguibile:
+Eseguire il comando dopo avere applicato le migrazioni. Email, nome e cognome
+possono essere passati come opzioni; la password viene sempre richiesta senza
+essere mostrata nel terminale:
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml run --rm api \
   python -m chiron_api.cli create-admin
 ```
 
-Il comando dovra' chiedere email e password in modo interattivo, non stamparle
-nei log ed essere idempotente. Il cliente ricevera' la password temporanea via
-password manager, la cambiera' al primo accesso e completera' il flusso 2FA.
+Il comando e' idempotente: se l'email appartiene gia' a un utente, lo promuove
+senza cambiare la password; se e' gia' un admin attivo, non modifica nulla. Il
+cliente ricevera' la password iniziale tramite password manager e completera'
+il flusso 2FA al primo accesso.
 
 ## 12. Collaudo prima dell'apertura
 
@@ -505,12 +512,12 @@ Piano minimo consigliato:
 - controllo automatico dell'esito e avviso in caso di errore;
 - test di restore almeno ogni tre mesi e dopo modifiche importanti al database.
 
-Un esempio di dump manuale, da adattare ai nomi del compose di produzione:
+Il runbook completo e' in `docs/deploy/BACKUP_RESTORE.md`. Il backup manuale si
+esegue con:
 
 ```bash
 cd /srv/maka/app
-docker compose --env-file .env.production -f docker-compose.prod.yml exec -T db \
-  pg_dump -U chiron -d chiron -Fc > /srv/maka-backups/chiron-manual.dump
+BACKUP_DIR=/srv/maka-backups ./scripts/backup.sh
 ```
 
 La procedura di restore deve essere provata su un database separato. Non
@@ -586,4 +593,3 @@ Dominio e TLS:
 - [Rinnovo domini Cloudflare](https://developers.cloudflare.com/registrar/account-options/renew-domains/)
 - [DNSSEC su Cloudflare](https://developers.cloudflare.com/registrar/get-started/enable-dnssec/)
 - [Caddy reverse proxy e HTTPS automatico](https://caddyserver.com/docs/quick-starts/reverse-proxy)
-

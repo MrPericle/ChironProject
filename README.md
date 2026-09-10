@@ -23,8 +23,6 @@ tests/e2e     Test end-to-end futuri
 
 ## Avvio locale
 
-Quando le dipendenze saranno installate:
-
 ```bash
 docker compose up --build
 ```
@@ -34,6 +32,19 @@ Servizi attesi:
 - API: `http://localhost:8000`
 - Health check API: `http://localhost:8000/health`
 - Frontend: `http://localhost:5173`
+
+## Preparazione production
+
+Gli artefatti production possono essere validati e costruiti localmente senza
+avviare un deploy:
+
+```bash
+docker compose --env-file .env.production.example -f docker-compose.prod.yml config
+docker compose --env-file .env.production.example -f docker-compose.prod.yml build api web
+```
+
+La procedura VPS e in `docs/deploy/DIGITALOCEAN.md`; backup e verifica restore
+sono descritti in `docs/deploy/BACKUP_RESTORE.md`.
 
 ## Roadmap
 

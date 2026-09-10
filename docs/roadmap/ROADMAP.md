@@ -418,6 +418,11 @@ Completato: test backend e frontend coprono concorrenza, capienza per data, vali
 
 ## Milestone 9 - CI/CD e deploy VPS
 
+Stato pre-deploy al 10 settembre 2026: pipeline CI, immagini production,
+Compose production, Caddy, bootstrap admin e strumenti backup/restore sono
+pronti e validati localmente. Il lavoro e intenzionalmente fermo prima del
+deploy staging, che verra eseguito insieme passo passo.
+
 ### `ci: aggiungi test backend e frontend`
 
 Descrizione: completare pipeline con lint, unit, integration e build frontend.
@@ -442,17 +447,24 @@ Descrizione: deploy via SSH su VPS con Docker Compose e variabili ambiente separ
 
 Definition of done: staging raggiungibile, migrazioni applicate in modo controllato.
 
+Stato: **in attesa** della sessione condivisa di deploy.
+
 ### `chore: configura deploy produzione`
 
 Descrizione: deploy produzione manualmente approvato o protetto da environment GitHub.
 
 Definition of done: produzione deployabile in modo riproducibile e documentato.
 
+Stato: **non iniziato**; richiede prima il collaudo staging.
+
 ### `docs: runbook backup e restore`
 
 Descrizione: documentare backup PostgreSQL, restore e responsabilita operative.
 
 Definition of done: procedura provata almeno una volta in staging.
+
+Stato: script e runbook verificati localmente; prova staging ancora da eseguire
+insieme.
 
 ## Milestone 10 - Hardening, test finali e documentazione
 
