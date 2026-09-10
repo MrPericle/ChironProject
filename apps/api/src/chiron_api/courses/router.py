@@ -20,6 +20,7 @@ from chiron_api.courses.schemas import (
     CatalogCourseResponse,
     CatalogSessionResponse,
     CourseCreate,
+    CourseDeleteResponse,
     CourseResponse,
     CourseScheduleCreate,
     CourseSessionCreate,
@@ -145,6 +146,16 @@ def commit_course_change(db: Session, *, conflict_detail: str) -> None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict_detail) from exc
 
 
+def delete_course_images(course_id: UUID, settings: Settings) -> None:
+    upload_dir = Path(settings.course_upload_dir)
+    if not upload_dir.exists():
+        return
+
+    for image_path in upload_dir.glob(f"course-{course_id}-*"):
+        if image_path.is_file():
+            image_path.unlink()
+
+
 @router.post(
     "/admin/locations",
     response_model=LocationResponse,
@@ -262,7 +273,7 @@ def update_course(
     return course
 
 
-@router.delete("/admin/courses/{course_id}", response_model=CourseResponse)
+@router.post("/admin/courses/{course_id}/archive", response_model=CourseResponse)
 def archive_course(
     course_id: UUID,
     _: User = backoffice_user,
@@ -274,6 +285,20 @@ def archive_course(
     db.commit()
     db.refresh(course)
     return course
+
+
+@router.delete("/admin/courses/{course_id}", response_model=CourseDeleteResponse)
+def delete_course(
+    course_id: UUID,
+    _: User = backoffice_user,
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> CourseDeleteResponse:
+    course = get_course_or_404(db, course_id)
+    delete_course_images(course.id, settings)
+    db.delete(course)
+    db.commit()
+    return CourseDeleteResponse(id=course_id, deleted=True)
 
 
 @router.post("/admin/courses/{course_id}/image", response_model=CourseResponse)

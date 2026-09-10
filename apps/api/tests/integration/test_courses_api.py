@@ -328,6 +328,71 @@ def test_admin_can_upload_course_image(tmp_path) -> None:
     assert len(list(tmp_path.iterdir())) == 1
 
 
+def test_collaborator_can_permanently_delete_course_and_all_related_data(tmp_path) -> None:
+    settings = Settings(COURSE_UPLOAD_DIR=str(tmp_path))
+    client, session_factory = make_client(settings)
+    staff = create_user(session_factory, UserRole.STAFF)
+    member = create_user(session_factory, UserRole.USER)
+
+    with session_factory() as session:
+        location = Location(name="MAKA Roma", address="Via Roma 1", city="Roma")
+        course = Course(
+            location=location,
+            title="Corso da eliminare",
+            status=CourseStatus.PUBLISHED,
+        )
+        course_session = CourseSession(
+            course=course,
+            weekday=1,
+            starts_at=time(18, 0),
+            ends_at=time(19, 0),
+            capacity=10,
+        )
+        session.add(course_session)
+        session.flush()
+        booking = Booking(
+            user_id=member.id,
+            course_session_id=course_session.id,
+            occurs_on=next_occurrence_date(course_session.weekday),
+            status=BookingStatus.CONFIRMED,
+        )
+        session.add(booking)
+        session.commit()
+        course_id = course.id
+        session_id = course_session.id
+        booking_id = booking.id
+
+    current_image = tmp_path / f"course-{course_id}-current.jpg"
+    stale_image = tmp_path / f"course-{course_id}-stale.webp"
+    unrelated_image = tmp_path / "course-unrelated.jpg"
+    current_image.write_bytes(b"current")
+    stale_image.write_bytes(b"stale")
+    unrelated_image.write_bytes(b"keep")
+
+    response = client.delete(
+        f"/admin/courses/{course_id}",
+        headers=headers_for(staff),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"id": str(course_id), "deleted": True}
+    with session_factory() as session:
+        assert session.get(Course, course_id) is None
+        assert session.get(CourseSession, session_id) is None
+        assert session.get(Booking, booking_id) is None
+    assert not current_image.exists()
+    assert not stale_image.exists()
+    assert unrelated_image.exists()
+
+    bookings_response = client.get("/bookings/me", headers=headers_for(member))
+    assert bookings_response.status_code == 200
+    assert bookings_response.json() == []
+
+    courses_response = client.get("/admin/courses", headers=headers_for(staff))
+    assert courses_response.status_code == 200
+    assert courses_response.json() == []
+
+
 def test_catalog_filters_courses_by_location_weekday_and_availability() -> None:
     client, session_factory = make_client()
     member = create_user(session_factory, UserRole.USER)

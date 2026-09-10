@@ -19,6 +19,7 @@ from chiron_api.admin.schemas import (
 )
 from chiron_api.auth.dependencies import require_roles
 from chiron_api.auth.passwords import hash_password
+from chiron_api.auth.tokens import revoke_user_refresh_tokens
 from chiron_api.bookings.service import cancel_active_user_bookings
 from chiron_api.config import Settings, get_settings
 from chiron_api.db.models import (
@@ -39,6 +40,7 @@ from chiron_api.subscriptions.service import is_subscription_active_on, latest_u
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 backoffice_user = Depends(require_roles(UserRole.ADMIN, UserRole.STAFF))
+admin_user = Depends(require_roles(UserRole.ADMIN))
 
 
 def normalize_email(email: str) -> str:
@@ -85,7 +87,7 @@ def user_response(db: Session, user: User) -> AdminUserResponse:
 
 @router.get("/users", response_model=list[AdminUserResponse])
 def list_users(
-    _: User = backoffice_user,
+    _: User = admin_user,
     db: Session = Depends(get_db_session),
 ) -> list[AdminUserResponse]:
     users = db.scalars(select(User).order_by(User.email)).unique().all()
@@ -95,7 +97,7 @@ def list_users(
 @router.post("/users", response_model=AdminUserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: AdminUserCreate,
-    _: User = backoffice_user,
+    _: User = admin_user,
     db: Session = Depends(get_db_session),
 ) -> AdminUserResponse:
     user = User(
@@ -127,7 +129,7 @@ def create_user(
 def update_user(
     user_id: UUID,
     payload: AdminUserUpdate,
-    _: User = backoffice_user,
+    _: User = admin_user,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
 ) -> AdminUserResponse:
@@ -138,7 +140,10 @@ def update_user(
     if "email" in data:
         user.email = normalize_email(data["email"])
     if "role" in data:
-        user.role = data["role"]
+        next_role = data["role"]
+        if user.role != next_role:
+            user.role = next_role
+            revoke_user_refresh_tokens(db, user.id)
     if "status" in data:
         user.status = data["status"]
         if user.status in (UserStatus.DISABLED, UserStatus.DELETED):
@@ -170,7 +175,7 @@ def update_user(
 @router.delete("/users/{user_id}", response_model=AdminUserResponse)
 def delete_user(
     user_id: UUID,
-    _: User = backoffice_user,
+    _: User = admin_user,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
 ) -> AdminUserResponse:
@@ -193,7 +198,7 @@ def delete_user(
 def create_user_subscription(
     user_id: UUID,
     payload: AdminSubscriptionCreate,
-    _: User = backoffice_user,
+    _: User = admin_user,
     db: Session = Depends(get_db_session),
 ) -> AdminUserSubscriptionResponse:
     get_user_or_404(db, user_id)
@@ -212,7 +217,7 @@ def create_user_subscription(
 def update_subscription(
     subscription_id: UUID,
     payload: AdminSubscriptionUpdate,
-    _: User = backoffice_user,
+    _: User = admin_user,
     db: Session = Depends(get_db_session),
 ) -> AdminUserSubscriptionResponse:
     subscription = db.get(Subscription, subscription_id)

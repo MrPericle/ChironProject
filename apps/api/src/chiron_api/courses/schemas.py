@@ -67,6 +67,11 @@ class CourseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CourseDeleteResponse(BaseModel):
+    id: UUID
+    deleted: bool
+
+
 class CourseSessionCreate(BaseModel):
     weekday: int | None = Field(default=None, ge=0, le=6)
     occurs_on: date | None = None

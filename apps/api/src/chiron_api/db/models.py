@@ -247,7 +247,10 @@ class CourseSession(Base):
     )
 
     course: Mapped[Course] = relationship(back_populates="sessions")
-    bookings: Mapped[list["Booking"]] = relationship(back_populates="course_session")
+    bookings: Mapped[list["Booking"]] = relationship(
+        back_populates="course_session",
+        cascade="all, delete-orphan",
+    )
 
 
 class Booking(Base):

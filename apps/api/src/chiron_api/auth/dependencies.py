@@ -24,6 +24,7 @@ def get_current_user(
     try:
         payload = decode_token(credentials.credentials, settings, expected_type=ACCESS_TOKEN_TYPE)
         user_id = UUID(payload["sub"])
+        token_role = UserRole(payload["role"])
     except (KeyError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -31,7 +32,7 @@ def get_current_user(
         ) from exc
 
     user = db.get(User, user_id)
-    if user is None or user.status != UserStatus.ACTIVE:
+    if user is None or user.status != UserStatus.ACTIVE or user.role != token_role:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     return user

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from chiron_api.auth.passwords import hash_password
+from chiron_api.auth.tokens import revoke_user_refresh_tokens
 from chiron_api.db.models import User, UserProfile, UserRole, UserStatus
 from chiron_api.db.session import SessionLocal
 
@@ -65,6 +66,7 @@ def create_or_promote_admin(
         action: Literal["created", "promoted", "unchanged"] = "created"
     else:
         changed = user.role != UserRole.ADMIN or user.status != UserStatus.ACTIVE
+        role_changed = user.role != UserRole.ADMIN
         user.role = UserRole.ADMIN
         user.status = UserStatus.ACTIVE
         user.deleted_at = None
@@ -75,6 +77,8 @@ def create_or_promote_admin(
             )
             changed = True
         db.add(user)
+        if role_changed:
+            revoke_user_refresh_tokens(db, user.id)
         action = "promoted" if changed else "unchanged"
 
     db.commit()

@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from chiron_api.auth.tokens import create_access_token
+from chiron_api.auth.tokens import create_access_token, issue_token_pair
 from chiron_api.config import get_settings
 from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
@@ -123,6 +123,83 @@ def test_admin_can_manage_users_and_subscriptions() -> None:
     delete_response = client.delete(f"/admin/users/{member_id}", headers=headers_for(admin))
     assert delete_response.status_code == 200
     assert delete_response.json()["status"] == "deleted"
+
+
+def test_admin_can_promote_a_user_to_collaborator() -> None:
+    client, session_factory = make_client()
+    admin = create_user(session_factory, email="admin@example.com", role=UserRole.ADMIN)
+    member = create_user(session_factory, email="member@example.com")
+    old_access_headers = headers_for(member)
+    with session_factory() as session:
+        member_record = session.get(User, member.id)
+        token_pair = issue_token_pair(session, member_record, get_settings())
+
+    response = client.patch(
+        f"/admin/users/{member.id}",
+        json={"role": "staff"},
+        headers=headers_for(admin),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "staff"
+    with session_factory() as session:
+        assert session.get(User, member.id).role == UserRole.STAFF
+
+    old_access_response = client.get("/admin/courses", headers=old_access_headers)
+    assert old_access_response.status_code == 401
+    old_refresh_response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": token_pair["refresh_token"]},
+    )
+    assert old_refresh_response.status_code == 401
+
+
+def test_collaborator_cannot_access_user_or_subscription_management() -> None:
+    client, session_factory = make_client()
+    staff = create_user(session_factory, email="staff@example.com", role=UserRole.STAFF)
+    member = create_user(session_factory, email="member@example.com")
+    with session_factory() as session:
+        subscription = Subscription(
+            user_id=member.id,
+            starts_on=date.today(),
+            duration_days=30,
+        )
+        session.add(subscription)
+        session.commit()
+        subscription_id = subscription.id
+
+    requests = [
+        client.get("/admin/users", headers=headers_for(staff)),
+        client.post(
+            "/admin/users",
+            json={
+                "email": "new@example.com",
+                "password": "password-segreta",
+                "first_name": "Nuovo",
+                "last_name": "Utente",
+            },
+            headers=headers_for(staff),
+        ),
+        client.patch(
+            f"/admin/users/{member.id}",
+            json={"role": "staff"},
+            headers=headers_for(staff),
+        ),
+        client.delete(f"/admin/users/{member.id}", headers=headers_for(staff)),
+        client.get("/admin/subscriptions", headers=headers_for(staff)),
+        client.post(
+            f"/admin/users/{member.id}/subscriptions",
+            json={"starts_on": date.today().isoformat(), "duration_days": 30},
+            headers=headers_for(staff),
+        ),
+        client.patch(
+            f"/admin/subscriptions/{subscription_id}",
+            json={"duration_days": 60},
+            headers=headers_for(staff),
+        ),
+    ]
+
+    assert all(response.status_code == 403 for response in requests)
 
 
 def test_disabling_user_releases_confirmed_and_waitlisted_bookings() -> None:

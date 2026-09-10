@@ -16,7 +16,7 @@ from chiron_api.subscriptions.service import (
 
 router = APIRouter(tags=["subscriptions"])
 
-backoffice_user = Depends(require_roles(UserRole.ADMIN, UserRole.STAFF))
+admin_user = Depends(require_roles(UserRole.ADMIN))
 
 
 def build_subscription_response(subscription: Subscription) -> SubscriptionInfoResponse:
@@ -46,7 +46,7 @@ def my_subscription(
 
 @router.get("/admin/subscriptions", response_model=list[AdminSubscriptionInfoResponse])
 def admin_subscriptions(
-    _: User = backoffice_user,
+    _: User = admin_user,
     expires_before: date | None = Query(default=None),
     location_id: UUID | None = None,
     db: Session = Depends(get_db_session),
