@@ -416,6 +416,22 @@ Completato: le statistiche conteggiano utenti unici abilitati e sole prenotazion
 
 Completato: test backend e frontend coprono concorrenza, capienza per data, validita dell'iscrizione nella data della lezione, partecipanti admin e rilascio delle prenotazioni.
 
+## Incremento completato - Cancellazione corsi e collaboratori
+
+### `feat: elimina definitivamente corsi e dati collegati`
+
+Completato: l'admin e i collaboratori possono eliminare definitivamente un
+corso con conferma esplicita. La cancellazione rimuove lezioni, prenotazioni e
+immagini associate; le prenotazioni eliminate scompaiono anche dall'area
+utente al successivo aggiornamento dei dati.
+
+### `feat: ruolo collaboratore per la gestione corsi`
+
+Completato: l'admin puo promuovere un utente a Collaboratore. Il collaboratore
+accede al backoffice con 2FA e puo gestire sedi, corsi, calendario e
+partecipanti, ma non puo visualizzare o modificare utenti e iscrizioni. Il
+cambio di ruolo revoca le sessioni precedenti e richiede un nuovo accesso.
+
 ## Milestone 9 - CI/CD e deploy VPS
 
 Stato pre-deploy al 10 settembre 2026: pipeline CI, immagini production,

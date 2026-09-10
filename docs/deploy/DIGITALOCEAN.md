@@ -454,6 +454,12 @@ Il tecnico e il cliente devono verificare insieme:
 - registrazione, login, logout, rinnovo sessione e recupero dagli errori;
 - login amministratore con password e secondo fattore nel corretto ordine;
 - creazione di sede, corso ricorrente, capienza, orari e immagine;
+- cancellazione definitiva di un corso e rimozione delle relative lezioni,
+  prenotazioni e immagini sia dal backoffice sia dall'area utente;
+- promozione di un utente a Collaboratore, configurazione 2FA al primo accesso
+  e gestione di sedi, corsi, calendario e partecipanti;
+- impossibilita' per il Collaboratore di visualizzare o modificare utenti e
+  iscrizioni, verificata sia nell'interfaccia sia tramite API;
 - persistenza dell'immagine dopo ricreazione dei container;
 - attivazione iscrizione, prenotazione, annullamento e lista d'attesa;
 - blocco prenotazione con iscrizione scaduta;
