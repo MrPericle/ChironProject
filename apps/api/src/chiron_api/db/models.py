@@ -162,9 +162,7 @@ class Location(Base):
 
 class Course(Base):
     __tablename__ = "courses"
-    __table_args__ = (
-        UniqueConstraint("location_id", "title", name="uq_courses_location_title"),
-    )
+    __table_args__ = (UniqueConstraint("location_id", "title", name="uq_courses_location_title"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     location_id: Mapped[UUID] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
@@ -177,6 +175,11 @@ class Course(Base):
         nullable=False,
     )
     image_url: Mapped[str | None] = mapped_column(String(500))
+    requires_active_subscription: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
     status: Mapped[CourseStatus] = mapped_column(
         Enum(CourseStatus, name="course_status", values_callable=enum_values),
         default=CourseStatus.DRAFT,
@@ -212,14 +215,25 @@ class CourseSession(Base):
             "starts_at",
             "ends_at",
             unique=True,
-            postgresql_where=text("is_active = true"),
-            sqlite_where=text("is_active = 1"),
+            postgresql_where=text("is_active = true AND occurs_on IS NULL"),
+            sqlite_where=text("is_active = 1 AND occurs_on IS NULL"),
+        ),
+        Index(
+            "uq_active_single_course_session_schedule",
+            "course_id",
+            "occurs_on",
+            "starts_at",
+            "ends_at",
+            unique=True,
+            postgresql_where=text("is_active = true AND occurs_on IS NOT NULL"),
+            sqlite_where=text("is_active = 1 AND occurs_on IS NOT NULL"),
         ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
     weekday: Mapped[int] = mapped_column(Integer, nullable=False)
+    occurs_on: Mapped[date | None] = mapped_column(Date)
     starts_at: Mapped[time] = mapped_column(Time, nullable=False)
     ends_at: Mapped[time] = mapped_column(Time, nullable=False)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -280,9 +294,7 @@ class RefreshToken(Base):
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
-    __table_args__ = (
-        CheckConstraint("duration_days > 0", name="duration_days_positive"),
-    )
+    __table_args__ = (CheckConstraint("duration_days > 0", name="duration_days_positive"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))

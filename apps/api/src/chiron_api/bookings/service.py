@@ -99,7 +99,15 @@ def validate_occurrence_date(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Occurrence date is outside the booking window",
         )
-    if sunday_based_weekday(occurs_on) != course_session.weekday:
+    if course_session.occurs_on is not None and occurs_on != course_session.occurs_on:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Occurrence date does not match the scheduled lesson",
+        )
+    if (
+        course_session.occurs_on is None
+        and sunday_based_weekday(occurs_on) != course_session.weekday
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Occurrence date does not match the course schedule",
@@ -134,14 +142,17 @@ def create_booking(
     occurs_on: date,
     settings: Settings,
 ) -> Booking:
-    if not user_has_active_subscription(db, user.id, target_date=occurs_on):
+    course_session = get_locked_course_session(db, course_session_id)
+    validate_occurrence_date(course_session, occurs_on, settings)
+    if course_session.course.requires_active_subscription and not user_has_active_subscription(
+        db,
+        user.id,
+        target_date=occurs_on,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Active subscription required",
         )
-
-    course_session = get_locked_course_session(db, course_session_id)
-    validate_occurrence_date(course_session, occurs_on, settings)
     existing_booking = get_existing_booking(db, user.id, course_session_id, occurs_on)
     if existing_booking is not None and existing_booking.status != BookingStatus.CANCELLED:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Booking already exists")

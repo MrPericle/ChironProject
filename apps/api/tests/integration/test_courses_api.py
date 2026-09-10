@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.tokens import create_access_token
 from chiron_api.config import Settings, get_settings
-from chiron_api.courses.scheduling import occurrence_dates
+from chiron_api.courses.scheduling import occurrence_dates, sunday_based_weekday
 from chiron_api.db.base import Base
 from chiron_api.db.models import (
     Booking,
@@ -145,6 +145,7 @@ def test_admin_can_manage_courses_and_sessions() -> None:
             "title": "Calisthenics Base",
             "description": "Forza, controllo e tecnica.",
             "discipline": "calisthenics",
+            "requires_active_subscription": False,
             "status": "published",
         },
         headers=headers_for(admin),
@@ -153,6 +154,7 @@ def test_admin_can_manage_courses_and_sessions() -> None:
     course_id = course_response.json()["id"]
     assert course_response.json()["discipline"] == "calisthenics"
     assert course_response.json()["image_url"] is None
+    assert course_response.json()["requires_active_subscription"] is False
     assert course_response.json()["sessions"] == []
 
     duplicate_course_response = client.post(
@@ -179,6 +181,7 @@ def test_admin_can_manage_courses_and_sessions() -> None:
         headers=headers_for(admin),
     )
     assert session_response.status_code == 201
+    assert session_response.json()["occurs_on"] is None
     session_id = session_response.json()["id"]
 
     duplicate_session_response = client.post(
@@ -208,6 +211,30 @@ def test_admin_can_manage_courses_and_sessions() -> None:
     assert schedule_response.status_code == 201
     assert [item["weekday"] for item in schedule_response.json()] == [3, 5]
 
+    single_occurs_on = date.today() + timedelta(days=2)
+    single_session_payload = {
+        "occurs_on": single_occurs_on.isoformat(),
+        "starts_at": "10:00:00",
+        "ends_at": "11:00:00",
+        "capacity": 8,
+        "cancellation_deadline_hours": 6,
+    }
+    single_session_response = client.post(
+        f"/admin/courses/{course_id}/sessions",
+        json=single_session_payload,
+        headers=headers_for(admin),
+    )
+    assert single_session_response.status_code == 201
+    assert single_session_response.json()["occurs_on"] == single_occurs_on.isoformat()
+    assert single_session_response.json()["weekday"] == sunday_based_weekday(single_occurs_on)
+
+    duplicate_single_session_response = client.post(
+        f"/admin/courses/{course_id}/sessions",
+        json=single_session_payload,
+        headers=headers_for(admin),
+    )
+    assert duplicate_single_session_response.status_code == 409
+
     update_session_response = client.patch(
         f"/admin/course-sessions/{session_id}",
         json={"capacity": 14},
@@ -223,7 +250,7 @@ def test_admin_can_manage_courses_and_sessions() -> None:
     )
     assert update_course_response.status_code == 200
     assert update_course_response.json()["title"] == "Calisthenics Fundamentals"
-    assert len(update_course_response.json()["sessions"]) == 3
+    assert len(update_course_response.json()["sessions"]) == 4
 
 
 def test_admin_cannot_reduce_capacity_below_confirmed_bookings() -> None:
@@ -365,5 +392,40 @@ def test_catalog_filters_courses_by_location_weekday_and_availability() -> None:
     payload = response.json()
     assert [course["title"] for course in payload] == ["Pole Flow"]
     assert payload[0]["discipline"] == "pole_dance"
+    assert payload[0]["requires_active_subscription"] is True
     assert payload[0]["sessions"][0]["occurs_on"] == occurs_on.isoformat()
     assert payload[0]["sessions"][0]["available_spots"] == 1
+
+
+def test_catalog_lists_a_single_session_only_on_its_date() -> None:
+    client, session_factory = make_client()
+    occurs_on = date.today() + timedelta(days=2)
+
+    with session_factory() as session:
+        location = Location(name="Chiron Napoli", address="Via Napoli 1", city="Napoli")
+        course = Course(
+            location=location,
+            title="Workshop movimento",
+            status=CourseStatus.PUBLISHED,
+        )
+        course_session = CourseSession(
+            course=course,
+            weekday=sunday_based_weekday(occurs_on),
+            occurs_on=occurs_on,
+            starts_at=time(23, 59),
+            ends_at=time(23, 59, 59),
+            capacity=10,
+        )
+        session.add_all([location, course, course_session])
+        session.commit()
+
+    response = client.get("/courses", params={"occurs_on": occurs_on.isoformat()})
+    assert response.status_code == 200
+    assert response.json()[0]["sessions"][0]["occurs_on"] == occurs_on.isoformat()
+
+    following_week_response = client.get(
+        "/courses",
+        params={"occurs_on": (occurs_on + timedelta(days=7)).isoformat()},
+    )
+    assert following_week_response.status_code == 200
+    assert following_week_response.json() == []

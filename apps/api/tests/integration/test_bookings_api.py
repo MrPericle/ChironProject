@@ -79,12 +79,14 @@ def create_course_session(
     session_factory: sessionmaker[Session],
     *,
     capacity: int = 1,
+    requires_active_subscription: bool = True,
 ) -> CourseSession:
     with session_factory() as session:
         location = Location(name="Chiron Roma", address="Via Pelio 1", city="Roma")
         course = Course(
             location=location,
             title="Calisthenics",
+            requires_active_subscription=requires_active_subscription,
             status=CourseStatus.PUBLISHED,
         )
         course_session = CourseSession(
@@ -166,6 +168,28 @@ def test_user_needs_an_active_subscription_to_book() -> None:
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Active subscription required"
+
+
+def test_user_can_book_a_course_open_to_non_members() -> None:
+    client, session_factory = make_client()
+    user = create_user(
+        session_factory,
+        "guest@example.com",
+        with_active_subscription=False,
+    )
+    course_session = create_course_session(
+        session_factory,
+        requires_active_subscription=False,
+    )
+
+    response = client.post(
+        "/bookings",
+        json=booking_payload(course_session),
+        headers=headers_for(user),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "confirmed"
 
 
 def test_booking_full_session_returns_conflict_without_waitlist() -> None:

@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session, selectinload
 from chiron_api.auth.dependencies import require_roles
 from chiron_api.bookings.service import confirmed_booking_count, max_confirmed_booking_count
 from chiron_api.config import Settings, get_settings
-from chiron_api.courses.scheduling import local_today, occurrence_dates, occurrence_start_at
+from chiron_api.courses.scheduling import (
+    local_today,
+    occurrence_dates,
+    occurrence_start_at,
+    sunday_based_weekday,
+)
 from chiron_api.courses.schemas import (
     CatalogCourseResponse,
     CatalogSessionResponse,
@@ -105,17 +110,24 @@ def ensure_session_available(
     *,
     course_id: UUID,
     weekday: int,
+    occurs_on: date | None,
     starts_at,
     ends_at,
     excluding_session_id: UUID | None = None,
 ) -> None:
     query = select(CourseSession.id).where(
         CourseSession.course_id == course_id,
-        CourseSession.weekday == weekday,
         CourseSession.starts_at == starts_at,
         CourseSession.ends_at == ends_at,
         CourseSession.is_active.is_(True),
     )
+    if occurs_on is None:
+        query = query.where(
+            CourseSession.occurs_on.is_(None),
+            CourseSession.weekday == weekday,
+        )
+    else:
+        query = query.where(CourseSession.occurs_on == occurs_on)
     if excluding_session_id is not None:
         query = query.where(CourseSession.id != excluding_session_id)
     if db.scalar(query) is not None:
@@ -313,14 +325,30 @@ def create_course_session(
 ) -> CourseSession:
     get_course_or_404(db, course_id)
     ensure_time_order(payload.starts_at, payload.ends_at)
+    occurs_on = payload.occurs_on
+    weekday = payload.weekday if occurs_on is None else sunday_based_weekday(occurs_on)
+    if weekday is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A weekday or occurrence date is required",
+        )
     ensure_session_available(
         db,
         course_id=course_id,
-        weekday=payload.weekday,
+        weekday=weekday,
+        occurs_on=occurs_on,
         starts_at=payload.starts_at,
         ends_at=payload.ends_at,
     )
-    course_session = CourseSession(course_id=course_id, **payload.model_dump())
+    course_session = CourseSession(
+        course_id=course_id,
+        weekday=weekday,
+        occurs_on=occurs_on,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        capacity=payload.capacity,
+        cancellation_deadline_hours=payload.cancellation_deadline_hours,
+    )
     db.add(course_session)
     commit_course_change(db, conflict_detail="Questa ricorrenza esiste gia per il corso.")
     db.refresh(course_session)
@@ -352,6 +380,7 @@ def create_course_schedule(
             db,
             course_id=course_id,
             weekday=weekday,
+            occurs_on=None,
             starts_at=payload.starts_at,
             ends_at=payload.ends_at,
         )
@@ -385,11 +414,21 @@ def update_course_session(
     starts_at = data.get("starts_at", course_session.starts_at)
     ends_at = data.get("ends_at", course_session.ends_at)
     weekday = data.get("weekday", course_session.weekday)
+    occurs_on = data.get("occurs_on", course_session.occurs_on)
+    if occurs_on is not None:
+        weekday = sunday_based_weekday(occurs_on)
+        data["weekday"] = weekday
+    elif "occurs_on" in data and course_session.occurs_on is not None and "weekday" not in data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A weekday is required when converting to a recurring session",
+        )
     ensure_time_order(starts_at, ends_at)
     ensure_session_available(
         db,
         course_id=course_session.course_id,
         weekday=weekday,
+        occurs_on=occurs_on,
         starts_at=starts_at,
         ends_at=ends_at,
         excluding_session_id=course_session.id,
@@ -400,8 +439,7 @@ def update_course_session(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    "La capienza non puo scendere sotto "
-                    f"{confirmed_count} prenotazioni confermate."
+                    f"La capienza non puo scendere sotto {confirmed_count} prenotazioni confermate."
                 ),
             )
 
@@ -464,19 +502,23 @@ def list_catalog_courses(
             if weekday is not None and course_session.weekday != weekday:
                 continue
 
-            for occurs_on in occurrence_dates(
-                course_session.weekday,
-                starts_on=starts_on,
-                ends_on=ends_on,
-            ):
-                if (
-                    occurrence_start_at(
-                        occurs_on,
-                        course_session.starts_at,
-                        settings.app_timezone,
-                    )
-                    <= datetime.now(UTC)
-                ):
+            if course_session.occurs_on is None:
+                course_occurrences = occurrence_dates(
+                    course_session.weekday,
+                    starts_on=starts_on,
+                    ends_on=ends_on,
+                )
+            elif starts_on <= course_session.occurs_on <= ends_on:
+                course_occurrences = [course_session.occurs_on]
+            else:
+                course_occurrences = []
+
+            for occurs_on in course_occurrences:
+                if occurrence_start_at(
+                    occurs_on,
+                    course_session.starts_at,
+                    settings.app_timezone,
+                ) <= datetime.now(UTC):
                     continue
                 booked_spots = confirmed_booking_count(db, course_session.id, occurs_on)
                 available_spots = max(course_session.capacity - booked_spots, 0)
@@ -509,6 +551,7 @@ def list_catalog_courses(
                     description=course.description,
                     discipline=course.discipline,
                     image_url=course.image_url,
+                    requires_active_subscription=course.requires_active_subscription,
                     sessions=catalog_sessions,
                 ),
             )

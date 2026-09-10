@@ -4,7 +4,7 @@ from datetime import date, time
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from chiron_api.db.models import CourseDiscipline, CourseStatus
 
@@ -38,6 +38,7 @@ class CourseCreate(BaseModel):
     description: str | None = None
     discipline: CourseDiscipline = CourseDiscipline.OTHER
     instructor_user_id: UUID | None = None
+    requires_active_subscription: bool = True
     status: CourseStatus = CourseStatus.DRAFT
 
 
@@ -47,6 +48,7 @@ class CourseUpdate(BaseModel):
     description: str | None = None
     discipline: CourseDiscipline | None = None
     instructor_user_id: UUID | None = None
+    requires_active_subscription: bool | None = None
     status: CourseStatus | None = None
 
 
@@ -58,6 +60,7 @@ class CourseResponse(BaseModel):
     description: str | None
     discipline: CourseDiscipline
     image_url: str | None
+    requires_active_subscription: bool
     status: CourseStatus
     sessions: list[CourseSessionResponse] = Field(default_factory=list)
 
@@ -65,11 +68,18 @@ class CourseResponse(BaseModel):
 
 
 class CourseSessionCreate(BaseModel):
-    weekday: int = Field(ge=0, le=6)
+    weekday: int | None = Field(default=None, ge=0, le=6)
+    occurs_on: date | None = None
     starts_at: time
     ends_at: time
     capacity: int = Field(gt=0)
     cancellation_deadline_hours: int = Field(default=24, ge=0)
+
+    @model_validator(mode="after")
+    def validate_schedule_mode(self) -> CourseSessionCreate:
+        if (self.weekday is None) == (self.occurs_on is None):
+            raise ValueError("Provide exactly one of weekday or occurs_on")
+        return self
 
 
 class CourseScheduleCreate(BaseModel):
@@ -82,6 +92,7 @@ class CourseScheduleCreate(BaseModel):
 
 class CourseSessionUpdate(BaseModel):
     weekday: int | None = Field(default=None, ge=0, le=6)
+    occurs_on: date | None = None
     starts_at: time | None = None
     ends_at: time | None = None
     capacity: int | None = Field(default=None, gt=0)
@@ -93,6 +104,7 @@ class CourseSessionResponse(BaseModel):
     id: UUID
     course_id: UUID
     weekday: int
+    occurs_on: date | None
     starts_at: time
     ends_at: time
     capacity: int
@@ -120,6 +132,7 @@ class CatalogCourseResponse(BaseModel):
     description: str | None
     discipline: CourseDiscipline
     image_url: str | None
+    requires_active_subscription: bool
     sessions: list[CatalogSessionResponse]
 
 
