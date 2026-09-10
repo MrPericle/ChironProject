@@ -223,9 +223,9 @@ def test_staff_can_read_admin_stats() -> None:
                     occurs_on=next_occurrence_date(course_session.weekday),
                     status=BookingStatus.WAITLISTED,
                 ),
-                Subscription(user_id=first_member.id, starts_on=date(2026, 8, 1)),
-                Subscription(user_id=first_member.id, starts_on=date(2026, 8, 2)),
-                Subscription(user_id=second_member.id, starts_on=date(2026, 8, 1)),
+                Subscription(user_id=first_member.id, starts_on=date.today() - timedelta(days=2)),
+                Subscription(user_id=first_member.id, starts_on=date.today() - timedelta(days=1)),
+                Subscription(user_id=second_member.id, starts_on=date.today() - timedelta(days=1)),
             ],
         )
         second_member_record = session.get(User, second_member.id)

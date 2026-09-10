@@ -131,15 +131,16 @@ def attach_user_to_location(
 def test_user_can_read_own_subscription_expiry() -> None:
     client, session_factory = make_client()
     user = create_user(session_factory, email="member@example.com")
-    create_subscription(session_factory, user=user, starts_on=date(2026, 8, 1), duration_days=30)
+    starts_on = date.today() - timedelta(days=1)
+    create_subscription(session_factory, user=user, starts_on=starts_on, duration_days=30)
 
     response = client.get("/subscriptions/me", headers=headers_for(user))
 
     assert response.status_code == 200
     assert response.json() == {
-        "starts_on": "2026-08-01",
+        "starts_on": starts_on.isoformat(),
         "duration_days": 30,
-        "expires_on": "2026-08-31",
+        "expires_on": (starts_on + timedelta(days=30)).isoformat(),
         "is_active": True,
     }
 
