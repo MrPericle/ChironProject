@@ -426,8 +426,20 @@ function installFetchMock(
       );
     }
 
+    if (url.endsWith("/admin/locations/location-roma/deactivate") && method === "POST") {
+      return jsonResponse({
+        ...adminLocationsResponse[0],
+        is_active: false,
+        deleted_course_count: 1,
+      });
+    }
+
     if (url.endsWith("/admin/locations/location-roma") && method === "DELETE") {
-      return jsonResponse({ ...adminLocationsResponse[0], is_active: false });
+      return jsonResponse({
+        id: "location-roma",
+        deleted: true,
+        deleted_course_count: 1,
+      });
     }
 
     if (url.endsWith("/admin/locations/location-roma") && method === "PATCH") {
@@ -847,9 +859,44 @@ describe("App", () => {
       expect.objectContaining({ method: "PATCH" }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /disattiva Chiron Roma/i }));
+    fireEvent.click(screen.getByRole("button", { name: /disattiva sede Chiron Roma/i }));
 
-    await screen.findByText("Sede disattivata.");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Tutti i corsi, le lezioni, le prenotazioni e le foto collegate verranno eliminati",
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "http://localhost:8000/admin/locations/location-roma/deactivate",
+      expect.objectContaining({ method: "POST" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Conferma disattivazione" }));
+
+    await screen.findByText("Sede disattivata. Corsi eliminati: 1.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/locations/location-roma/deactivate",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    expect(screen.queryByRole("heading", { name: "Calisthenics Foundation" })).not.toBeInTheDocument();
+  });
+
+  it("permanently deletes a location and its courses after confirmation", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Sedi" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /elimina definitivamente sede Chiron Roma/i }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "La sede e tutti i corsi, le lezioni, le prenotazioni e le foto collegate",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Conferma eliminazione" }));
+
+    await screen.findByText("Sede eliminata definitivamente. Corsi eliminati: 1.");
+    expect(screen.queryByRole("heading", { name: "Chiron Roma" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/locations/location-roma",
       expect.objectContaining({ method: "DELETE" }),

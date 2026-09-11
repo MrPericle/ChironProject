@@ -142,6 +142,16 @@ export type LocationUpdatePayload = Partial<LocationPayload> & {
   is_active?: boolean;
 };
 
+export type LocationCascadeResult = Location & {
+  deleted_course_count: number;
+};
+
+export type LocationDeleteResult = {
+  id: string;
+  deleted: true;
+  deleted_course_count: number;
+};
+
 export type CourseStatus = "draft" | "published" | "archived";
 export type CourseDiscipline = string;
 
@@ -347,8 +357,15 @@ export class ChironApi {
     });
   }
 
-  async deactivateLocation(token: string, locationId: string): Promise<Location> {
-    return this.request<Location>(`/admin/locations/${locationId}`, {
+  async deactivateLocation(token: string, locationId: string): Promise<LocationCascadeResult> {
+    return this.request<LocationCascadeResult>(`/admin/locations/${locationId}/deactivate`, {
+      method: "POST",
+      token,
+    });
+  }
+
+  async deleteLocation(token: string, locationId: string): Promise<LocationDeleteResult> {
+    return this.request<LocationDeleteResult>(`/admin/locations/${locationId}`, {
       method: "DELETE",
       token,
     });

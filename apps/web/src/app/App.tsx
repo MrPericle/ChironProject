@@ -17,6 +17,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  Power,
   RotateCcw,
   Save,
   Search,
@@ -769,6 +770,31 @@ function BackofficeScreen({
     );
   }
 
+  function applyLocationCascade(locationId: string, nextLocation: Location | null): void {
+    const removedCourseIds = new Set(
+      courses.filter((course) => course.location_id === locationId).map((course) => course.id),
+    );
+    setCourses((current) => current.filter((course) => course.location_id !== locationId));
+    if (nextLocation === null) {
+      setLocations((current) => current.filter((location) => location.id !== locationId));
+    } else {
+      upsertLocation(nextLocation);
+    }
+    setStats((current) =>
+      current === null
+        ? current
+        : {
+            ...current,
+            courses: current.courses.filter((course) => !removedCourseIds.has(course.id)),
+            locations:
+              nextLocation === null
+                ? current.locations.filter((location) => location.id !== locationId)
+                : current.locations,
+          },
+    );
+    void api.adminStats(session.access_token).then(setStats).catch(() => undefined);
+  }
+
   function upsertUser(user: AdminUser): void {
     setUsers((current) => {
       const existing = current.some((item) => item.id === user.id);
@@ -911,6 +937,7 @@ function BackofficeScreen({
                 {activeTab === "locations" ? (
                   <LocationsManager
                     locations={locations}
+                    onLocationCascade={applyLocationCascade}
                     onNotice={setNotice}
                     onLocationChange={upsertLocation}
                     token={session.access_token}
@@ -1867,11 +1894,13 @@ function UsersManager({
 
 function LocationsManager({
   locations,
+  onLocationCascade,
   onLocationChange,
   onNotice,
   token,
 }: {
   locations: Location[];
+  onLocationCascade: (locationId: string, nextLocation: Location | null) => void;
   onLocationChange: (location: Location) => void;
   onNotice: (notice: Notice) => void;
   token: string;
@@ -1881,6 +1910,11 @@ function LocationsManager({
   const [city, setCity] = useState("");
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [locationDraft, setLocationDraft] = useState<LocationPayload | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState<{
+    locationId: string;
+    type: "deactivate" | "delete";
+  } | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -1896,16 +1930,38 @@ function LocationsManager({
     }
   }
 
-  async function handleDeactivate(location: Location): Promise<void> {
+  async function handleDestructiveAction(
+    location: Location,
+    action: "deactivate" | "delete",
+  ): Promise<void> {
+    const actionKey = `${action}:${location.id}`;
+    setPendingAction(actionKey);
     try {
-      onLocationChange(await api.deactivateLocation(token, location.id));
-      onNotice({ tone: "success", message: "Sede disattivata." });
+      if (action === "deactivate") {
+        const result = await api.deactivateLocation(token, location.id);
+        onLocationCascade(location.id, result);
+        onNotice({
+          tone: "success",
+          message: `Sede disattivata. Corsi eliminati: ${result.deleted_course_count}.`,
+        });
+      } else {
+        const result = await api.deleteLocation(token, location.id);
+        onLocationCascade(location.id, null);
+        onNotice({
+          tone: "success",
+          message: `Sede eliminata definitivamente. Corsi eliminati: ${result.deleted_course_count}.`,
+        });
+      }
+      setConfirmingAction(null);
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
+    } finally {
+      setPendingAction(null);
     }
   }
 
   function handleEditLocation(location: Location): void {
+    setConfirmingAction(null);
     setEditingLocationId(location.id);
     setLocationDraft({
       address: location.address,
@@ -1966,8 +2022,8 @@ function LocationsManager({
             <article
               className={
                 editingLocationId === location.id
-                  ? "admin-list-item is-editing"
-                  : "admin-list-item"
+                  ? "admin-list-item admin-location-item is-editing"
+                  : "admin-list-item admin-location-item"
               }
               key={location.id}
             >
@@ -2007,40 +2063,125 @@ function LocationsManager({
                   {location.is_active ? "Attiva" : "Disattivata"}
                 </span>
               </div>
-              <div className="admin-row-actions">
+              <div className="admin-row-actions location-actions">
                 {editingLocationId === location.id ? (
-                  <button
-                    aria-label={`Salva sede ${location.name}`}
-                    className="secondary-action"
-                    onClick={() => handleSaveLocation(location)}
-                    type="button"
-                  >
-                    <Save aria-hidden="true" />
-                    Salva
-                  </button>
+                  <>
+                    <button
+                      aria-label={`Salva sede ${location.name}`}
+                      className="primary-action"
+                      onClick={() => handleSaveLocation(location)}
+                      type="button"
+                    >
+                      <Save aria-hidden="true" />
+                      Salva modifiche
+                    </button>
+                    <button
+                      aria-label={`Annulla modifica ${location.name}`}
+                      className="secondary-action"
+                      onClick={() => {
+                        setEditingLocationId(null);
+                        setLocationDraft(null);
+                      }}
+                      type="button"
+                    >
+                      <XCircle aria-hidden="true" />
+                      Annulla
+                    </button>
+                  </>
                 ) : (
-                  <button
-                    aria-label={`Modifica ${location.name}`}
-                    className="secondary-action"
-                    onClick={() => handleEditLocation(location)}
-                    type="button"
-                  >
-                    <Pencil aria-hidden="true" />
-                    Modifica
-                  </button>
+                  <>
+                    <button
+                      aria-label={`Modifica ${location.name}`}
+                      className={
+                        location.is_active
+                          ? "secondary-action location-primary-action"
+                          : "secondary-action"
+                      }
+                      onClick={() => handleEditLocation(location)}
+                      type="button"
+                    >
+                      <Pencil aria-hidden="true" />
+                      Modifica sede
+                    </button>
+                    {location.is_active ? (
+                      <button
+                        aria-expanded={
+                          confirmingAction?.locationId === location.id &&
+                          confirmingAction.type === "deactivate"
+                        }
+                        aria-label={`Disattiva sede ${location.name}`}
+                        className="secondary-action danger-action"
+                        onClick={() =>
+                          setConfirmingAction({ locationId: location.id, type: "deactivate" })
+                        }
+                        type="button"
+                      >
+                        <Power aria-hidden="true" />
+                        Disattiva sede
+                      </button>
+                    ) : null}
+                    <button
+                      aria-expanded={
+                        confirmingAction?.locationId === location.id &&
+                        confirmingAction.type === "delete"
+                      }
+                      aria-label={`Elimina definitivamente sede ${location.name}`}
+                      className="secondary-action danger-action"
+                      onClick={() =>
+                        setConfirmingAction({ locationId: location.id, type: "delete" })
+                      }
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Elimina sede
+                    </button>
+                  </>
                 )}
-                {location.is_active ? (
-                  <button
-                    aria-label={`Disattiva ${location.name}`}
-                    className="secondary-action"
-                    onClick={() => handleDeactivate(location)}
-                    type="button"
-                  >
-                    <UserX aria-hidden="true" />
-                    Disattiva
-                  </button>
-                ) : null}
               </div>
+              {confirmingAction?.locationId === location.id ? (
+                <div className="destructive-confirmation" role="alert">
+                  <div>
+                    <strong>
+                      {confirmingAction.type === "deactivate"
+                        ? `Disattivare la sede “${location.name}”?`
+                        : `Eliminare definitivamente la sede “${location.name}”?`}
+                    </strong>
+                    <p>
+                      {confirmingAction.type === "deactivate"
+                        ? "La sede restera nello storico come disattivata. Tutti i corsi, le lezioni, le prenotazioni e le foto collegate verranno eliminati definitivamente."
+                        : "La sede e tutti i corsi, le lezioni, le prenotazioni e le foto collegate verranno eliminati definitivamente."}
+                    </p>
+                  </div>
+                  <div className="destructive-confirmation-actions">
+                    <button
+                      className="secondary-action"
+                      disabled={pendingAction !== null}
+                      onClick={() => setConfirmingAction(null)}
+                      type="button"
+                    >
+                      <XCircle aria-hidden="true" />
+                      Annulla
+                    </button>
+                    <button
+                      className="primary-action permanent-delete-action"
+                      disabled={pendingAction !== null}
+                      onClick={() => handleDestructiveAction(location, confirmingAction.type)}
+                      type="button"
+                    >
+                      {confirmingAction.type === "deactivate" ? (
+                        <Power aria-hidden="true" />
+                      ) : (
+                        <Trash2 aria-hidden="true" />
+                      )}
+                      {pendingAction === `${confirmingAction.type}:${location.id}`
+                        ? "Operazione in corso"
+                        : confirmingAction.type === "deactivate"
+                          ? "Conferma disattivazione"
+                          : "Conferma eliminazione"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </article>
           ))
         )}
