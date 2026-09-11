@@ -448,6 +448,16 @@ dell'iscrizione, sospensione dell'accesso ed eliminazione account. Ogni
 salvataggio e collocato nella relativa sezione e l'eliminazione richiede una
 conferma che ne descrive gli effetti.
 
+## Incremento completato - Cascata distruttiva sedi
+
+### `feat: disattiva o elimina sede con contenuti collegati`
+
+Completato: disattivare una sede la mantiene nello storico ma elimina
+definitivamente tutti i corsi, le lezioni, le prenotazioni e le immagini
+collegate. L'eliminazione definitiva rimuove anche la sede. Entrambe le azioni
+richiedono conferma e aggiornano immediatamente il backoffice; le API
+impediscono inoltre di creare corsi in una sede inattiva.
+
 ## Milestone 9 - CI/CD e deploy VPS
 
 Stato pre-deploy al 10 settembre 2026: pipeline CI, immagini production,

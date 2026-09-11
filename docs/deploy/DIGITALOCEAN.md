@@ -458,6 +458,9 @@ Il tecnico e il cliente devono verificare insieme:
   disciplina personalizzata e utilizzo nel form corso;
 - chiarezza e corretto funzionamento delle azioni dati, permessi, iscrizione,
   sospensione ed eliminazione nella gestione utenti;
+- disattivazione ed eliminazione definitiva di una sede con rimozione dei
+  relativi corsi, lezioni, prenotazioni e immagini dal backoffice e dall'area
+  utente;
 - cancellazione definitiva di un corso e rimozione delle relative lezioni,
   prenotazioni e immagini sia dal backoffice sia dall'area utente;
 - promozione di un utente a Collaboratore, configurazione 2FA al primo accesso
