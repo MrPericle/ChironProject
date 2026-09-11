@@ -81,6 +81,7 @@ type TwoFactorStep =
 type MobileView = "courses" | "calendar" | "bookings" | "profile";
 type AdminTab = "dashboard" | "calendar" | "users" | "courses" | "locations";
 type ScheduleMode = "weekly" | "single";
+type WorkspaceMode = "backoffice" | "personal";
 
 const legacyDisciplineLabels: Record<string, string> = {
   calisthenics: "Sala",
@@ -306,12 +307,16 @@ export function App() {
   const [pendingBookingId, setPendingBookingId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<MobileView>("courses");
   const [bookingClockTick, setBookingClockTick] = useState(0);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("backoffice");
 
   useEffect(() => {
     if (session === null) {
       return;
     }
-    if (isBackofficeRole(session.user)) {
+    const isPersonalWorkspace =
+      session.user.role === "user" ||
+      (session.user.role === "staff" && workspaceMode === "personal");
+    if (!isPersonalWorkspace) {
       setLoadState("ready");
       return;
     }
@@ -363,7 +368,7 @@ export function App() {
       ignore = true;
       window.removeEventListener("focus", refreshOnFocus);
     };
-  }, [session]);
+  }, [session, workspaceMode]);
 
   useEffect(() => {
     if (session === null) {
@@ -466,6 +471,7 @@ export function App() {
       }
       const nextSession = result;
       saveSession(nextSession);
+      setWorkspaceMode("backoffice");
       setSession(nextSession);
       setUser(nextSession.user);
       return null;
@@ -485,6 +491,7 @@ export function App() {
           ? await api.confirmTwoFactor(step.token, totpCode)
           : await api.verifyTwoFactor(step.token, totpCode);
       saveSession(nextSession);
+      setWorkspaceMode("backoffice");
       setSession(nextSession);
       setUser(nextSession.user);
       return true;
@@ -512,6 +519,7 @@ export function App() {
         password: payload.password,
       });
       saveSession(nextSession);
+      setWorkspaceMode("backoffice");
       setSession(nextSession);
       setUser(nextSession.user);
     } catch (error) {
@@ -584,6 +592,18 @@ export function App() {
     setSubscription(null);
     setNotice(null);
     setLoadState("idle");
+    setWorkspaceMode("backoffice");
+  }
+
+  function handleOpenPersonalArea(): void {
+    setNotice(null);
+    setLoadState("loading");
+    setWorkspaceMode("personal");
+  }
+
+  function handleOpenBackoffice(): void {
+    setNotice(null);
+    setWorkspaceMode("backoffice");
   }
 
   if (session === null) {
@@ -597,14 +617,28 @@ export function App() {
     );
   }
 
-  if (isBackofficeRole(session.user)) {
-    return <BackofficeScreen session={session} user={user ?? session.user} onLogout={handleLogout} />;
+  if (
+    isBackofficeRole(session.user) &&
+    !(session.user.role === "staff" && workspaceMode === "personal")
+  ) {
+    return (
+      <BackofficeScreen
+        session={session}
+        user={user ?? session.user}
+        onLogout={handleLogout}
+        onOpenPersonalArea={session.user.role === "staff" ? handleOpenPersonalArea : undefined}
+      />
+    );
   }
 
   return (
     <main className="app-shell" id="main-content">
       <div className={`workspace mobile-view-${mobileView}`}>
-        <AppHeader user={user} onLogout={handleLogout} />
+        <AppHeader
+          user={user}
+          onLogout={handleLogout}
+          onOpenBackoffice={session.user.role === "staff" ? handleOpenBackoffice : undefined}
+        />
 
         {notice !== null ? (
           <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">
@@ -677,10 +711,12 @@ function BackofficeScreen({
   session,
   user,
   onLogout,
+  onOpenPersonalArea,
 }: {
   session: TokenPair;
   user: User;
   onLogout: () => void;
+  onOpenPersonalArea?: () => void;
 }) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [courses, setCourses] = useState<AdminCourse[]>([]);
@@ -810,7 +846,19 @@ function BackofficeScreen({
       <div className="backoffice-workspace">
         <header className="backoffice-header">
           <BrandHeading context="Backoffice" />
-          <div className="header-actions">
+          <div className={onOpenPersonalArea ? "header-actions header-actions-workspace" : "header-actions"}>
+            {onOpenPersonalArea ? (
+              <button
+                aria-label="Vai all'area personale"
+                className="secondary-action workspace-switch"
+                onClick={onOpenPersonalArea}
+                title="Vai all'area personale"
+                type="button"
+              >
+                <CalendarCheck aria-hidden="true" />
+                <span className="workspace-switch-label">Area personale</span>
+              </button>
+            ) : null}
             <div className="user-chip">
               <UserRound aria-hidden="true" />
               <span>{user.email}</span>
@@ -3229,14 +3277,34 @@ function LoginScreen({
   );
 }
 
-function AppHeader({ user, onLogout }: { user: User | null; onLogout: () => void }) {
+function AppHeader({
+  user,
+  onLogout,
+  onOpenBackoffice,
+}: {
+  user: User | null;
+  onLogout: () => void;
+  onOpenBackoffice?: () => void;
+}) {
   return (
     <header className="app-header">
       <a className="skip-link" href="#catalog-title">
         Vai al catalogo
       </a>
       <BrandHeading context="Area utente" />
-      <div className="header-actions">
+      <div className={onOpenBackoffice ? "header-actions header-actions-workspace" : "header-actions"}>
+        {onOpenBackoffice ? (
+          <button
+            aria-label="Vai al backoffice"
+            className="secondary-action workspace-switch"
+            onClick={onOpenBackoffice}
+            title="Vai al backoffice"
+            type="button"
+          >
+            <Activity aria-hidden="true" />
+            <span className="workspace-switch-label">Backoffice</span>
+          </button>
+        ) : null}
         <div className="user-chip">
           <UserRound aria-hidden="true" />
           <span>{user?.email ?? "Utente"}</span>

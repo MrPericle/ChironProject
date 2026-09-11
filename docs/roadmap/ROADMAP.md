@@ -430,7 +430,9 @@ utente al successivo aggiornamento dei dati.
 Completato: l'admin puo promuovere un utente a Collaboratore. Il collaboratore
 accede al backoffice con 2FA e puo gestire sedi, corsi, calendario e
 partecipanti, ma non puo visualizzare o modificare utenti e iscrizioni. Il
-cambio di ruolo revoca le sessioni precedenti e richiede un nuovo accesso.
+cambio di ruolo revoca le sessioni precedenti e richiede un nuovo accesso. Un
+comando adattivo nell'header permette inoltre di passare all'area personale,
+prenotare secondo le normali regole di iscrizione e tornare al backoffice.
 
 ## Incremento completato - Discipline e chiarezza gestione utenti
 

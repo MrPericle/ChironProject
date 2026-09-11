@@ -313,6 +313,10 @@ function installFetchMock(
     }
 
     if (url.endsWith("/auth/me")) {
+      const authorization = new Headers(init?.headers).get("Authorization");
+      if (authorization === "Bearer staff-access-token") {
+        return jsonResponse({ id: "staff-1", email: "staff@example.com", role: "staff" });
+      }
       return jsonResponse({ id: "user-1", email: "mattia@example.com", role: "user" });
     }
 
@@ -732,6 +736,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Attiva e accedi" }));
 
     await screen.findByRole("heading", { level: 2, name: "Corsi migliori" });
+    expect(screen.getByRole("button", { name: "Vai all'area personale" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Utenti" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/auth/2fa/confirm",
@@ -798,6 +803,41 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
     expect(screen.getByRole("heading", { name: "Corsi e sessioni" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Nuova disciplina" })).not.toBeInTheDocument();
+  });
+
+  it("lets collaborators switch to their personal area and book a course", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-25T12:00:00"));
+    const fetchMock = installFetchMock();
+    localStorage.setItem(
+      "chiron.user.session",
+      JSON.stringify({
+        access_token: "staff-access-token",
+        refresh_token: "staff-refresh-token",
+        token_type: "bearer",
+        user: { id: "staff-1", email: "staff@example.com", role: "staff" },
+      }),
+    );
+
+    render(<App />);
+
+    await screen.findByRole("heading", { level: 2, name: "Corsi migliori" });
+    fireEvent.click(screen.getByRole("button", { name: "Vai all'area personale" }));
+
+    const catalog = await screen.findByRole("region", { name: "Prenota una sessione" });
+    expect(screen.getByText("Area utente")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Vai al backoffice" })).toBeInTheDocument();
+    fireEvent.click(within(catalog).getByRole("button", { name: "Prenota" }));
+
+    expect(await screen.findByText("Prenotazione confermata.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/bookings",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Vai al backoffice" }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Corsi migliori" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Utenti" })).not.toBeInTheDocument();
   });
 
   it("shows course session attendees from the admin calendar", async () => {
