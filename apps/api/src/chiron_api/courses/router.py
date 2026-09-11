@@ -29,7 +29,9 @@ from chiron_api.courses.schemas import (
     CourseSessionResponse,
     CourseSessionUpdate,
     CourseUpdate,
+    LocationCascadeResponse,
     LocationCreate,
+    LocationDeleteResponse,
     LocationResponse,
     LocationUpdate,
 )
@@ -60,6 +62,16 @@ def get_location_or_404(db: Session, location_id: UUID) -> Location:
     location = db.get(Location, location_id)
     if location is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Location not found")
+    return location
+
+
+def get_active_location_or_422(db: Session, location_id: UUID) -> Location:
+    location = get_location_or_404(db, location_id)
+    if not location.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="La sede selezionata non e attiva.",
+        )
     return location
 
 
@@ -179,6 +191,14 @@ def delete_course_images(course_id: UUID, settings: Settings) -> None:
             image_path.unlink()
 
 
+def delete_location_courses(location_id: UUID, db: Session, settings: Settings) -> int:
+    courses = list(db.scalars(select(Course).where(Course.location_id == location_id)).all())
+    for course in courses:
+        delete_course_images(course.id, settings)
+        db.delete(course)
+    return len(courses)
+
+
 @router.post(
     "/admin/locations",
     response_model=LocationResponse,
@@ -204,35 +224,72 @@ def list_locations(
     return list(db.scalars(select(Location).order_by(Location.name)).all())
 
 
-@router.patch("/admin/locations/{location_id}", response_model=LocationResponse)
+@router.patch("/admin/locations/{location_id}", response_model=LocationCascadeResponse)
 def update_location(
     location_id: UUID,
     payload: LocationUpdate,
     _: User = backoffice_user,
     db: Session = Depends(get_db_session),
-) -> Location:
+    settings: Settings = Depends(get_settings),
+) -> LocationCascadeResponse:
     location = get_location_or_404(db, location_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    deleted_course_count = 0
+    if data.get("is_active") is False:
+        deleted_course_count = delete_location_courses(location.id, db, settings)
+    for field, value in data.items():
         setattr(location, field, value)
 
     db.add(location)
     db.commit()
     db.refresh(location)
-    return location
+    return LocationCascadeResponse(
+        **LocationResponse.model_validate(location).model_dump(),
+        deleted_course_count=deleted_course_count,
+    )
 
 
-@router.delete("/admin/locations/{location_id}", response_model=LocationResponse)
+@router.post(
+    "/admin/locations/{location_id}/deactivate",
+    response_model=LocationCascadeResponse,
+)
 def deactivate_location(
     location_id: UUID,
     _: User = backoffice_user,
     db: Session = Depends(get_db_session),
-) -> Location:
+    settings: Settings = Depends(get_settings),
+) -> LocationCascadeResponse:
     location = get_location_or_404(db, location_id)
+    deleted_course_count = delete_location_courses(location.id, db, settings)
     location.is_active = False
     db.add(location)
     db.commit()
     db.refresh(location)
-    return location
+    return LocationCascadeResponse(
+        **LocationResponse.model_validate(location).model_dump(),
+        deleted_course_count=deleted_course_count,
+    )
+
+
+@router.delete(
+    "/admin/locations/{location_id}",
+    response_model=LocationDeleteResponse,
+)
+def delete_location(
+    location_id: UUID,
+    _: User = backoffice_user,
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> LocationDeleteResponse:
+    location = get_location_or_404(db, location_id)
+    deleted_course_count = delete_location_courses(location.id, db, settings)
+    db.delete(location)
+    db.commit()
+    return LocationDeleteResponse(
+        id=location_id,
+        deleted=True,
+        deleted_course_count=deleted_course_count,
+    )
 
 
 @router.get(
@@ -297,7 +354,7 @@ def create_course(
     _: User = backoffice_user,
     db: Session = Depends(get_db_session),
 ) -> Course:
-    get_location_or_404(db, payload.location_id)
+    get_active_location_or_422(db, payload.location_id)
     title = normalize_course_title(payload.title)
     ensure_course_title_available(db, location_id=payload.location_id, title=title)
     data = payload.model_dump(exclude={"title"})
@@ -333,7 +390,7 @@ def update_course(
     location_id = data.get("location_id", course.location_id)
     title = normalize_course_title(data.get("title", course.title))
     if "location_id" in data:
-        get_location_or_404(db, location_id)
+        get_active_location_or_422(db, location_id)
     if "discipline" in data:
         data["discipline"] = registered_discipline_name(db, data["discipline"])
     ensure_course_title_available(

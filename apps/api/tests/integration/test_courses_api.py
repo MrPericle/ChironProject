@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from datetime import date, time, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -120,12 +121,97 @@ def test_staff_can_manage_locations() -> None:
     assert list_response.status_code == 200
     assert list_response.json()[0]["city"] == "Roma"
 
-    deactivate_response = client.delete(
-        f"/admin/locations/{location_id}",
+    deactivate_response = client.post(
+        f"/admin/locations/{location_id}/deactivate",
         headers=headers_for(staff),
     )
     assert deactivate_response.status_code == 200
     assert deactivate_response.json()["is_active"] is False
+    assert deactivate_response.json()["deleted_course_count"] == 0
+
+
+@pytest.mark.parametrize("action", ["deactivate", "delete"])
+def test_location_removal_deletes_courses_bookings_and_images(tmp_path, action: str) -> None:
+    settings = Settings(COURSE_UPLOAD_DIR=str(tmp_path))
+    client, session_factory = make_client(settings)
+    staff = create_user(session_factory, UserRole.STAFF)
+    member = create_user(session_factory, UserRole.USER)
+
+    with session_factory() as session:
+        location = Location(name="MAKA Roma", address="Via Roma 1", city="Roma")
+        course = Course(
+            location=location,
+            title="Corso della sede",
+            discipline="Sala",
+            status=CourseStatus.PUBLISHED,
+        )
+        course_session = CourseSession(
+            course=course,
+            weekday=1,
+            starts_at=time(18, 0),
+            ends_at=time(19, 0),
+            capacity=10,
+        )
+        session.add(course_session)
+        session.flush()
+        booking = Booking(
+            user_id=member.id,
+            course_session_id=course_session.id,
+            occurs_on=next_occurrence_date(course_session.weekday),
+            status=BookingStatus.CONFIRMED,
+        )
+        session.add(booking)
+        session.commit()
+        location_id = location.id
+        course_id = course.id
+        session_id = course_session.id
+        booking_id = booking.id
+
+    course_image = tmp_path / f"course-{course_id}-cover.jpg"
+    unrelated_image = tmp_path / "course-unrelated.jpg"
+    course_image.write_bytes(b"course")
+    unrelated_image.write_bytes(b"keep")
+
+    endpoint = (
+        f"/admin/locations/{location_id}/deactivate"
+        if action == "deactivate"
+        else f"/admin/locations/{location_id}"
+    )
+    response = (
+        client.post(endpoint, headers=headers_for(staff))
+        if action == "deactivate"
+        else client.delete(endpoint, headers=headers_for(staff))
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deleted_course_count"] == 1
+    with session_factory() as session:
+        stored_location = session.get(Location, location_id)
+        if action == "deactivate":
+            assert stored_location is not None
+            assert stored_location.is_active is False
+        else:
+            assert stored_location is None
+        assert session.get(Course, course_id) is None
+        assert session.get(CourseSession, session_id) is None
+        assert session.get(Booking, booking_id) is None
+
+    assert not course_image.exists()
+    assert unrelated_image.exists()
+    assert client.get("/bookings/me", headers=headers_for(member)).json() == []
+    assert client.get("/admin/courses", headers=headers_for(staff)).json() == []
+
+    if action == "deactivate":
+        create_course_response = client.post(
+            "/admin/courses",
+            json={
+                "location_id": str(location_id),
+                "title": "Corso non consentito",
+                "discipline": "Sala",
+            },
+            headers=headers_for(staff),
+        )
+        assert create_course_response.status_code == 422
 
 
 def test_user_cannot_access_backoffice_crud() -> None:

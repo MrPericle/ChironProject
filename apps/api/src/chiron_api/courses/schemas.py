@@ -32,6 +32,16 @@ class LocationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LocationCascadeResponse(LocationResponse):
+    deleted_course_count: int
+
+
+class LocationDeleteResponse(BaseModel):
+    id: UUID
+    deleted: bool
+    deleted_course_count: int
+
+
 class CourseDisciplineCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
 
