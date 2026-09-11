@@ -14,6 +14,8 @@ from chiron_api.db.models import (
     Booking,
     BookingStatus,
     Course,
+    CourseDiscipline,
+    CourseDisciplineOption,
     CourseSession,
     CourseStatus,
     Location,
@@ -37,6 +39,18 @@ def make_client(settings: Settings | None = None) -> tuple[TestClient, sessionma
         expire_on_commit=False,
     )
     Base.metadata.create_all(bind=engine)
+    with testing_session_local() as session:
+        session.add_all(
+            [
+                CourseDisciplineOption(
+                    name=discipline.value,
+                    sort_order=index,
+                    is_default=True,
+                )
+                for index, discipline in enumerate(CourseDiscipline, start=1)
+            ],
+        )
+        session.commit()
 
     def override_get_db_session() -> Generator[Session]:
         with testing_session_local() as session:
@@ -127,6 +141,78 @@ def test_user_cannot_access_backoffice_crud() -> None:
     assert response.status_code == 403
 
 
+def test_admin_can_add_a_discipline_and_staff_can_use_it() -> None:
+    client, session_factory = make_client()
+    admin = create_user(session_factory, UserRole.ADMIN)
+    staff = create_user(session_factory, UserRole.STAFF)
+
+    create_response = client.post(
+        "/admin/disciplines",
+        json={"name": "  Danza aerea  "},
+        headers=headers_for(admin),
+    )
+
+    assert create_response.status_code == 201
+    assert create_response.json()["name"] == "Danza aerea"
+    assert create_response.json()["is_default"] is False
+
+    duplicate_response = client.post(
+        "/admin/disciplines",
+        json={"name": "danza AEREA"},
+        headers=headers_for(admin),
+    )
+    assert duplicate_response.status_code == 409
+
+    forbidden_response = client.post(
+        "/admin/disciplines",
+        json={"name": "Acrobatica"},
+        headers=headers_for(staff),
+    )
+    assert forbidden_response.status_code == 403
+
+    disciplines_response = client.get(
+        "/admin/disciplines",
+        headers=headers_for(staff),
+    )
+    assert disciplines_response.status_code == 200
+    assert [item["name"] for item in disciplines_response.json()] == [
+        "Sala",
+        "Arti marziali",
+        "Pole",
+        "Altro",
+        "Danza aerea",
+    ]
+
+    location_response = client.post(
+        "/admin/locations",
+        json={"name": "Chiron Roma", "address": "Via Roma 1", "city": "Roma"},
+        headers=headers_for(staff),
+    )
+    course_response = client.post(
+        "/admin/courses",
+        json={
+            "location_id": location_response.json()["id"],
+            "title": "Tessuti",
+            "discipline": "danza aerea",
+            "status": "published",
+        },
+        headers=headers_for(staff),
+    )
+    assert course_response.status_code == 201
+    assert course_response.json()["discipline"] == "Danza aerea"
+
+    unknown_response = client.post(
+        "/admin/courses",
+        json={
+            "location_id": location_response.json()["id"],
+            "title": "Disciplina sconosciuta",
+            "discipline": "Non registrata",
+        },
+        headers=headers_for(staff),
+    )
+    assert unknown_response.status_code == 422
+
+
 def test_admin_can_manage_courses_and_sessions() -> None:
     client, session_factory = make_client()
     admin = create_user(session_factory, UserRole.ADMIN)
@@ -144,7 +230,7 @@ def test_admin_can_manage_courses_and_sessions() -> None:
             "location_id": location_id,
             "title": "Calisthenics Base",
             "description": "Forza, controllo e tecnica.",
-            "discipline": "calisthenics",
+            "discipline": "Sala",
             "requires_active_subscription": False,
             "status": "published",
         },
@@ -152,7 +238,7 @@ def test_admin_can_manage_courses_and_sessions() -> None:
     )
     assert course_response.status_code == 201
     course_id = course_response.json()["id"]
-    assert course_response.json()["discipline"] == "calisthenics"
+    assert course_response.json()["discipline"] == "Sala"
     assert course_response.json()["image_url"] is None
     assert course_response.json()["requires_active_subscription"] is False
     assert course_response.json()["sessions"] == []
@@ -162,7 +248,7 @@ def test_admin_can_manage_courses_and_sessions() -> None:
         json={
             "location_id": location_id,
             "title": "  calisthenics base ",
-            "discipline": "calisthenics",
+            "discipline": "Sala",
             "status": "published",
         },
         headers=headers_for(admin),
@@ -403,7 +489,7 @@ def test_catalog_filters_courses_by_location_weekday_and_availability() -> None:
             location=location,
             title="Pole Flow",
             description="Tecnica e controllo.",
-            discipline="pole_dance",
+            discipline="Pole",
             status=CourseStatus.PUBLISHED,
         )
         course_session = CourseSession(
@@ -456,7 +542,7 @@ def test_catalog_filters_courses_by_location_weekday_and_availability() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert [course["title"] for course in payload] == ["Pole Flow"]
-    assert payload[0]["discipline"] == "pole_dance"
+    assert payload[0]["discipline"] == "Pole"
     assert payload[0]["requires_active_subscription"] is True
     assert payload[0]["sessions"][0]["occurs_on"] == occurs_on.isoformat()
     assert payload[0]["sessions"][0]["available_spots"] == 1

@@ -32,11 +32,24 @@ class LocationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CourseDisciplineCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class CourseDisciplineResponse(BaseModel):
+    id: UUID
+    name: str
+    sort_order: int
+    is_default: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CourseCreate(BaseModel):
     location_id: UUID
     title: str = Field(min_length=1, max_length=180)
     description: str | None = None
-    discipline: CourseDiscipline = CourseDiscipline.OTHER
+    discipline: str = Field(default=CourseDiscipline.OTHER.value, min_length=1, max_length=80)
     instructor_user_id: UUID | None = None
     requires_active_subscription: bool = True
     status: CourseStatus = CourseStatus.DRAFT
@@ -46,7 +59,7 @@ class CourseUpdate(BaseModel):
     location_id: UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=180)
     description: str | None = None
-    discipline: CourseDiscipline | None = None
+    discipline: str | None = Field(default=None, min_length=1, max_length=80)
     instructor_user_id: UUID | None = None
     requires_active_subscription: bool | None = None
     status: CourseStatus | None = None
@@ -58,7 +71,7 @@ class CourseResponse(BaseModel):
     instructor_user_id: UUID | None
     title: str
     description: str | None
-    discipline: CourseDiscipline
+    discipline: str
     image_url: str | None
     requires_active_subscription: bool
     status: CourseStatus
@@ -135,7 +148,7 @@ class CatalogCourseResponse(BaseModel):
     location_name: str
     title: str
     description: str | None
-    discipline: CourseDiscipline
+    discipline: str
     image_url: str | None
     requires_active_subscription: bool
     sessions: list[CatalogSessionResponse]

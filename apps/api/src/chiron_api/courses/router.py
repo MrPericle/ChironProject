@@ -21,6 +21,8 @@ from chiron_api.courses.schemas import (
     CatalogSessionResponse,
     CourseCreate,
     CourseDeleteResponse,
+    CourseDisciplineCreate,
+    CourseDisciplineResponse,
     CourseResponse,
     CourseScheduleCreate,
     CourseSessionCreate,
@@ -33,6 +35,7 @@ from chiron_api.courses.schemas import (
 )
 from chiron_api.db.models import (
     Course,
+    CourseDisciplineOption,
     CourseSession,
     CourseStatus,
     Location,
@@ -44,6 +47,7 @@ from chiron_api.db.session import get_db_session
 router = APIRouter(tags=["courses"])
 
 backoffice_user = Depends(require_roles(UserRole.ADMIN, UserRole.STAFF))
+admin_user = Depends(require_roles(UserRole.ADMIN))
 allowed_course_image_types = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -83,6 +87,25 @@ def ensure_time_order(starts_at, ends_at) -> None:
 
 def normalize_course_title(title: str) -> str:
     return " ".join(title.strip().split())
+
+
+def normalize_discipline_name(name: str) -> str:
+    return " ".join(name.strip().split())
+
+
+def registered_discipline_name(db: Session, name: str) -> str:
+    normalized_name = normalize_discipline_name(name)
+    discipline = db.scalar(
+        select(CourseDisciplineOption).where(
+            func.lower(CourseDisciplineOption.name) == normalized_name.lower(),
+        ),
+    )
+    if discipline is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="La disciplina selezionata non esiste.",
+        )
+    return discipline.name
 
 
 def ensure_course_title_available(
@@ -212,6 +235,62 @@ def deactivate_location(
     return location
 
 
+@router.get(
+    "/admin/disciplines",
+    response_model=list[CourseDisciplineResponse],
+)
+def list_course_disciplines(
+    _: User = backoffice_user,
+    db: Session = Depends(get_db_session),
+) -> list[CourseDisciplineOption]:
+    query = select(CourseDisciplineOption).order_by(
+        CourseDisciplineOption.sort_order,
+        CourseDisciplineOption.name,
+    )
+    return list(db.scalars(query).all())
+
+
+@router.post(
+    "/admin/disciplines",
+    response_model=CourseDisciplineResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_course_discipline(
+    payload: CourseDisciplineCreate,
+    _: User = admin_user,
+    db: Session = Depends(get_db_session),
+) -> CourseDisciplineOption:
+    name = normalize_discipline_name(payload.name)
+    existing = db.scalar(
+        select(CourseDisciplineOption).where(
+            func.lower(CourseDisciplineOption.name) == name.lower(),
+        ),
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Questa disciplina esiste gia.",
+        )
+
+    highest_sort_order = db.scalar(select(func.max(CourseDisciplineOption.sort_order))) or 0
+    discipline = CourseDisciplineOption(
+        name=name,
+        sort_order=highest_sort_order + 1,
+        is_default=False,
+    )
+    db.add(discipline)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Questa disciplina esiste gia.",
+        ) from exc
+    db.refresh(discipline)
+    return discipline
+
+
 @router.post("/admin/courses", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
 def create_course(
     payload: CourseCreate,
@@ -221,7 +300,9 @@ def create_course(
     get_location_or_404(db, payload.location_id)
     title = normalize_course_title(payload.title)
     ensure_course_title_available(db, location_id=payload.location_id, title=title)
-    course = Course(**payload.model_dump(exclude={"title"}), title=title)
+    data = payload.model_dump(exclude={"title"})
+    data["discipline"] = registered_discipline_name(db, payload.discipline)
+    course = Course(**data, title=title)
     db.add(course)
     commit_course_change(
         db,
@@ -253,6 +334,8 @@ def update_course(
     title = normalize_course_title(data.get("title", course.title))
     if "location_id" in data:
         get_location_or_404(db, location_id)
+    if "discipline" in data:
+        data["discipline"] = registered_discipline_name(db, data["discipline"])
     ensure_course_title_available(
         db,
         location_id=location_id,

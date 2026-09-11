@@ -52,11 +52,10 @@ class CourseStatus(StrEnum):
 
 
 class CourseDiscipline(StrEnum):
-    CALISTHENICS = "calisthenics"
-    MARTIAL_ARTS = "martial_arts"
-    POLE_DANCE = "pole_dance"
-    MOBILITY = "mobility"
-    OTHER = "other"
+    GYM = "Sala"
+    MARTIAL_ARTS = "Arti marziali"
+    POLE = "Pole"
+    OTHER = "Altro"
 
 
 class BookingStatus(StrEnum):
@@ -160,6 +159,19 @@ class Location(Base):
     courses: Mapped[list["Course"]] = relationship(back_populates="location")
 
 
+class CourseDisciplineOption(Base):
+    __tablename__ = "course_disciplines"
+    __table_args__ = (
+        Index("uq_course_disciplines_name_lower", text("lower(name)"), unique=True),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class Course(Base):
     __tablename__ = "courses"
     __table_args__ = (UniqueConstraint("location_id", "title", name="uq_courses_location_title"),)
@@ -169,9 +181,9 @@ class Course(Base):
     instructor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
     title: Mapped[str] = mapped_column(String(180), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    discipline: Mapped[CourseDiscipline] = mapped_column(
-        Enum(CourseDiscipline, name="course_discipline", values_callable=enum_values),
-        default=CourseDiscipline.OTHER,
+    discipline: Mapped[str] = mapped_column(
+        String(80),
+        default=CourseDiscipline.OTHER.value,
         nullable=False,
     )
     image_url: Mapped[str | None] = mapped_column(String(500))
