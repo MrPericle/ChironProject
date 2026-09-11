@@ -731,6 +731,9 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
 
     await screen.findByRole("heading", { name: "Configura il 2FA" });
+    expect(
+      screen.getByRole("img", { name: "QR Code per configurare il 2FA" }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Chiave manuale 2FA")).toHaveValue("JBSWY3DPEHPK3PXP");
     fireEvent.change(screen.getByLabelText("Codice 2FA"), { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: "Attiva e accedi" }));

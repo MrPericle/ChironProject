@@ -293,6 +293,31 @@ h3 {
   line-height: 1.5;
 }
 
+.two-factor-qr {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(11, 11, 13, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.two-factor-qr svg {
+  width: min(184px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.two-factor-qr figcaption {
+  color: #4f4f54;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .two-factor-setup .secondary-action {
   width: 100%;
 }

@@ -29,6 +29,7 @@ import {
   UserX,
   XCircle,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
@@ -3211,7 +3212,20 @@ function LoginScreen({
 
           {twoFactorStep?.kind === "setup" ? (
             <div className="two-factor-setup">
-              <p>Registra la chiave nell'app autenticatore, poi inserisci il codice generato.</p>
+              <p>Scansiona il QR nell'app autenticatore, poi inserisci il codice generato.</p>
+              <figure className="two-factor-qr">
+                <QRCodeSVG
+                  aria-label="QR Code per configurare il 2FA"
+                  bgColor="#ffffff"
+                  fgColor="#111113"
+                  level="M"
+                  marginSize={2}
+                  role="img"
+                  size={184}
+                  value={twoFactorStep.otpauthUri}
+                />
+                <figcaption>Inquadra il codice con l'app autenticatore.</figcaption>
+              </figure>
               <label className="field">
                 <span>Chiave manuale 2FA</span>
                 <input

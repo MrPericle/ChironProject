@@ -401,6 +401,8 @@ Completato: area utente e backoffice dispongono di un calendario adattivo per da
 ### `security: login admin 2fa a due passaggi`
 
 Completato: il primo passaggio verifica email e password, il secondo richiede il codice TOTP tramite una challenge breve; il backoffice viene aperto soltanto dopo entrambe le verifiche.
+La prima configurazione mostra un QR Code generato localmente nel browser e
+mantiene la chiave manuale come alternativa accessibile.
 
 ## Incremento completato - Occorrenze datate e consolidamento pre-deploy
 
