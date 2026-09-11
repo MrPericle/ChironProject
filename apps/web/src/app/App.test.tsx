@@ -12,7 +12,7 @@ const catalogResponse = [
     location_name: "Chiron Roma",
     title: "Calisthenics Foundation",
     description: "Forza, controllo e progressioni a corpo libero.",
-    discipline: "calisthenics",
+    discipline: "Sala",
     image_url: "/uploads/calisthenics.jpg",
     requires_active_subscription: true,
     sessions: [
@@ -42,7 +42,7 @@ const catalogResponse = [
     location_name: "Chiron Milano",
     title: "Pole Flow",
     description: "Tecnica e transizioni fluide.",
-    discipline: "pole_dance",
+    discipline: "Pole",
     image_url: null,
     requires_active_subscription: true,
     sessions: [
@@ -88,6 +88,18 @@ const adminLocationsResponse = [
   },
 ];
 
+const adminDisciplinesResponse = [
+  { id: "discipline-gym", name: "Sala", sort_order: 1, is_default: true },
+  {
+    id: "discipline-martial",
+    name: "Arti marziali",
+    sort_order: 2,
+    is_default: true,
+  },
+  { id: "discipline-pole", name: "Pole", sort_order: 3, is_default: true },
+  { id: "discipline-other", name: "Altro", sort_order: 4, is_default: true },
+];
+
 const adminCoursesResponse = [
   {
     id: "course-calisthenics",
@@ -95,7 +107,7 @@ const adminCoursesResponse = [
     instructor_user_id: null,
     title: "Calisthenics Foundation",
     description: "Forza e controllo.",
-    discipline: "calisthenics",
+    discipline: "Sala",
     image_url: "/uploads/calisthenics.jpg",
     requires_active_subscription: true,
     status: "published",
@@ -324,6 +336,23 @@ function installFetchMock(
       return jsonResponse(adminCoursesResponse);
     }
 
+    if (url.endsWith("/admin/disciplines") && method === "GET") {
+      return jsonResponse(adminDisciplinesResponse);
+    }
+
+    if (url.endsWith("/admin/disciplines") && method === "POST") {
+      const body = JSON.parse(init?.body?.toString() ?? "{}") as { name?: string };
+      return jsonResponse(
+        {
+          id: "discipline-aerial",
+          name: body.name?.trim() ?? "Danza aerea",
+          sort_order: 5,
+          is_default: false,
+        },
+        { status: 201 },
+      );
+    }
+
     if (url.endsWith("/admin/subscriptions") && method === "GET") {
       return jsonResponse(adminSubscriptionsResponse);
     }
@@ -407,6 +436,7 @@ function installFetchMock(
 
     if (url.endsWith("/admin/courses") && method === "POST") {
       const body = JSON.parse(init?.body?.toString() ?? "{}") as {
+        discipline?: string;
         requires_active_subscription?: boolean;
       };
       return jsonResponse(
@@ -416,7 +446,7 @@ function installFetchMock(
           instructor_user_id: null,
           title: "Martial Flow",
           description: "Tecnica e mobilita.",
-          discipline: "martial_arts",
+          discipline: body.discipline ?? "Arti marziali",
           image_url: null,
           requires_active_subscription: body.requires_active_subscription ?? true,
           status: "published",
@@ -443,7 +473,7 @@ function installFetchMock(
         ...adminCoursesResponse[0],
         id: "course-martial",
         title: "Martial Flow",
-        discipline: "martial_arts",
+        discipline: "Arti marziali",
         image_url: "/uploads/martial-flow.jpg",
         requires_active_subscription: false,
         sessions: [],
@@ -755,6 +785,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
     expect(screen.getByRole("heading", { name: "Corsi e sessioni" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nuova disciplina" })).not.toBeInTheDocument();
   });
 
   it("shows course session attendees from the admin calendar", async () => {
@@ -908,6 +939,29 @@ describe("App", () => {
     await screen.findByText("Lezione aggiornata.");
   });
 
+  it("lets an admin add and immediately select a custom discipline", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuova disciplina" }));
+    fireEvent.change(screen.getByLabelText("Nome nuova disciplina"), {
+      target: { value: "Danza aerea" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi disciplina" }));
+
+    await screen.findByText("Disciplina “Danza aerea” aggiunta.");
+    expect(screen.getByLabelText("Disciplina")).toHaveValue("Danza aerea");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/disciplines",
+      expect.objectContaining({
+        body: JSON.stringify({ name: "Danza aerea" }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("requires confirmation and removes a permanently deleted course from the UI", async () => {
     const fetchMock = installFetchMock();
 
@@ -953,13 +1007,13 @@ describe("App", () => {
       "expired-membership",
     );
     fireEvent.click(
-      screen.getByRole("button", { name: /gestisci account amministrativo admin@example.com/i }),
+      screen.getByRole("button", { name: /modifica dati e permessi admin@example.com/i }),
     );
     expect(screen.queryByLabelText("Inizio iscrizione")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /salva iscrizione admin@example.com/i }),
+      screen.queryByRole("button", { name: /aggiorna iscrizione admin@example.com/i }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /annulla modifica admin@example.com/i }));
+    fireEvent.click(screen.getByRole("button", { name: /chiudi modifica admin@example.com/i }));
     fireEvent.change(screen.getByLabelText("Email utente"), {
       target: { value: "new.member@example.com" },
     });
@@ -973,9 +1027,9 @@ describe("App", () => {
       expect.objectContaining({ method: "POST" }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /gestisci utente e iscrizione member@example.com/i }));
+    fireEvent.click(screen.getByRole("button", { name: /modifica dati e iscrizione member@example.com/i }));
     fireEvent.change(screen.getByLabelText("Durata iscrizione"), { target: { value: "60" } });
-    fireEvent.click(screen.getByRole("button", { name: /salva iscrizione member@example.com/i }));
+    fireEvent.click(screen.getByRole("button", { name: /aggiorna iscrizione member@example.com/i }));
 
     await screen.findByText("Iscrizione aggiornata.");
     expect(fetchMock).toHaveBeenCalledWith(
@@ -983,7 +1037,8 @@ describe("App", () => {
       expect.objectContaining({ method: "PATCH" }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /disabilita member@example.com/i }));
+    fireEvent.click(screen.getByRole("button", { name: /chiudi modifica member@example.com/i }));
+    fireEvent.click(screen.getByRole("button", { name: /sospendi accesso member@example.com/i }));
 
     await screen.findByText(
       "Account disabilitato. Le prenotazioni attive sono state rilasciate.",
@@ -1002,11 +1057,11 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Utenti" }));
     fireEvent.click(
       screen.getByRole("button", {
-        name: /gestisci utente e iscrizione member@example.com/i,
+        name: /modifica dati e iscrizione member@example.com/i,
       }),
     );
     fireEvent.change(screen.getByLabelText("Ruolo"), { target: { value: "staff" } });
-    fireEvent.click(screen.getByRole("button", { name: /salva utente member@example.com/i }));
+    fireEvent.click(screen.getByRole("button", { name: /salva dati e permessi member@example.com/i }));
 
     await screen.findByText("Utente aggiornato.");
     expect(screen.getByText("Collaboratore")).toBeInTheDocument();
@@ -1016,6 +1071,33 @@ describe("App", () => {
         body: expect.stringContaining('"role":"staff"'),
         method: "PATCH",
       }),
+    );
+  });
+
+  it("explains account deletion before running it", async () => {
+    const fetchMock = installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Utenti" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /elimina account member@example.com/i }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "L’accesso verra revocato, l’email anonimizzata",
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "http://localhost:8000/admin/users/user-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Conferma eliminazione" }));
+
+    await screen.findByText("Utente eliminato.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/admin/users/user-1",
+      expect.objectContaining({ method: "DELETE" }),
     );
   });
 

@@ -41,6 +41,7 @@ import {
   CatalogSession,
   ChironApi,
   CourseDiscipline,
+  CourseDisciplineOption,
   CoursePayload,
   CourseSession,
   CourseStatus,
@@ -80,13 +81,17 @@ type MobileView = "courses" | "calendar" | "bookings" | "profile";
 type AdminTab = "dashboard" | "calendar" | "users" | "courses" | "locations";
 type ScheduleMode = "weekly" | "single";
 
-const disciplineLabels: Record<CourseDiscipline, string> = {
-  calisthenics: "Calisthenics",
+const legacyDisciplineLabels: Record<string, string> = {
+  calisthenics: "Sala",
   martial_arts: "Arti marziali",
-  pole_dance: "Pole dance",
-  mobility: "Mobilita",
+  mobility: "Sala",
   other: "Altro",
+  pole_dance: "Pole",
 };
+
+function disciplineLabel(discipline: CourseDiscipline): string {
+  return legacyDisciplineLabels[discipline] ?? discipline;
+}
 
 const userStatusLabels: Record<AdminUser["status"], string> = {
   active: "Account attivo",
@@ -678,6 +683,7 @@ function BackofficeScreen({
 }) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [courses, setCourses] = useState<AdminCourse[]>([]);
+  const [disciplines, setDisciplines] = useState<CourseDisciplineOption[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
@@ -697,6 +703,7 @@ function BackofficeScreen({
         }
         setLocations(dashboard.locations);
         setCourses(dashboard.courses);
+        setDisciplines(dashboard.disciplines);
         setUsers(dashboard.users);
         setStats(dashboard.stats);
         setLoadState("ready");
@@ -752,6 +759,14 @@ function BackofficeScreen({
         : { ...current, courses: current.courses.filter((course) => course.id !== courseId) },
     );
     void api.adminStats(session.access_token).then(setStats).catch(() => undefined);
+  }
+
+  function addDiscipline(discipline: CourseDisciplineOption): void {
+    setDisciplines((current) =>
+      [...current, discipline].sort(
+        (left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name),
+      ),
+    );
   }
 
   function upsertUser(user: AdminUser): void {
@@ -883,9 +898,12 @@ function BackofficeScreen({
                 {activeTab === "courses" ? (
                   <CoursesManager
                     courses={courses}
+                    disciplines={disciplines}
+                    isAdmin={isAdmin}
                     locations={activeLocations}
                     onCourseChange={upsertCourse}
                     onCourseDelete={removeCourse}
+                    onDisciplineCreate={addDiscipline}
                     onNotice={setNotice}
                     token={session.access_token}
                   />
@@ -1407,6 +1425,8 @@ function UsersManager({
   const [password, setPassword] = useState("password-segreta");
   const [query, setQuery] = useState("");
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [confirmingDeleteUserId, setConfirmingDeleteUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [userDraft, setUserDraft] = useState<{
     birth_date: string;
     duration_days: string;
@@ -1468,15 +1488,20 @@ function UsersManager({
   }
 
   async function handleDelete(user: AdminUser): Promise<void> {
+    setDeletingUserId(user.id);
     try {
       onUserChange(await api.deleteAdminUser(token, user.id));
+      setConfirmingDeleteUserId(null);
       onNotice({ tone: "success", message: "Utente eliminato." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
+    } finally {
+      setDeletingUserId(null);
     }
   }
 
   function handleEdit(user: AdminUser): void {
+    setConfirmingDeleteUserId(null);
     setEditingUserId(user.id);
     setUserDraft({
       birth_date: user.birth_date ?? "",
@@ -1597,7 +1622,9 @@ function UsersManager({
           visibleUsers.map((user) => (
             <article
               className={
-                editingUserId === user.id ? "admin-list-item is-editing" : "admin-list-item"
+                editingUserId === user.id
+                  ? "admin-list-item admin-user-item is-editing"
+                  : "admin-list-item admin-user-item"
               }
               key={user.id}
             >
@@ -1629,6 +1656,9 @@ function UsersManager({
                 <span className="admin-status role-status">{userRoleLabels[user.role]}</span>
                 {editingUserId === user.id && userDraft !== null ? (
                   <div className="inline-edit-grid">
+                    <div className="user-edit-heading">
+                      <strong>Dati e permessi</strong>
+                    </div>
                     <label className="field">
                       <span>Email profilo</span>
                       <input
@@ -1680,21 +1710,20 @@ function UsersManager({
                         <option value="admin">Amministratore</option>
                       </select>
                     </label>
-                    <label className="field">
-                      <span>Stato utente</span>
-                      <select
-                        value={userDraft.status}
-                        onChange={(event) =>
-                          setUserDraft({ ...userDraft, status: event.target.value as AdminUser["status"] })
-                        }
-                      >
-                        <option value="active">Attivo</option>
-                        <option value="disabled">Disabilitato</option>
-                        <option value="deleted">Eliminato</option>
-                      </select>
-                    </label>
+                    <button
+                      aria-label={`Salva dati e permessi ${user.email}`}
+                      className="primary-action user-section-action"
+                      onClick={() => handleSaveProfile(user)}
+                      type="button"
+                    >
+                      <Save aria-hidden="true" />
+                      Salva dati e permessi
+                    </button>
                     {userDraft?.role === "user" ? (
                       <>
+                        <div className="user-edit-heading">
+                          <strong>Iscrizione palestra</strong>
+                        </div>
                         <label className="field">
                           <span>Inizio iscrizione</span>
                           <input
@@ -1716,95 +1745,118 @@ function UsersManager({
                             }
                           />
                         </label>
+                        <button
+                          aria-label={`${
+                            user.subscription === null ? "Crea" : "Aggiorna"
+                          } iscrizione ${user.email}`}
+                          className="primary-action user-section-action"
+                          onClick={() => handleSaveSubscription(user)}
+                          type="button"
+                        >
+                          <CalendarCheck aria-hidden="true" />
+                          {user.subscription === null ? "Crea iscrizione" : "Aggiorna iscrizione"}
+                        </button>
                       </>
                     ) : null}
                   </div>
                 ) : null}
               </div>
-              <div className="admin-row-actions">
+              <div className="admin-row-actions admin-user-actions">
                 {editingUserId === user.id ? (
+                  <button
+                    aria-label={`Chiudi modifica ${user.email}`}
+                    className="secondary-action"
+                    onClick={() => {
+                      setEditingUserId(null);
+                      setUserDraft(null);
+                    }}
+                    type="button"
+                  >
+                    <XCircle aria-hidden="true" />
+                    Chiudi modifica
+                  </button>
+                ) : (
                   <>
                     <button
-                      aria-label={`Salva utente ${user.email}`}
-                      className="secondary-action"
-                      onClick={() => handleSaveProfile(user)}
+                      aria-label={
+                        user.role === "user"
+                          ? `Modifica dati e iscrizione ${user.email}`
+                          : `Modifica dati e permessi ${user.email}`
+                      }
+                      className="primary-action user-edit-action"
+                      onClick={() => handleEdit(user)}
                       type="button"
                     >
-                      <Save aria-hidden="true" />
-                      Profilo
+                      <Pencil aria-hidden="true" />
+                      {user.role === "user" ? "Modifica dati e iscrizione" : "Modifica dati e permessi"}
                     </button>
-                    {userDraft?.role === "user" ? (
+                    {user.status === "active" ? (
                       <button
-                        aria-label={`Salva iscrizione ${user.email}`}
+                        aria-label={`Sospendi accesso ${user.email}`}
                         className="secondary-action"
-                        onClick={() => handleSaveSubscription(user)}
+                        onClick={() => handleDisable(user)}
                         type="button"
                       >
-                        <CalendarCheck aria-hidden="true" />
-                        Iscrizione
+                        <UserX aria-hidden="true" />
+                        Sospendi accesso
+                      </button>
+                    ) : user.status === "disabled" ? (
+                      <button
+                        aria-label={`Riattiva accesso ${user.email}`}
+                        className="secondary-action"
+                        onClick={() => handleRestore(user)}
+                        type="button"
+                      >
+                        <RotateCcw aria-hidden="true" />
+                        Riattiva accesso
                       </button>
                     ) : null}
+                    {user.status !== "deleted" ? (
+                      <button
+                        aria-expanded={confirmingDeleteUserId === user.id}
+                        aria-label={`Elimina account ${user.email}`}
+                        className="secondary-action danger-action"
+                        onClick={() => setConfirmingDeleteUserId(user.id)}
+                        type="button"
+                      >
+                        <Trash2 aria-hidden="true" />
+                        Elimina account
+                      </button>
+                    ) : null}
+                  </>
+                )}
+              </div>
+              {confirmingDeleteUserId === user.id ? (
+                <div className="destructive-confirmation" role="alert">
+                  <div>
+                    <strong>Eliminare l’account di {user.email}?</strong>
+                    <p>
+                      L’accesso verra revocato, l’email anonimizzata e tutte le prenotazioni
+                      attive saranno rilasciate. L’operazione non puo essere annullata.
+                    </p>
+                  </div>
+                  <div className="destructive-confirmation-actions">
                     <button
-                      aria-label={`Annulla modifica ${user.email}`}
                       className="secondary-action"
-                      onClick={() => {
-                        setEditingUserId(null);
-                        setUserDraft(null);
-                      }}
+                      disabled={deletingUserId === user.id}
+                      onClick={() => setConfirmingDeleteUserId(null)}
                       type="button"
                     >
                       <XCircle aria-hidden="true" />
-                      Annulla
+                      Mantieni account
                     </button>
-                  </>
-                ) : (
-                  <button
-                    aria-label={
-                      user.role === "user"
-                        ? `Gestisci utente e iscrizione ${user.email}`
-                        : `Gestisci account amministrativo ${user.email}`
-                    }
-                    className="secondary-action"
-                    onClick={() => handleEdit(user)}
-                    type="button"
-                  >
-                    <Pencil aria-hidden="true" />
-                    Gestisci
-                  </button>
-                )}
-                {user.status === "active" ? (
-                  <button
-                    aria-label={`Disabilita ${user.email}`}
-                    className="secondary-action"
-                    onClick={() => handleDisable(user)}
-                    type="button"
-                  >
-                    <UserX aria-hidden="true" />
-                    Disabilita
-                  </button>
-                ) : (
-                  <button
-                    aria-label={`Riattiva ${user.email}`}
-                    className="secondary-action"
-                    onClick={() => handleRestore(user)}
-                    type="button"
-                  >
-                    <RotateCcw aria-hidden="true" />
-                    Riattiva
-                  </button>
-                )}
-                {user.status !== "deleted" ? (
-                  <button
-                    aria-label={`Elimina ${user.email}`}
-                    className="secondary-action danger-action"
-                    onClick={() => handleDelete(user)}
-                    type="button"
-                  >
-                    <Trash2 aria-hidden="true" />
-                    Elimina
-                  </button>
-                ) : null}
-              </div>
+                    <button
+                      className="primary-action permanent-delete-action"
+                      disabled={deletingUserId === user.id}
+                      onClick={() => handleDelete(user)}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" />
+                      {deletingUserId === user.id ? "Eliminazione" : "Conferma eliminazione"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </article>
           ))
         )}
@@ -1999,16 +2051,22 @@ function LocationsManager({
 
 function CoursesManager({
   courses,
+  disciplines,
+  isAdmin,
   locations,
   onCourseChange,
   onCourseDelete,
+  onDisciplineCreate,
   onNotice,
   token,
 }: {
   courses: AdminCourse[];
+  disciplines: CourseDisciplineOption[];
+  isAdmin: boolean;
   locations: Location[];
   onCourseChange: (course: AdminCourse) => void;
   onCourseDelete: (courseId: string) => void;
+  onDisciplineCreate: (discipline: CourseDisciplineOption) => void;
   onNotice: (notice: Notice) => void;
   token: string;
 }) {
@@ -2016,7 +2074,10 @@ function CoursesManager({
   const [description, setDescription] = useState("");
   const [locationId, setLocationId] = useState("");
   const [status, setStatus] = useState<CourseStatus>("published");
-  const [discipline, setDiscipline] = useState<CourseDiscipline>("calisthenics");
+  const [discipline, setDiscipline] = useState<CourseDiscipline>("Sala");
+  const [showDisciplineCreator, setShowDisciplineCreator] = useState(false);
+  const [newDisciplineName, setNewDisciplineName] = useState("");
+  const [isCreatingDiscipline, setIsCreatingDiscipline] = useState(false);
   const [requiresActiveSubscription, setRequiresActiveSubscription] = useState(true);
   const [courseImage, setCourseImage] = useState<File | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
@@ -2035,6 +2096,27 @@ function CoursesManager({
   const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
 
   const selectedLocationId = locationId || locations[0]?.id || "";
+
+  async function handleCreateDiscipline(): Promise<void> {
+    if (newDisciplineName.trim() === "") {
+      onNotice({ tone: "error", message: "Inserisci il nome della nuova disciplina." });
+      return;
+    }
+
+    setIsCreatingDiscipline(true);
+    try {
+      const created = await api.createCourseDiscipline(token, newDisciplineName);
+      onDisciplineCreate(created);
+      setDiscipline(created.name);
+      setNewDisciplineName("");
+      setShowDisciplineCreator(false);
+      onNotice({ tone: "success", message: `Disciplina “${created.name}” aggiunta.` });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    } finally {
+      setIsCreatingDiscipline(false);
+    }
+  }
 
   async function handleCreateCourse(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -2257,17 +2339,71 @@ function CoursesManager({
             <option value="draft">Bozza</option>
           </select>
         </label>
-        <label className="field">
-          <span>Disciplina</span>
-          <select
-            value={discipline}
-            onChange={(event) => setDiscipline(event.target.value as CourseDiscipline)}
-          >
-            {Object.entries(disciplineLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
+        <div className="discipline-control">
+          <label className="field">
+            <span>Disciplina</span>
+            <select
+              value={discipline}
+              onChange={(event) => setDiscipline(event.target.value)}
+            >
+              {disciplines.map((item) => (
+                <option key={item.id} value={item.name}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+          {isAdmin ? (
+            <button
+              aria-expanded={showDisciplineCreator}
+              className="secondary-action discipline-create-trigger"
+              onClick={() => setShowDisciplineCreator((current) => !current)}
+              type="button"
+            >
+              <Plus aria-hidden="true" />
+              Nuova disciplina
+            </button>
+          ) : null}
+        </div>
+        {isAdmin && showDisciplineCreator ? (
+          <div className="discipline-create-row">
+            <label className="field">
+              <span>Nome nuova disciplina</span>
+              <input
+                autoFocus
+                maxLength={80}
+                value={newDisciplineName}
+                onChange={(event) => setNewDisciplineName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void handleCreateDiscipline();
+                  }
+                }}
+              />
+            </label>
+            <button
+              className="primary-action"
+              disabled={isCreatingDiscipline}
+              onClick={() => void handleCreateDiscipline()}
+              type="button"
+            >
+              <Save aria-hidden="true" />
+              {isCreatingDiscipline ? "Salvataggio" : "Aggiungi disciplina"}
+            </button>
+            <button
+              aria-label="Annulla nuova disciplina"
+              className="icon-button"
+              disabled={isCreatingDiscipline}
+              onClick={() => {
+                setShowDisciplineCreator(false);
+                setNewDisciplineName("");
+              }}
+              title="Annulla"
+              type="button"
+            >
+              <XCircle aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
         <label className="course-access-toggle">
           <input
             checked={requiresActiveSubscription}
@@ -2346,12 +2482,12 @@ function CoursesManager({
                         onChange={(event) =>
                           setCourseDraft({
                             ...courseDraft,
-                            discipline: event.target.value as CourseDiscipline,
+                            discipline: event.target.value,
                           })
                         }
                       >
-                        {Object.entries(disciplineLabels).map(([value, label]) => (
-                          <option key={value} value={value}>{label}</option>
+                        {disciplines.map((item) => (
+                          <option key={item.id} value={item.name}>{item.name}</option>
                         ))}
                       </select>
                     </label>
@@ -3314,12 +3450,15 @@ function CourseVisual({
   discipline: CourseDiscipline;
   imageUrl: string | null;
 }) {
+  const normalizedDiscipline = discipline.toLocaleLowerCase("it-IT");
   const variant =
-    discipline === "pole_dance"
+    normalizedDiscipline.includes("pole")
       ? "pole"
-      : discipline === "martial_arts"
+      : normalizedDiscipline.includes("marzial") || normalizedDiscipline.includes("martial")
         ? "martial"
-        : discipline === "calisthenics"
+        : normalizedDiscipline === "sala" ||
+            normalizedDiscipline.includes("calisthenics") ||
+            normalizedDiscipline.includes("mobilit")
           ? "calisthenics"
           : "movement";
   const assets = {
@@ -3339,7 +3478,7 @@ function CourseVisual({
       ) : (
         <img alt="" loading="lazy" src={source} />
       )}
-      <span>{disciplineLabels[discipline]}</span>
+      <span>{disciplineLabel(discipline)}</span>
     </div>
   );
 }

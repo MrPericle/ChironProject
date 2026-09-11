@@ -143,12 +143,14 @@ export type LocationUpdatePayload = Partial<LocationPayload> & {
 };
 
 export type CourseStatus = "draft" | "published" | "archived";
-export type CourseDiscipline =
-  | "calisthenics"
-  | "martial_arts"
-  | "pole_dance"
-  | "mobility"
-  | "other";
+export type CourseDiscipline = string;
+
+export type CourseDisciplineOption = {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_default: boolean;
+};
 
 export type AdminCourse = {
   id: string;
@@ -226,6 +228,7 @@ export type UserDashboard = {
 export type AdminDashboard = {
   locations: Location[];
   courses: AdminCourse[];
+  disciplines: CourseDisciplineOption[];
   subscriptions: AdminSubscriptionInfo[];
   users: AdminUser[];
   stats: AdminStats;
@@ -313,14 +316,15 @@ export class ChironApi {
   }
 
   async adminDashboard(token: string, role: UserRole): Promise<AdminDashboard> {
-    const [locations, courses, stats] = await Promise.all([
+    const [locations, courses, disciplines, stats] = await Promise.all([
       this.request<Location[]>("/admin/locations", { token }),
       this.request<AdminCourse[]>("/admin/courses", { token }),
+      this.request<CourseDisciplineOption[]>("/admin/disciplines", { token }),
       this.request<AdminStats>("/admin/stats", { token }),
     ]);
 
     if (role !== "admin") {
-      return { locations, courses, subscriptions: [], users: [], stats };
+      return { locations, courses, disciplines, subscriptions: [], users: [], stats };
     }
 
     const [subscriptions, users] = await Promise.all([
@@ -328,7 +332,7 @@ export class ChironApi {
       this.request<AdminUser[]>("/admin/users", { token }),
     ]);
 
-    return { locations, courses, subscriptions, users, stats };
+    return { locations, courses, disciplines, subscriptions, users, stats };
   }
 
   async adminStats(token: string): Promise<AdminStats> {
@@ -418,6 +422,17 @@ export class ChironApi {
       method: "POST",
       token,
       body: payload,
+    });
+  }
+
+  async createCourseDiscipline(
+    token: string,
+    name: string,
+  ): Promise<CourseDisciplineOption> {
+    return this.request<CourseDisciplineOption>("/admin/disciplines", {
+      method: "POST",
+      token,
+      body: { name },
     });
   }
 
