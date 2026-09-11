@@ -454,6 +454,10 @@ Il tecnico e il cliente devono verificare insieme:
 - registrazione, login, logout, rinnovo sessione e recupero dagli errori;
 - login amministratore con password e secondo fattore nel corretto ordine;
 - creazione di sede, corso ricorrente, capienza, orari e immagine;
+- presenza delle discipline Sala, Arti marziali, Pole e Altro, aggiunta di una
+  disciplina personalizzata e utilizzo nel form corso;
+- chiarezza e corretto funzionamento delle azioni dati, permessi, iscrizione,
+  sospensione ed eliminazione nella gestione utenti;
 - cancellazione definitiva di un corso e rimozione delle relative lezioni,
   prenotazioni e immagini sia dal backoffice sia dall'area utente;
 - promozione di un utente a Collaboratore, configurazione 2FA al primo accesso

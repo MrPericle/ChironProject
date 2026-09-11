@@ -432,6 +432,22 @@ accede al backoffice con 2FA e puo gestire sedi, corsi, calendario e
 partecipanti, ma non puo visualizzare o modificare utenti e iscrizioni. Il
 cambio di ruolo revoca le sessioni precedenti e richiede un nuovo accesso.
 
+## Incremento completato - Discipline e chiarezza gestione utenti
+
+### `feat: discipline corsi configurabili`
+
+Completato: la creazione corsi propone Sala, Arti marziali, Pole e Altro.
+L'amministratore puo aggiungere nuove discipline, immediatamente disponibili
+nei form di creazione e modifica; i collaboratori possono usare le discipline
+registrate senza modificarne l'elenco.
+
+### `fix: azioni utenti esplicite e contestuali`
+
+Completato: la scheda utente distingue modifica dati e permessi, gestione
+dell'iscrizione, sospensione dell'accesso ed eliminazione account. Ogni
+salvataggio e collocato nella relativa sezione e l'eliminazione richiede una
+conferma che ne descrive gli effetti.
+
 ## Milestone 9 - CI/CD e deploy VPS
 
 Stato pre-deploy al 10 settembre 2026: pipeline CI, immagini production,
