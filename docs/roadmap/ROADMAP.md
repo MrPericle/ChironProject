@@ -460,10 +460,12 @@ impediscono inoltre di creare corsi in una sede inattiva.
 
 ## Milestone 9 - CI/CD e deploy VPS
 
-Stato pre-deploy al 10 settembre 2026: pipeline CI, immagini production,
-Compose production, Caddy, bootstrap admin e strumenti backup/restore sono
-pronti e validati localmente. Il lavoro e intenzionalmente fermo prima del
-deploy staging, che verra eseguito insieme passo passo.
+Stato deploy al 11 settembre 2026: lo staging e raggiungibile su
+`staging.makastudio.it`, con API su `api.staging.makastudio.it`, HTTPS e
+redirect `www` attivi. Migrazioni applicate fino a `20260911_0006`, stack
+Docker sano e primo amministratore tecnico verificato con login 2FA. Backup e
+restore sono stati provati sul VPS: checksum validi e 12 tabelle ripristinate
+nel database temporaneo di verifica.
 
 ### `ci: aggiungi test backend e frontend`
 
@@ -489,7 +491,8 @@ Descrizione: deploy via SSH su VPS con Docker Compose e variabili ambiente separ
 
 Definition of done: staging raggiungibile, migrazioni applicate in modo controllato.
 
-Stato: **in attesa** della sessione condivisa di deploy.
+Stato: **completato** nello staging con deploy manuale riproducibile, HTTPS,
+migrazioni controllate e smoke test esterni superati.
 
 ### `chore: configura deploy produzione`
 
@@ -505,8 +508,8 @@ Descrizione: documentare backup PostgreSQL, restore e responsabilita operative.
 
 Definition of done: procedura provata almeno una volta in staging.
 
-Stato: script e runbook verificati localmente; prova staging ancora da eseguire
-insieme.
+Stato: **completato** nello staging; dump PostgreSQL e archivio upload verificati
+tramite checksum e restore in un database temporaneo poi rimosso.
 
 ## Milestone 10 - Hardening, test finali e documentazione
 
