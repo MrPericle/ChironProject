@@ -317,12 +317,16 @@ export class ChironApi {
   async dashboard(token: string): Promise<UserDashboard> {
     const [user, courses, bookings, subscription] = await Promise.all([
       this.request<User>("/auth/me", { token }),
-      this.request<CatalogCourse[]>("/courses", { token }),
+      this.catalog(token),
       this.request<Booking[]>("/bookings/me", { token }),
       this.request<SubscriptionInfo | null>("/subscriptions/me", { token }),
     ]);
 
     return { user, courses, bookings, subscription };
+  }
+
+  async catalog(token: string): Promise<CatalogCourse[]> {
+    return this.request<CatalogCourse[]>("/courses", { token });
   }
 
   async adminDashboard(token: string, role: UserRole): Promise<AdminDashboard> {

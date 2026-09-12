@@ -231,6 +231,11 @@ function installFetchMock(
   bookings = bookingsResponse,
   catalog = catalogResponse,
 ) {
+  let bookingState = bookings.map((booking) => ({ ...booking }));
+  let catalogState = catalog.map((course) => ({
+    ...course,
+    sessions: course.sessions.map((session) => ({ ...session })),
+  }));
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
     const method = init?.method ?? "GET";
@@ -321,11 +326,11 @@ function installFetchMock(
     }
 
     if (url.endsWith("/courses") && !url.endsWith("/admin/courses") && method === "GET") {
-      return jsonResponse(catalog);
+      return jsonResponse(catalogState);
     }
 
     if (url.endsWith("/bookings/me")) {
-      return jsonResponse(bookings);
+      return jsonResponse(bookingState);
     }
 
     if (url.endsWith("/subscriptions/me")) {
@@ -555,24 +560,64 @@ function installFetchMock(
     }
 
     if (url.endsWith("/bookings") && method === "POST") {
-      const body = JSON.parse(init?.body?.toString() ?? "{}") as { occurs_on?: string };
-      return jsonResponse(
-        {
-          id: "booking-new",
-          user_id: "user-1",
-          course_session_id: "session-calisthenics",
-          occurs_on: body.occurs_on,
-          status: "confirmed",
-          created_at: "2026-08-24T12:00:00Z",
-          cancelled_at: null,
-        },
-        { status: 201 },
-      );
+      const body = JSON.parse(init?.body?.toString() ?? "{}") as {
+        course_session_id?: string;
+        occurs_on?: string;
+      };
+      let bookingStatus: "confirmed" | "waitlisted" = "waitlisted";
+      catalogState = catalogState.map((course) => ({
+        ...course,
+        sessions: course.sessions.map((courseSession) => {
+          if (
+            courseSession.id !== body.course_session_id ||
+            courseSession.occurs_on !== body.occurs_on ||
+            courseSession.available_spots <= 0
+          ) {
+            return courseSession;
+          }
+          bookingStatus = "confirmed";
+          return { ...courseSession, available_spots: courseSession.available_spots - 1 };
+        }),
+      }));
+      const createdBooking: Booking = {
+        id: "booking-new",
+        user_id: "user-1",
+        course_session_id: body.course_session_id ?? "session-calisthenics",
+        occurs_on: body.occurs_on ?? "2026-08-31",
+        status: bookingStatus,
+        created_at: "2026-08-24T12:00:00Z",
+        cancelled_at: null,
+      };
+      bookingState = [createdBooking, ...bookingState];
+      return jsonResponse(createdBooking, { status: 201 });
     }
 
-    if (url.endsWith("/bookings/booking-existing") && method === "DELETE") {
+    if (url.includes("/bookings/") && method === "DELETE") {
+      const bookingId = url.split("/bookings/")[1];
+      const cancelledBooking = bookingState.find((booking) => booking.id === bookingId);
+      if (cancelledBooking === undefined) {
+        return jsonResponse({ detail: "Not found" }, { status: 404 });
+      }
+      bookingState = bookingState.filter((booking) => booking.id !== bookingId);
+      if (cancelledBooking.status === "confirmed") {
+        catalogState = catalogState.map((course) => ({
+          ...course,
+          sessions: course.sessions.map((courseSession) =>
+            courseSession.id === cancelledBooking.course_session_id &&
+            courseSession.occurs_on === cancelledBooking.occurs_on
+              ? {
+                  ...courseSession,
+                  available_spots: Math.min(
+                    courseSession.capacity,
+                    courseSession.available_spots + 1,
+                  ),
+                }
+              : courseSession,
+          ),
+        }));
+      }
       return jsonResponse({
-        ...bookingsResponse[0],
+        ...cancelledBooking,
         status: "cancelled",
         cancelled_at: "2026-08-24T12:30:00Z",
       });
@@ -1275,6 +1320,8 @@ describe("App", () => {
   });
 
   it("shows one compact booking action and switches the selected occurrence", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-25T12:00:00"));
     const fetchMock = installFetchMock({
       ...subscriptionResponse,
       duration_days: 60,
@@ -1294,6 +1341,8 @@ describe("App", () => {
     fireEvent.click(within(courseCard).getByRole("button", { name: "Prenota" }));
 
     await screen.findByText("Prenotazione confermata.");
+    expect(within(courseCard).getByText(/6 posti liberi/)).toBeInTheDocument();
+    expect(within(courseCard).getByRole("button", { name: "Prenotato" })).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/bookings",
       expect.objectContaining({
@@ -1303,6 +1352,15 @@ describe("App", () => {
         }),
         method: "POST",
       }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /cancella Calisthenics Foundation/i }));
+    await screen.findByText("Prenotazione cancellata.");
+    expect(within(courseCard).getByText("7 posti liberi")).toBeInTheDocument();
+    expect(within(courseCard).getByRole("button", { name: "Prenota" })).toBeEnabled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/bookings/booking-new",
+      expect.objectContaining({ method: "DELETE" }),
     );
   });
 

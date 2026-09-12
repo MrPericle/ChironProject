@@ -171,6 +171,43 @@ function occurrenceKey(session: Pick<CatalogSession, "id" | "occurs_on">): strin
   return `${session.id}:${session.occurs_on}`;
 }
 
+function bookingForOccurrence(
+  bookings: Booking[],
+  session: Pick<CatalogSession, "id" | "occurs_on">,
+): Booking | undefined {
+  return bookings.find(
+    (booking) =>
+      booking.status !== "cancelled" &&
+      booking.course_session_id === session.id &&
+      booking.occurs_on === session.occurs_on,
+  );
+}
+
+function adjustAvailableSpots(
+  courses: CatalogCourse[],
+  target: Pick<CatalogSession, "id" | "occurs_on">,
+  adjustment: number,
+): CatalogCourse[] {
+  return courses.map((course) => ({
+    ...course,
+    sessions: course.sessions.map((courseSession) =>
+      occurrenceKey(courseSession) === occurrenceKey(target)
+        ? {
+            ...courseSession,
+            available_spots: Math.min(
+              courseSession.capacity,
+              Math.max(0, courseSession.available_spots + adjustment),
+            ),
+          }
+        : courseSession,
+    ),
+  }));
+}
+
+function bookedActionLabel(booking: Booking): string {
+  return booking.status === "waitlisted" ? "In lista d’attesa" : "Prenotato";
+}
+
 function canBookOccurrence(
   subscription: SubscriptionInfo | null,
   session: CatalogSession,
@@ -550,7 +587,22 @@ export function App() {
         courseSession.id,
         courseSession.occurs_on,
       );
-      setBookings((current) => [booking, ...current]);
+      setBookings((current) => [
+        booking,
+        ...current.filter(
+          (item) =>
+            item.course_session_id !== booking.course_session_id ||
+            item.occurs_on !== booking.occurs_on,
+        ),
+      ]);
+      if (booking.status === "confirmed") {
+        setCourses((current) => adjustAvailableSpots(current, courseSession, -1));
+      }
+      try {
+        setCourses(await api.catalog(session.access_token));
+      } catch {
+        // The optimistic count remains valid for this user's completed action.
+      }
       setNotice({
         tone: "success",
         message: booking.status === "waitlisted" ? "Sei in lista attesa." : "Prenotazione confermata.",
@@ -576,6 +628,20 @@ export function App() {
     try {
       await api.cancelBooking(session.access_token, booking.id);
       setBookings((current) => current.filter((item) => item.id !== booking.id));
+      if (booking.status === "confirmed") {
+        setCourses((current) =>
+          adjustAvailableSpots(
+            current,
+            { id: booking.course_session_id, occurs_on: booking.occurs_on },
+            1,
+          ),
+        );
+      }
+      try {
+        setCourses(await api.catalog(session.access_token));
+      } catch {
+        // Keep the immediate local update if catalog synchronization is unavailable.
+      }
       setNotice({ tone: "success", message: "Prenotazione cancellata." });
     } catch (error) {
       setNotice({ tone: "error", message: describeError(error) });
@@ -659,12 +725,14 @@ export function App() {
               subscription={subscription}
             />
             <BookingFocus
+              bookings={currentBookings}
               courses={visibleCourses}
               pendingSessionId={pendingSessionId}
               subscription={subscription}
               onCreateBooking={handleCreateBooking}
             />
             <WeeklyCalendar
+              bookings={currentBookings}
               courses={courses}
               pendingSessionId={pendingSessionId}
               subscription={subscription}
@@ -683,6 +751,7 @@ export function App() {
                   onChange={setFilters}
                 />
                 <CourseCatalog
+                  bookings={currentBookings}
                   courses={visibleCourses}
                   pendingSessionId={pendingSessionId}
                   subscription={subscription}
@@ -1025,11 +1094,13 @@ function availableBookingCandidate(courses: CatalogCourse[]): {
 }
 
 function BookingFocus({
+  bookings,
   courses,
   pendingSessionId,
   subscription,
   onCreateBooking,
 }: {
+  bookings: Booking[];
   courses: CatalogCourse[];
   pendingSessionId: string | null;
   subscription: SubscriptionInfo | null;
@@ -1051,11 +1122,13 @@ function BookingFocus({
   }
 
   const { course, session } = candidate;
-  const canBook = canBookOccurrence(
+  const existingBooking = bookingForOccurrence(bookings, session);
+  const hasValidSubscription = canBookOccurrence(
     subscription,
     session,
     course.requires_active_subscription,
   );
+  const canBook = existingBooking === undefined && hasValidSubscription;
   const membershipMessage =
     subscription?.is_active === true
       ? "L'iscrizione non copre la data della lezione."
@@ -1075,18 +1148,32 @@ function BookingFocus({
           {formatTime(session.ends_at)} ·{" "}
           {course.location_name}
         </p>
-        {!canBook ? <p className="booking-lock-message">{membershipMessage}</p> : null}
+        {!hasValidSubscription ? <p className="booking-lock-message">{membershipMessage}</p> : null}
       </div>
       <div className="booking-focus-action">
-        <span>{canBook ? `${session.available_spots} posti liberi` : "Iscrizione non attiva"}</span>
+        <span>
+          {existingBooking !== undefined
+            ? existingBooking.status === "waitlisted"
+              ? "Sei in lista d’attesa"
+              : `Posto confermato · ${session.available_spots} posti liberi`
+            : hasValidSubscription
+              ? `${session.available_spots} posti liberi`
+              : "Iscrizione non attiva"}
+        </span>
         <button
           className="primary-action"
           disabled={!canBook || isPending}
           onClick={() => onCreateBooking(course, session)}
           type="button"
         >
-          {canBook ? <CalendarCheck aria-hidden="true" /> : <LockKeyhole aria-hidden="true" />}
-          {isPending ? "Prenoto" : canBook ? "Prenota ora" : "Iscrizione richiesta"}
+          {hasValidSubscription ? <CalendarCheck aria-hidden="true" /> : <LockKeyhole aria-hidden="true" />}
+          {isPending
+            ? "Prenoto"
+            : existingBooking !== undefined
+              ? bookedActionLabel(existingBooking)
+              : canBook
+                ? "Prenota ora"
+                : "Iscrizione richiesta"}
         </button>
       </div>
     </section>
@@ -1130,11 +1217,13 @@ function DatePicker({
 }
 
 function WeeklyCalendar({
+  bookings,
   courses,
   pendingSessionId,
   subscription,
   onCreateBooking,
 }: {
+  bookings: Booking[];
   courses: CatalogCourse[];
   pendingSessionId: string | null;
   subscription: SubscriptionInfo | null;
@@ -1166,11 +1255,13 @@ function WeeklyCalendar({
           <p className="muted">Nessuna lezione programmata per il {formatDate(selectedDate)}.</p>
         ) : (
           entries.map(({ course, session }) => {
-            const canBook = canBookOccurrence(
+            const existingBooking = bookingForOccurrence(bookings, session);
+            const hasValidSubscription = canBookOccurrence(
               subscription,
               session,
               course.requires_active_subscription,
             );
+            const canBook = existingBooking === undefined && hasValidSubscription;
             return (
               <article className="calendar-entry" key={occurrenceKey(session)}>
                 <time>{formatTime(session.starts_at)}</time>
@@ -1188,7 +1279,9 @@ function WeeklyCalendar({
                   type="button"
                 >
                   {!canBook
-                    ? "Iscrizione richiesta"
+                    ? existingBooking !== undefined
+                      ? bookedActionLabel(existingBooking)
+                      : "Iscrizione richiesta"
                     : session.available_spots > 0
                       ? "Prenota"
                       : "Lista attesa"}
@@ -3501,11 +3594,13 @@ function CatalogFilters({
 }
 
 function CourseCatalog({
+  bookings,
   courses,
   pendingSessionId,
   subscription,
   onCreateBooking,
 }: {
+  bookings: Booking[];
   courses: CatalogCourse[];
   pendingSessionId: string | null;
   subscription: SubscriptionInfo | null;
@@ -3525,6 +3620,7 @@ function CourseCatalog({
     <div className="course-list">
       {courses.map((course) => (
         <CourseBookingCard
+          bookings={bookings}
           course={course}
           key={course.id}
           onCreateBooking={onCreateBooking}
@@ -3537,11 +3633,13 @@ function CourseCatalog({
 }
 
 function CourseBookingCard({
+  bookings,
   course,
   pendingSessionId,
   subscription,
   onCreateBooking,
 }: {
+  bookings: Booking[];
   course: CatalogCourse;
   pendingSessionId: string | null;
   subscription: SubscriptionInfo | null;
@@ -3578,11 +3676,13 @@ function CourseBookingCard({
     .format(selectedDate)
     .replace(".", "");
   const isFull = selectedSession.available_spots <= 0;
-  const canBook = canBookOccurrence(
+  const existingBooking = bookingForOccurrence(bookings, selectedSession);
+  const hasValidSubscription = canBookOccurrence(
     subscription,
     selectedSession,
     course.requires_active_subscription,
   );
+  const canBook = existingBooking === undefined && hasValidSubscription;
   const isPending = pendingSessionId === occurrenceKey(selectedSession);
 
   return (
@@ -3618,15 +3718,20 @@ function CourseBookingCard({
             onChange={(event) => setSelectedSessionKey(event.target.value)}
             value={occurrenceKey(selectedSession)}
           >
-            {sessions.map((session) => (
-              <option key={occurrenceKey(session)} value={occurrenceKey(session)}>
-                {weekdays[session.weekday].slice(0, 3)} {formatDate(session.occurs_on).slice(0, 5)} ·{" "}
-                {formatTime(session.starts_at)} ·{" "}
-                {session.available_spots > 0
-                  ? `${session.available_spots} posti`
-                  : "Lista attesa"}
-              </option>
-            ))}
+            {sessions.map((session) => {
+              const sessionBooking = bookingForOccurrence(bookings, session);
+              return (
+                <option key={occurrenceKey(session)} value={occurrenceKey(session)}>
+                  {weekdays[session.weekday].slice(0, 3)} {formatDate(session.occurs_on).slice(0, 5)} ·{" "}
+                  {formatTime(session.starts_at)} ·{" "}
+                  {sessionBooking !== undefined
+                    ? bookedActionLabel(sessionBooking)
+                    : session.available_spots > 0
+                      ? `${session.available_spots} posti`
+                      : "Lista attesa"}
+                </option>
+              );
+            })}
           </select>
         </label>
 
@@ -3643,19 +3748,27 @@ function CourseBookingCard({
               {formatTime(selectedSession.starts_at)} - {formatTime(selectedSession.ends_at)}
             </span>
             <span className={isFull ? "session-availability is-full" : "session-availability"}>
-              {isFull ? "Lista attesa disponibile" : `${selectedSession.available_spots} posti liberi`}
+              {existingBooking !== undefined
+                ? existingBooking.status === "waitlisted"
+                  ? "Sei in lista d’attesa"
+                  : `Posto confermato · ${selectedSession.available_spots} posti liberi`
+                : isFull
+                  ? "Lista attesa disponibile"
+                  : `${selectedSession.available_spots} posti liberi`}
             </span>
           </div>
           <button
-            className={isFull ? "secondary-action" : "primary-action"}
+            className={isFull || existingBooking !== undefined ? "secondary-action" : "primary-action"}
             disabled={!canBook || isPending}
             onClick={() => onCreateBooking(course, selectedSession)}
             type="button"
           >
             {isPending
               ? "Invio"
-              : !canBook
-                ? "Iscrizione richiesta"
+              : existingBooking !== undefined
+                ? bookedActionLabel(existingBooking)
+                : !hasValidSubscription
+                  ? "Iscrizione richiesta"
                 : isFull
                   ? "Lista attesa"
                   : "Prenota"}
