@@ -374,6 +374,20 @@ function installFetchMock(
       return jsonResponse(adminStatsResponse);
     }
 
+    if (url.includes("/admin/calendar/availability?occurs_on=") && method === "GET") {
+      const occursOn = new URL(url).searchParams.get("occurs_on");
+      return jsonResponse([
+        {
+          course_session_id: "session-calisthenics",
+          occurs_on: occursOn,
+          capacity: 10,
+          confirmed_count: 1,
+          waitlisted_count: 1,
+          available_spots: 9,
+        },
+      ]);
+    }
+
     if (
       url.includes("/admin/course-sessions/session-calisthenics/attendees?occurs_on=") &&
       method === "GET"
@@ -895,6 +909,7 @@ describe("App", () => {
     await loginAdmin();
 
     fireEvent.click(screen.getByRole("button", { name: "Calendario" }));
+    expect(await screen.findByText("9 su 10 posti liberi")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Prenotati" }));
 
     expect(await screen.findByText("Mario Rossi")).toBeInTheDocument();

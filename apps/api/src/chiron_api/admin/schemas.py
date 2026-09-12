@@ -77,3 +77,12 @@ class AdminCourseSessionAttendeeResponse(BaseModel):
     first_name: str | None
     last_name: str | None
     status: BookingStatus
+
+
+class AdminCourseSessionAvailabilityResponse(BaseModel):
+    course_session_id: UUID
+    occurs_on: date
+    capacity: int
+    confirmed_count: int
+    waitlisted_count: int
+    available_spots: int

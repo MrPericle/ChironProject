@@ -398,6 +398,70 @@ def test_staff_can_list_active_course_session_attendees() -> None:
     ]
 
 
+def test_staff_can_view_calendar_availability() -> None:
+    client, session_factory = make_client()
+    staff = create_user(session_factory, email="staff@example.com", role=UserRole.STAFF)
+    confirmed = create_user(session_factory, email="confirmed@example.com")
+    waitlisted = create_user(session_factory, email="waitlisted@example.com")
+    cancelled = create_user(session_factory, email="cancelled@example.com")
+
+    with session_factory() as session:
+        location = Location(name="MAKA Roma", address="Via Roma 1", city="Roma")
+        course = Course(location=location, title="Calisthenics", status=CourseStatus.PUBLISHED)
+        course_session = CourseSession(
+            course=course,
+            weekday=1,
+            starts_at=time(18, 0),
+            ends_at=time(19, 0),
+            capacity=6,
+        )
+        session.add(course_session)
+        session.flush()
+        occurs_on = next_occurrence_date(course_session.weekday)
+        session.add_all(
+            [
+                Booking(
+                    user_id=confirmed.id,
+                    course_session_id=course_session.id,
+                    occurs_on=occurs_on,
+                    status=BookingStatus.CONFIRMED,
+                ),
+                Booking(
+                    user_id=waitlisted.id,
+                    course_session_id=course_session.id,
+                    occurs_on=occurs_on,
+                    status=BookingStatus.WAITLISTED,
+                ),
+                Booking(
+                    user_id=cancelled.id,
+                    course_session_id=course_session.id,
+                    occurs_on=occurs_on,
+                    status=BookingStatus.CANCELLED,
+                ),
+            ],
+        )
+        session.commit()
+        course_session_id = course_session.id
+
+    response = client.get(
+        "/admin/calendar/availability",
+        params={"occurs_on": occurs_on.isoformat()},
+        headers=headers_for(staff),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "course_session_id": str(course_session_id),
+            "occurs_on": occurs_on.isoformat(),
+            "capacity": 6,
+            "confirmed_count": 1,
+            "waitlisted_count": 1,
+            "available_spots": 5,
+        },
+    ]
+
+
 def test_member_cannot_list_course_session_attendees() -> None:
     client, session_factory = make_client()
     member = create_user(session_factory, email="member@example.com")

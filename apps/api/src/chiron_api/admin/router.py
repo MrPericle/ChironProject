@@ -2,12 +2,13 @@ from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import case, distinct, func, select
+from sqlalchemy import and_, case, distinct, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from chiron_api.admin.schemas import (
     AdminCourseSessionAttendeeResponse,
+    AdminCourseSessionAvailabilityResponse,
     AdminStatsItem,
     AdminStatsResponse,
     AdminSubscriptionCreate,
@@ -22,11 +23,13 @@ from chiron_api.auth.passwords import hash_password
 from chiron_api.auth.tokens import revoke_user_refresh_tokens
 from chiron_api.bookings.service import cancel_active_user_bookings
 from chiron_api.config import Settings, get_settings
+from chiron_api.courses.scheduling import sunday_based_weekday
 from chiron_api.db.models import (
     Booking,
     BookingStatus,
     Course,
     CourseSession,
+    CourseStatus,
     Location,
     Subscription,
     User,
@@ -283,6 +286,74 @@ def admin_stats(
             for row in location_rows
         ],
     )
+
+
+@router.get(
+    "/calendar/availability",
+    response_model=list[AdminCourseSessionAvailabilityResponse],
+)
+def list_calendar_availability(
+    occurs_on: date = Query(),
+    _: User = backoffice_user,
+    db: Session = Depends(get_db_session),
+) -> list[AdminCourseSessionAvailabilityResponse]:
+    weekday = sunday_based_weekday(occurs_on)
+    course_sessions = list(
+        db.scalars(
+            select(CourseSession)
+            .join(Course, Course.id == CourseSession.course_id)
+            .where(
+                CourseSession.is_active.is_(True),
+                Course.status != CourseStatus.ARCHIVED,
+                or_(
+                    CourseSession.occurs_on == occurs_on,
+                    and_(
+                        CourseSession.occurs_on.is_(None),
+                        CourseSession.weekday == weekday,
+                    ),
+                ),
+            )
+            .order_by(CourseSession.starts_at, CourseSession.id)
+        ).all()
+    )
+    if not course_sessions:
+        return []
+
+    session_ids = [course_session.id for course_session in course_sessions]
+    booking_counts = {
+        (session_id, booking_status): count
+        for session_id, booking_status, count in db.execute(
+            select(Booking.course_session_id, Booking.status, func.count(Booking.id))
+            .where(
+                Booking.course_session_id.in_(session_ids),
+                Booking.occurs_on == occurs_on,
+                Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.WAITLISTED]),
+            )
+            .group_by(Booking.course_session_id, Booking.status)
+        ).all()
+    }
+
+    return [
+        AdminCourseSessionAvailabilityResponse(
+            course_session_id=course_session.id,
+            occurs_on=occurs_on,
+            capacity=course_session.capacity,
+            confirmed_count=booking_counts.get(
+                (course_session.id, BookingStatus.CONFIRMED),
+                0,
+            ),
+            waitlisted_count=booking_counts.get(
+                (course_session.id, BookingStatus.WAITLISTED),
+                0,
+            ),
+            available_spots=max(
+                course_session.capacity
+                - booking_counts.get((course_session.id, BookingStatus.CONFIRMED), 0),
+                0,
+            ),
+        )
+        for course_session in course_sessions
+    ]
 
 
 @router.get(

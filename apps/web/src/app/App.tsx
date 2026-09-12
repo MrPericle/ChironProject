@@ -34,6 +34,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
   AdminCourse,
+  AdminCourseSessionAvailability,
   AdminCourseSessionAttendee,
   AdminStats,
   AdminUser,
@@ -1335,6 +1336,12 @@ function AdminCalendarPanel({
     Record<string, AdminCourseSessionAttendee[]>
   >({});
   const [attendeeErrors, setAttendeeErrors] = useState<Record<string, string>>({});
+  const [availabilityBySession, setAvailabilityBySession] = useState<
+    Record<string, AdminCourseSessionAvailability>
+  >({});
+  const [availabilityState, setAvailabilityState] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
   const locationNames = new Map(locations.map((location) => [location.id, location.name]));
   const entries = courses
     .filter((course) => course.status !== "archived")
@@ -1349,6 +1356,37 @@ function AdminCalendarPanel({
         .map((session) => ({ course, session })),
     )
     .sort((left, right) => left.session.starts_at.localeCompare(right.session.starts_at));
+
+  useEffect(() => {
+    let ignore = false;
+    setAvailabilityState("loading");
+
+    api
+      .adminCalendarAvailability(token, selectedDate)
+      .then((availability) => {
+        if (ignore) {
+          return;
+        }
+        setAvailabilityBySession(
+          Object.fromEntries(
+            availability.map((item) => [
+              `${item.course_session_id}:${item.occurs_on}`,
+              item,
+            ]),
+          ),
+        );
+        setAvailabilityState("ready");
+      })
+      .catch(() => {
+        if (!ignore) {
+          setAvailabilityState("error");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedDate, token]);
 
   async function loadAttendees(
     sessionId: string,
@@ -1407,6 +1445,7 @@ function AdminCalendarPanel({
             const entryKey = `${session.id}:${selectedDate}`;
             const isExpanded = expandedOccurrenceKey === entryKey;
             const attendees = attendeesBySession[entryKey];
+            const availability = availabilityBySession[entryKey];
             const confirmedCount = attendees?.filter((item) => item.status === "confirmed").length ?? 0;
             const waitlistedCount = attendees?.filter((item) => item.status === "waitlisted").length ?? 0;
             const panelId = `session-attendees-${session.id}-${selectedDate}`;
@@ -1422,9 +1461,13 @@ function AdminCalendarPanel({
                   </p>
                 </div>
                 <div className="calendar-entry-actions">
-                  <span className="calendar-capacity">
+                  <span className="calendar-capacity" aria-live="polite">
                     <UsersIcon />
-                    {session.capacity} posti
+                    {availability !== undefined
+                      ? `${availability.available_spots} su ${availability.capacity} posti liberi`
+                      : availabilityState === "error"
+                        ? `${session.capacity} posti totali`
+                        : `– su ${session.capacity} posti liberi`}
                   </span>
                   <button
                     aria-controls={panelId}

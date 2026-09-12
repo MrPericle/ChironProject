@@ -228,6 +228,15 @@ export type AdminCourseSessionAttendee = {
   status: Exclude<BookingStatus, "cancelled">;
 };
 
+export type AdminCourseSessionAvailability = {
+  course_session_id: string;
+  occurs_on: string;
+  capacity: number;
+  confirmed_count: number;
+  waitlisted_count: number;
+  available_spots: number;
+};
+
 export type UserDashboard = {
   user: User;
   courses: CatalogCourse[];
@@ -533,6 +542,16 @@ export class ChironApi {
   ): Promise<AdminCourseSessionAttendee[]> {
     return this.request<AdminCourseSessionAttendee[]>(
       `/admin/course-sessions/${sessionId}/attendees?occurs_on=${encodeURIComponent(occursOn)}`,
+      { token },
+    );
+  }
+
+  async adminCalendarAvailability(
+    token: string,
+    occursOn: string,
+  ): Promise<AdminCourseSessionAvailability[]> {
+    return this.request<AdminCourseSessionAvailability[]>(
+      `/admin/calendar/availability?occurs_on=${encodeURIComponent(occursOn)}`,
       { token },
     );
   }
