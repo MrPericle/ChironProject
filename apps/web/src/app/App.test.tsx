@@ -948,6 +948,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Crea sede" }));
 
     await screen.findByText("Sede creata.");
+    const adminNotice = screen.getByRole("status");
+    expect(adminNotice).toHaveClass("admin-notice");
+    fireEvent.click(within(adminNotice).getByRole("button", { name: "Chiudi notifica" }));
+    expect(screen.queryByText("Sede creata.")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/locations",
       expect.objectContaining({ method: "POST" }),
@@ -1264,6 +1268,25 @@ describe("App", () => {
     const catalog = screen.getByRole("region", { name: "Prenota una sessione" });
     expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
     expect(within(catalog).queryByText("Pole Flow")).not.toBeInTheDocument();
+  });
+
+  it("searches courses instantly by name, discipline and location", async () => {
+    installFetchMock();
+
+    render(<App />);
+    await login();
+
+    const catalog = screen.getByRole("region", { name: "Prenota una sessione" });
+    const search = within(catalog).getByRole("searchbox", { name: "Cerca corsi" });
+    fireEvent.change(search, { target: { value: "pole milano" } });
+
+    expect(within(catalog).getByText("Pole Flow")).toBeInTheDocument();
+    expect(within(catalog).queryByText("Calisthenics Foundation")).not.toBeInTheDocument();
+    expect(within(catalog).getByText("1 corso")).toBeInTheDocument();
+
+    fireEvent.click(within(catalog).getByRole("button", { name: "Cancella ricerca" }));
+    expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
+    expect(within(catalog).getByText("2 corsi")).toBeInTheDocument();
   });
 
   it("books and cancels a session with clear status feedback", async () => {

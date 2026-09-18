@@ -496,6 +496,46 @@ h3 {
   line-height: 1.4;
 }
 
+.admin-notice {
+  position: fixed;
+  top: 24px;
+  right: max(24px, calc((100vw - 1180px) / 2));
+  z-index: 30;
+  width: min(440px, calc(100vw - 32px));
+  align-items: center;
+  border: 1px solid;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(11, 11, 13, 0.22);
+}
+
+.admin-notice > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.notice-dismiss,
+.course-search-clear {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  padding: 0;
+}
+
+.notice-dismiss {
+  margin: -8px -8px -8px 0;
+}
+
+.notice-dismiss svg,
+.course-search-clear svg {
+  width: 19px;
+  height: 19px;
+}
+
 .notice-success {
   border-color: rgba(31, 107, 76, 0.32);
   background: var(--status-success-soft);
@@ -640,6 +680,58 @@ h3 {
   border: 1px solid rgba(11, 11, 13, 0.12);
   border-radius: 8px;
   background: #e7e5e2;
+}
+
+.course-search-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.course-search {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.course-search > svg {
+  position: absolute;
+  left: 14px;
+  z-index: 1;
+  width: 19px;
+  height: 19px;
+  color: #66666b;
+  pointer-events: none;
+}
+
+.course-search input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(11, 11, 13, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18181b;
+  padding: 0 48px 0 42px;
+}
+
+.course-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.course-search-clear {
+  position: absolute;
+  right: 2px;
+  color: #5a5a60;
+}
+
+.catalog-result-count {
+  color: #4c4c51;
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .filter-trigger {
@@ -2028,6 +2120,16 @@ h3 {
     color: #ffe8e9;
   }
 
+  .admin-notice {
+    top: calc(86px + env(safe-area-inset-top));
+    right: 14px;
+    left: 14px;
+    width: auto;
+    max-height: calc(100vh - 112px);
+    overflow-y: auto;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.48);
+  }
+
   .overview,
   .admin-overview {
     display: grid;
@@ -2411,6 +2513,26 @@ h3 {
     padding: 0;
     border: 0;
     background: transparent;
+  }
+
+  .course-search-row {
+    gap: 8px;
+  }
+
+  .course-search input {
+    border-color: rgba(239, 37, 44, 0.18);
+    background: #18181b;
+    color: #f7f6f3;
+  }
+
+  .course-search input::placeholder {
+    color: #8d8d92;
+  }
+
+  .course-search > svg,
+  .course-search-clear,
+  .catalog-result-count {
+    color: #ff8d93;
   }
 
   .filter-trigger {

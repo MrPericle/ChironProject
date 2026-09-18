@@ -27,6 +27,7 @@ import {
   Trash2,
   UserRound,
   UserX,
+  X,
   XCircle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -65,6 +66,7 @@ const weekdays = ["Domenica", "Lunedi", "Martedi", "Mercoledi", "Giovedi", "Vene
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 type Filters = {
+  query: string;
   locationId: string;
   weekday: string;
   availableOnly: boolean;
@@ -308,8 +310,29 @@ function describeError(error: unknown): string {
 }
 
 function filteredCourses(courses: CatalogCourse[], filters: Filters): CatalogCourse[] {
+  const queryTokens = filters.query
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("it-IT")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
   return courses
     .map((course) => {
+      const searchableCourse = [
+        course.title,
+        course.discipline,
+        course.location_name,
+        course.description ?? "",
+      ]
+        .join(" ")
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .toLocaleLowerCase("it-IT");
+      if (!queryTokens.every((token) => searchableCourse.includes(token))) {
+        return null;
+      }
       if (filters.locationId !== "all" && course.location_id !== filters.locationId) {
         return null;
       }
@@ -336,6 +359,7 @@ export function App() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [filters, setFilters] = useState<Filters>({
+    query: "",
     locationId: "all",
     weekday: "all",
     availableOnly: false,
@@ -750,6 +774,7 @@ export function App() {
                   filters={filters}
                   locations={locations}
                   onChange={setFilters}
+                  resultCount={visibleCourses.length}
                 />
                 <CourseCatalog
                   bookings={currentBookings}
@@ -834,6 +859,16 @@ function BackofficeScreen({
       setActiveTab("dashboard");
     }
   }, [activeTab, isAdmin]);
+
+  useEffect(() => {
+    if (notice?.tone !== "success") {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setNotice((current) => (current === notice ? null : current));
+    }, 5_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const activeLocations = locations.filter((location) => location.is_active);
   const activeMembers = stats?.active_members ?? 0;
@@ -1002,13 +1037,27 @@ function BackofficeScreen({
 
           <div className="backoffice-content">
             {notice !== null ? (
-              <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">
+              <div
+                aria-atomic="true"
+                aria-live={notice.tone === "error" ? "assertive" : "polite"}
+                className={`notice admin-notice notice-${notice.tone}`}
+                role={notice.tone === "error" ? "alert" : "status"}
+              >
                 {notice.tone === "success" ? (
                   <CheckCircle2 aria-hidden="true" />
                 ) : (
                   <XCircle aria-hidden="true" />
                 )}
                 <span>{notice.message}</span>
+                <button
+                  aria-label="Chiudi notifica"
+                  className="notice-dismiss"
+                  onClick={() => setNotice(null)}
+                  title="Chiudi notifica"
+                  type="button"
+                >
+                  <X aria-hidden="true" />
+                </button>
               </div>
             ) : null}
 
@@ -3545,15 +3594,49 @@ function CatalogFilters({
   filters,
   locations,
   onChange,
+  resultCount,
 }: {
   filters: Filters;
   locations: Array<[string, string]>;
   onChange: (filters: Filters) => void;
+  resultCount: number;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <form className={isOpen ? "filters filters-open" : "filters"} aria-label="Filtri catalogo">
+    <form
+      className={isOpen ? "filters filters-open" : "filters"}
+      aria-label="Filtri catalogo"
+      onSubmit={(event) => event.preventDefault()}
+    >
+      <div className="course-search-row">
+        <label className="course-search">
+          <Search aria-hidden="true" />
+          <input
+            aria-label="Cerca corsi"
+            autoComplete="off"
+            onChange={(event) => onChange({ ...filters, query: event.target.value })}
+            placeholder="Cerca corso, disciplina o sede"
+            type="search"
+            value={filters.query}
+          />
+          {filters.query !== "" ? (
+            <button
+              aria-label="Cancella ricerca"
+              className="course-search-clear"
+              onClick={() => onChange({ ...filters, query: "" })}
+              title="Cancella ricerca"
+              type="button"
+            >
+              <X aria-hidden="true" />
+            </button>
+          ) : null}
+        </label>
+        <span className="catalog-result-count" aria-live="polite">
+          {resultCount} {resultCount === 1 ? "corso" : "corsi"}
+        </span>
+      </div>
+
       <button
         aria-controls="catalog-filter-panel"
         aria-expanded={isOpen}
@@ -3569,7 +3652,7 @@ function CatalogFilters({
         <div className="quick-filters" role="group" aria-label="Filtri rapidi">
           <button
             className={filters.locationId === "all" && !filters.availableOnly ? "is-selected" : ""}
-            onClick={() => onChange({ locationId: "all", weekday: filters.weekday, availableOnly: false })}
+            onClick={() => onChange({ ...filters, locationId: "all", availableOnly: false })}
             type="button"
           >
             Tutti
@@ -3654,7 +3737,7 @@ function CourseCatalog({
       <div className="empty-state">
         <Search aria-hidden="true" />
         <h3>Nessun corso trovato</h3>
-        <p>Cambia filtri o rimuovi "Solo posti disponibili" per vedere anche le liste attesa.</p>
+        <p>Modifica la ricerca o i filtri per visualizzare altri corsi.</p>
       </div>
     );
   }
