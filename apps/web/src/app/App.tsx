@@ -1292,6 +1292,7 @@ function WeeklyCalendar({
     .flatMap((course) => course.sessions.map((session) => session.occurs_on))
     .sort()[0];
   const [selectedDate, setSelectedDate] = useState(firstOccurrenceDate ?? dates[0]);
+  const [isAgendaExpanded, setIsAgendaExpanded] = useState(false);
   const entries = courses
     .flatMap((course) =>
       course.sessions
@@ -1307,8 +1308,18 @@ function WeeklyCalendar({
         title="Calendario lezioni"
         id="weekly-calendar-title"
       />
-      <DatePicker dates={dates} selectedDate={selectedDate} onChange={setSelectedDate} />
-      <div className="calendar-agenda">
+      <DatePicker
+        dates={dates}
+        selectedDate={selectedDate}
+        onChange={(date) => {
+          setSelectedDate(date);
+          setIsAgendaExpanded(false);
+        }}
+      />
+      <div
+        className={isAgendaExpanded ? "calendar-agenda is-expanded" : "calendar-agenda"}
+        id="user-calendar-agenda"
+      >
         {entries.length === 0 ? (
           <p className="muted">Nessuna lezione programmata per il {formatDate(selectedDate)}.</p>
         ) : (
@@ -1348,6 +1359,18 @@ function WeeklyCalendar({
             );
           })
         )}
+        {entries.length > 5 ? (
+          <button
+            aria-controls="user-calendar-agenda"
+            aria-expanded={isAgendaExpanded}
+            className="secondary-action calendar-more-toggle"
+            onClick={() => setIsAgendaExpanded((current) => !current)}
+            type="button"
+          >
+            <ChevronDown aria-hidden="true" />
+            {isAgendaExpanded ? "Mostra meno" : `Mostra altre ${entries.length - 5} lezioni`}
+          </button>
+        ) : null}
       </div>
     </section>
   );
@@ -1386,6 +1409,7 @@ function AdminCalendarPanel({
     );
   });
   const [selectedDate, setSelectedDate] = useState(firstScheduledDate ?? dates[0]);
+  const [isAgendaExpanded, setIsAgendaExpanded] = useState(false);
   const selectedWeekday = dateFromIso(selectedDate).getDay();
   const [expandedOccurrenceKey, setExpandedOccurrenceKey] = useState<string | null>(null);
   const [loadingOccurrenceKey, setLoadingOccurrenceKey] = useState<string | null>(null);
@@ -1482,6 +1506,7 @@ function AdminCalendarPanel({
   function selectDate(date: string): void {
     setSelectedDate(date);
     setExpandedOccurrenceKey(null);
+    setIsAgendaExpanded(false);
   }
 
   return (
@@ -1494,7 +1519,10 @@ function AdminCalendarPanel({
         <span>{entries.length} lezioni nel giorno selezionato</span>
       </div>
       <DatePicker dates={dates} selectedDate={selectedDate} onChange={selectDate} />
-      <div className="calendar-agenda">
+      <div
+        className={isAgendaExpanded ? "calendar-agenda is-expanded" : "calendar-agenda"}
+        id="admin-calendar-agenda"
+      >
         {entries.length === 0 ? (
           <p className="muted">Nessuna lezione attiva per il {formatDate(selectedDate)}.</p>
         ) : (
@@ -1594,6 +1622,18 @@ function AdminCalendarPanel({
             );
           })
         )}
+        {entries.length > 5 ? (
+          <button
+            aria-controls="admin-calendar-agenda"
+            aria-expanded={isAgendaExpanded}
+            className="secondary-action calendar-more-toggle"
+            onClick={() => setIsAgendaExpanded((current) => !current)}
+            type="button"
+          >
+            <ChevronDown aria-hidden="true" />
+            {isAgendaExpanded ? "Mostra meno" : `Mostra altre ${entries.length - 5} lezioni`}
+          </button>
+        ) : null}
       </div>
     </section>
   );
@@ -1693,6 +1733,7 @@ function UsersManager({
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("password-segreta");
   const [query, setQuery] = useState("");
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [confirmingDeleteUserId, setConfirmingDeleteUserId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -1729,6 +1770,7 @@ function UsersManager({
       setEmail("");
       setFirstName("");
       setLastName("");
+      setIsCreateFormOpen(false);
       onNotice({ tone: "success", message: "Utente creato." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
@@ -1841,7 +1883,17 @@ function UsersManager({
     <section className="admin-panel admin-panel-wide" aria-labelledby="users-title">
       <SectionTitle icon={<UserRound aria-hidden="true" />} title="Utenti e iscrizioni" id="users-title" />
       <p className="muted">Crea account, aggiorna dati e mantieni sotto controllo le iscrizioni.</p>
-      <form className="admin-form" onSubmit={handleCreate}>
+      <button
+        aria-expanded={isCreateFormOpen}
+        className="primary-action admin-create-trigger"
+        onClick={() => setIsCreateFormOpen((current) => !current)}
+        type="button"
+      >
+        {isCreateFormOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
+        {isCreateFormOpen ? "Chiudi creazione" : "Nuovo utente"}
+      </button>
+      {isCreateFormOpen ? (
+        <form className="admin-form admin-progressive-form" onSubmit={handleCreate}>
         <label className="field">
           <span>Email utente</span>
           <input
@@ -1875,7 +1927,8 @@ function UsersManager({
           <Plus aria-hidden="true" />
           Crea utente
         </button>
-      </form>
+        </form>
+      ) : null}
 
       <div className="admin-toolbar">
         <label className="field">
@@ -2150,6 +2203,7 @@ function LocationsManager({
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [locationDraft, setLocationDraft] = useState<LocationPayload | null>(null);
   const [confirmingAction, setConfirmingAction] = useState<{
@@ -2166,6 +2220,7 @@ function LocationsManager({
       setName("");
       setAddress("");
       setCity("");
+      setIsCreateFormOpen(false);
       onNotice({ tone: "success", message: "Sede creata." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
@@ -2237,7 +2292,17 @@ function LocationsManager({
     <section className="admin-panel" aria-labelledby="locations-title">
       <SectionTitle icon={<MapPin aria-hidden="true" />} title="Sedi" id="locations-title" />
       <p className="muted">Le sedi attive alimentano catalogo corsi e filtri utente.</p>
-      <form className="admin-form" onSubmit={handleCreate}>
+      <button
+        aria-expanded={isCreateFormOpen}
+        className="primary-action admin-create-trigger"
+        onClick={() => setIsCreateFormOpen((current) => !current)}
+        type="button"
+      >
+        {isCreateFormOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
+        {isCreateFormOpen ? "Chiudi creazione" : "Nuova sede"}
+      </button>
+      {isCreateFormOpen ? (
+        <form className="admin-form admin-progressive-form" onSubmit={handleCreate}>
         <label className="field">
           <span>Nome sede</span>
           <input required value={name} onChange={(event) => setName(event.target.value)} />
@@ -2254,7 +2319,8 @@ function LocationsManager({
           <Plus aria-hidden="true" />
           Crea sede
         </button>
-      </form>
+        </form>
+      ) : null}
 
       <div className="admin-list">
         {locations.length === 0 ? (

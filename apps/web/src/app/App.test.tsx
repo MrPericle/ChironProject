@@ -940,6 +940,7 @@ describe("App", () => {
     await loginAdmin();
 
     fireEvent.click(screen.getByRole("button", { name: "Sedi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuova sede" }));
     fireEvent.change(screen.getByLabelText("Nome sede"), { target: { value: "Chiron Milano" } });
     fireEvent.change(screen.getByLabelText("Indirizzo"), { target: { value: "Via Milano 2" } });
     fireEvent.change(screen.getByLabelText("Citta"), { target: { value: "Milano" } });
@@ -1209,6 +1210,7 @@ describe("App", () => {
       screen.queryByRole("button", { name: /aggiorna iscrizione admin@example.com/i }),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /chiudi modifica admin@example.com/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuovo utente" }));
     fireEvent.change(screen.getByLabelText("Email utente"), {
       target: { value: "new.member@example.com" },
     });
