@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from datetime import date, time, timedelta
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -423,6 +424,80 @@ def test_admin_can_manage_courses_and_sessions() -> None:
     assert update_course_response.status_code == 200
     assert update_course_response.json()["title"] == "Calisthenics Fundamentals"
     assert len(update_course_response.json()["sessions"]) == 4
+
+
+def test_admin_can_create_multiple_schedule_slots_atomically() -> None:
+    client, session_factory = make_client()
+    admin = create_user(session_factory, UserRole.ADMIN)
+    location_response = client.post(
+        "/admin/locations",
+        json={"name": "MAKA Roma", "address": "Via Movimento 1", "city": "Roma"},
+        headers=headers_for(admin),
+    )
+    course_response = client.post(
+        "/admin/courses",
+        json={
+            "location_id": location_response.json()["id"],
+            "title": "Sala multipla",
+            "discipline": "Sala",
+            "status": "published",
+        },
+        headers=headers_for(admin),
+    )
+    course_id = course_response.json()["id"]
+    payload = {
+        "weekdays": [3, 5],
+        "slots": [
+            {
+                "starts_at": "18:00:00",
+                "ends_at": "19:00:00",
+                "capacity": 12,
+                "cancellation_deadline_hours": 24,
+            },
+            {
+                "starts_at": "19:00:00",
+                "ends_at": "20:00:00",
+                "capacity": 10,
+                "cancellation_deadline_hours": 12,
+            },
+        ],
+    }
+
+    response = client.post(
+        f"/admin/courses/{course_id}/schedule/batch",
+        json=payload,
+        headers=headers_for(admin),
+    )
+
+    assert response.status_code == 201
+    assert len(response.json()) == 4
+    assert {(item["weekday"], item["starts_at"]) for item in response.json()} == {
+        (3, "18:00:00"),
+        (5, "18:00:00"),
+        (3, "19:00:00"),
+        (5, "19:00:00"),
+    }
+
+    conflicting_response = client.post(
+        f"/admin/courses/{course_id}/schedule/batch",
+        json={
+            "weekdays": [3],
+            "slots": [
+                {
+                    "starts_at": "17:00:00",
+                    "ends_at": "18:00:00",
+                    "capacity": 8,
+                    "cancellation_deadline_hours": 24,
+                },
+                payload["slots"][0],
+            ],
+        },
+        headers=headers_for(admin),
+    )
+    assert conflicting_response.status_code == 409
+
+    with session_factory() as session:
+        assert session.query(CourseSession).filter(CourseSession.course_id == UUID(course_id)).count() == 4
 
 
 def test_admin_cannot_reduce_capacity_below_confirmed_bookings() -> None:

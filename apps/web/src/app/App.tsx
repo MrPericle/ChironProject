@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Copy,
   Dumbbell,
   Home,
   ImagePlus,
@@ -85,6 +86,13 @@ type TwoFactorStep =
 type MobileView = "courses" | "calendar" | "bookings" | "profile";
 type AdminTab = "dashboard" | "calendar" | "users" | "courses" | "locations";
 type ScheduleMode = "weekly" | "single";
+type ScheduleSlotDraft = {
+  id: number;
+  startsAt: string;
+  endsAt: string;
+  capacity: string;
+  cancellationDeadlineHours: string;
+};
 type WorkspaceMode = "backoffice" | "personal";
 
 const legacyDisciplineLabels: Record<string, string> = {
@@ -2461,10 +2469,16 @@ function CoursesManager({
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("weekly");
   const [scheduleWeekdays, setScheduleWeekdays] = useState<number[]>([]);
   const [scheduleDate, setScheduleDate] = useState(localIsoDate());
-  const [scheduleStartsAt, setScheduleStartsAt] = useState("18:00");
-  const [scheduleEndsAt, setScheduleEndsAt] = useState("19:00");
-  const [scheduleCapacity, setScheduleCapacity] = useState("12");
-  const [scheduleDeadline, setScheduleDeadline] = useState("24");
+  const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlotDraft[]>([
+    {
+      id: 1,
+      startsAt: "18:00",
+      endsAt: "19:00",
+      capacity: "12",
+      cancellationDeadlineHours: "24",
+    },
+  ]);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [sessionDraft, setSessionDraft] = useState<CourseSession | null>(null);
   const [confirmingDeleteCourseId, setConfirmingDeleteCourseId] = useState<string | null>(null);
@@ -2571,33 +2585,41 @@ function CoursesManager({
       onNotice({ tone: "error", message: "Seleziona la data della lezione." });
       return;
     }
+    setIsSavingSchedule(true);
     try {
-      const sessionDetails = {
-        starts_at: scheduleStartsAt,
-        ends_at: scheduleEndsAt,
-        capacity: Number(scheduleCapacity),
-        cancellation_deadline_hours: Number(scheduleDeadline),
-      };
+      const firstSlot = scheduleSlots[0];
       const sessions =
         scheduleMode === "weekly"
-          ? await api.createCourseSchedule(token, course.id, {
-              ...sessionDetails,
+          ? await api.createCourseScheduleBatch(token, course.id, {
               weekdays: scheduleWeekdays,
+              slots: scheduleSlots.map((slot) => ({
+                starts_at: slot.startsAt,
+                ends_at: slot.endsAt,
+                capacity: Number(slot.capacity),
+                cancellation_deadline_hours: Number(slot.cancellationDeadlineHours),
+              })),
             })
           : [
               await api.createCourseSession(token, course.id, {
-                ...sessionDetails,
+                starts_at: firstSlot.startsAt,
+                ends_at: firstSlot.endsAt,
+                capacity: Number(firstSlot.capacity),
+                cancellation_deadline_hours: Number(firstSlot.cancellationDeadlineHours),
                 occurs_on: scheduleDate,
               }),
             ];
       onCourseChange({ ...course, sessions: [...course.sessions, ...sessions] });
-      setScheduleWeekdays([]);
       onNotice({
         tone: "success",
-        message: scheduleMode === "weekly" ? "Ricorrenze create." : "Lezione singola creata.",
+        message:
+          scheduleMode === "weekly"
+            ? `${sessions.length} ricorrenze create.`
+            : "Lezione singola creata.",
       });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
+    } finally {
+      setIsSavingSchedule(false);
     }
   }
 
@@ -2617,6 +2639,38 @@ function CoursesManager({
     setScheduleWeekdays((current) =>
       current.includes(weekday) ? current.filter((item) => item !== weekday) : [...current, weekday],
     );
+  }
+
+  function updateScheduleSlot(
+    slotId: number,
+    field: keyof Omit<ScheduleSlotDraft, "id">,
+    value: string,
+  ): void {
+    setScheduleSlots((current) =>
+      current.map((slot) => (slot.id === slotId ? { ...slot, [field]: value } : slot)),
+    );
+  }
+
+  function addScheduleSlot(source?: ScheduleSlotDraft): void {
+    setScheduleSlots((current) => {
+      const nextId = Math.max(...current.map((slot) => slot.id)) + 1;
+      return [
+        ...current,
+        source === undefined
+          ? {
+              id: nextId,
+              startsAt: "18:00",
+              endsAt: "19:00",
+              capacity: current[0]?.capacity ?? "12",
+              cancellationDeadlineHours: current[0]?.cancellationDeadlineHours ?? "24",
+            }
+          : { ...source, id: nextId },
+      ];
+    });
+  }
+
+  function removeScheduleSlot(slotId: number): void {
+    setScheduleSlots((current) => current.filter((slot) => slot.id !== slotId));
   }
 
   function handleEditSession(session: CourseSession): void {
@@ -3146,74 +3200,197 @@ function CoursesManager({
                     </div>
                   </fieldset>
                   {scheduleMode === "weekly" ? (
-                    <fieldset className="weekday-checkboxes">
-                      <legend>Giorni ricorrenti</legend>
-                      {weekdays.map((weekday, weekdayIndex) => (
-                        <label key={weekday}>
-                          <input
-                            checked={scheduleWeekdays.includes(weekdayIndex)}
-                            onChange={() => toggleScheduleWeekday(weekdayIndex)}
-                            type="checkbox"
-                          />
-                          <span>{weekday}</span>
-                        </label>
-                      ))}
-                    </fieldset>
+                    <>
+                      <fieldset className="weekday-checkboxes">
+                        <legend>Giorni ricorrenti</legend>
+                        {weekdays.map((weekday, weekdayIndex) => (
+                          <label key={weekday}>
+                            <input
+                              checked={scheduleWeekdays.includes(weekdayIndex)}
+                              onChange={() => toggleScheduleWeekday(weekdayIndex)}
+                              type="checkbox"
+                            />
+                            <span>{weekday}</span>
+                          </label>
+                        ))}
+                      </fieldset>
+                      <div className="schedule-slot-list">
+                        {scheduleSlots.map((slot, slotIndex) => (
+                          <fieldset className="schedule-slot" key={slot.id}>
+                            <legend>Fascia {slotIndex + 1}</legend>
+                            <div className="schedule-slot-fields">
+                              <label className="field">
+                                <span>Inizio</span>
+                                <input
+                                  aria-label={`Inizio fascia ${slotIndex + 1}`}
+                                  onChange={(event) =>
+                                    updateScheduleSlot(slot.id, "startsAt", event.target.value)
+                                  }
+                                  required
+                                  type="time"
+                                  value={slot.startsAt}
+                                />
+                              </label>
+                              <label className="field">
+                                <span>Fine</span>
+                                <input
+                                  aria-label={`Fine fascia ${slotIndex + 1}`}
+                                  onChange={(event) =>
+                                    updateScheduleSlot(slot.id, "endsAt", event.target.value)
+                                  }
+                                  required
+                                  type="time"
+                                  value={slot.endsAt}
+                                />
+                              </label>
+                              <label className="field">
+                                <span>Posti</span>
+                                <input
+                                  aria-label={`Posti fascia ${slotIndex + 1}`}
+                                  inputMode="numeric"
+                                  min="1"
+                                  onChange={(event) =>
+                                    updateScheduleSlot(slot.id, "capacity", event.target.value)
+                                  }
+                                  required
+                                  type="number"
+                                  value={slot.capacity}
+                                />
+                              </label>
+                              <label className="field">
+                                <span>Limite cancellazione</span>
+                                <input
+                                  aria-label={`Ore limite cancellazione fascia ${slotIndex + 1}`}
+                                  inputMode="numeric"
+                                  min="0"
+                                  onChange={(event) =>
+                                    updateScheduleSlot(
+                                      slot.id,
+                                      "cancellationDeadlineHours",
+                                      event.target.value,
+                                    )
+                                  }
+                                  required
+                                  type="number"
+                                  value={slot.cancellationDeadlineHours}
+                                />
+                              </label>
+                            </div>
+                            <div className="schedule-slot-actions">
+                              <button
+                                aria-label={`Duplica fascia ${slotIndex + 1}`}
+                                className="secondary-action"
+                                onClick={() => addScheduleSlot(slot)}
+                                type="button"
+                              >
+                                <Copy aria-hidden="true" />
+                                Duplica
+                              </button>
+                              {scheduleSlots.length > 1 ? (
+                                <button
+                                  aria-label={`Rimuovi fascia ${slotIndex + 1}`}
+                                  className="secondary-action danger-action"
+                                  onClick={() => removeScheduleSlot(slot.id)}
+                                  type="button"
+                                >
+                                  <Trash2 aria-hidden="true" />
+                                  Rimuovi
+                                </button>
+                              ) : null}
+                            </div>
+                          </fieldset>
+                        ))}
+                      </div>
+                      <button
+                        className="secondary-action add-schedule-slot"
+                        disabled={scheduleSlots.length >= 12}
+                        onClick={() => addScheduleSlot()}
+                        type="button"
+                      >
+                        <Plus aria-hidden="true" />
+                        Aggiungi fascia oraria
+                      </button>
+                      <p className="schedule-batch-summary" aria-live="polite">
+                        {scheduleSlots.length} {scheduleSlots.length === 1 ? "fascia" : "fasce"} ×{" "}
+                        {scheduleWeekdays.length} {scheduleWeekdays.length === 1 ? "giorno" : "giorni"} ={" "}
+                        <strong>{scheduleSlots.length * scheduleWeekdays.length} ricorrenze</strong>
+                      </p>
+                    </>
                   ) : (
-                    <label className="field single-date-field">
-                      <span>Data della lezione</span>
-                      <input
-                        min={localIsoDate()}
-                        onChange={(event) => setScheduleDate(event.target.value)}
-                        required
-                        type="date"
-                        value={scheduleDate}
-                      />
-                    </label>
+                    <>
+                      <label className="field single-date-field">
+                        <span>Data della lezione</span>
+                        <input
+                          min={localIsoDate()}
+                          onChange={(event) => setScheduleDate(event.target.value)}
+                          required
+                          type="date"
+                          value={scheduleDate}
+                        />
+                      </label>
+                      <div className="schedule-fields">
+                        <label className="field">
+                          <span>Ora inizio</span>
+                          <input
+                            onChange={(event) =>
+                              updateScheduleSlot(scheduleSlots[0].id, "startsAt", event.target.value)
+                            }
+                            required
+                            type="time"
+                            value={scheduleSlots[0].startsAt}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Ora fine</span>
+                          <input
+                            onChange={(event) =>
+                              updateScheduleSlot(scheduleSlots[0].id, "endsAt", event.target.value)
+                            }
+                            required
+                            type="time"
+                            value={scheduleSlots[0].endsAt}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Posti per lezione</span>
+                          <input
+                            inputMode="numeric"
+                            min="1"
+                            onChange={(event) =>
+                              updateScheduleSlot(scheduleSlots[0].id, "capacity", event.target.value)
+                            }
+                            required
+                            type="number"
+                            value={scheduleSlots[0].capacity}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Ore limite cancellazione</span>
+                          <input
+                            inputMode="numeric"
+                            min="0"
+                            onChange={(event) =>
+                              updateScheduleSlot(
+                                scheduleSlots[0].id,
+                                "cancellationDeadlineHours",
+                                event.target.value,
+                              )
+                            }
+                            required
+                            type="number"
+                            value={scheduleSlots[0].cancellationDeadlineHours}
+                          />
+                        </label>
+                      </div>
+                    </>
                   )}
-                  <div className="schedule-fields">
-                    <label className="field">
-                      <span>Ora inizio</span>
-                      <input
-                        onChange={(event) => setScheduleStartsAt(event.target.value)}
-                        required
-                        type="time"
-                        value={scheduleStartsAt}
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Ora fine</span>
-                      <input
-                        onChange={(event) => setScheduleEndsAt(event.target.value)}
-                        required
-                        type="time"
-                        value={scheduleEndsAt}
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Posti per lezione</span>
-                      <input
-                        min="1"
-                        onChange={(event) => setScheduleCapacity(event.target.value)}
-                        required
-                        type="number"
-                        value={scheduleCapacity}
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Ore limite cancellazione</span>
-                      <input
-                        min="0"
-                        onChange={(event) => setScheduleDeadline(event.target.value)}
-                        required
-                        type="number"
-                        value={scheduleDeadline}
-                      />
-                    </label>
-                  </div>
-                  <button className="primary-action" type="submit">
+                  <button className="primary-action" disabled={isSavingSchedule} type="submit">
                     <CalendarPlus aria-hidden="true" />
-                    {scheduleMode === "weekly" ? "Salva ricorrenze" : "Aggiungi lezione"}
+                    {isSavingSchedule
+                      ? "Salvataggio"
+                      : scheduleMode === "weekly"
+                        ? `Crea ${scheduleSlots.length * scheduleWeekdays.length} ricorrenze`
+                        : "Aggiungi lezione"}
                   </button>
                 </form>
               ) : null}

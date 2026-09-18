@@ -118,6 +118,18 @@ class CourseScheduleCreate(BaseModel):
     cancellation_deadline_hours: int = Field(default=24, ge=0)
 
 
+class CourseScheduleSlotCreate(BaseModel):
+    starts_at: time
+    ends_at: time
+    capacity: int = Field(gt=0)
+    cancellation_deadline_hours: int = Field(default=24, ge=0)
+
+
+class CourseScheduleBatchCreate(BaseModel):
+    weekdays: list[Annotated[int, Field(ge=0, le=6)]] = Field(min_length=1, max_length=7)
+    slots: list[CourseScheduleSlotCreate] = Field(min_length=1, max_length=12)
+
+
 class CourseSessionUpdate(BaseModel):
     weekday: int | None = Field(default=None, ge=0, le=6)
     occurs_on: date | None = None
