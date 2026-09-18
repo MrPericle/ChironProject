@@ -18,7 +18,7 @@ apps/web      Frontend React/Vite
 docs          Documentazione tecnica e roadmap
 infra         Docker, Caddy e deploy
 packages      Codice condiviso futuro
-tests/e2e     Test end-to-end futuri
+tests/e2e     Test end-to-end Playwright
 ```
 
 ## Avvio locale
@@ -45,6 +45,18 @@ docker compose --env-file .env.production.example -f docker-compose.prod.yml bui
 
 La procedura VPS e in `docs/deploy/DIGITALOCEAN.md`; backup e verifica restore
 sono descritti in `docs/deploy/BACKUP_RESTORE.md`.
+
+## Test end-to-end
+
+La suite critica usa uno stack Docker isolato e copre desktop e mobile:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:e2e:local
+```
+
+Dettagli e copertura sono in `docs/testing/E2E.md`.
 
 ## Roadmap
 

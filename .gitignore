@@ -25,6 +25,8 @@ dist/
 coverage/
 .vite/
 *.tsbuildinfo
+playwright-report/
+test-results/
 
 # Docker and local data
 *.log

@@ -536,6 +536,11 @@ Descrizione: coprire login, booking, cancellazione, CRUD admin e autorizzazioni.
 
 Definition of done: suite e2e verde in CI o job dedicato.
 
+Stato: **completato**; Playwright esegue su Chromium desktop e mobile i flussi
+reali di setup 2FA admin, creazione dati operativi, prenotazione, aggiornamento
+immediato della UI, cancellazione e autorizzazione negativa sulle API admin. La
+suite usa uno stack Docker e un database isolati ed e inclusa nella CI.
+
 ### `security: hardening auth e headers`
 
 Descrizione: rate limit login, CORS, security headers, cookie policy e protezione input.

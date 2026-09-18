@@ -11,10 +11,13 @@
     "build:web": "npm --workspace apps/web run build",
     "lint:web": "npm --workspace apps/web run lint",
     "test:web": "npm --workspace apps/web run test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:local": "./scripts/test-e2e.sh"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
   },
   "engines": {
     "node": ">=20"
   }
 }
-
