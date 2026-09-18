@@ -42,3 +42,9 @@ def test_production_settings_reject_insecure_cors_origins(origin: str) -> None:
 def test_production_settings_reject_short_secret() -> None:
     with pytest.raises(ValidationError, match="APP_SECRET_KEY"):
         production_settings(APP_SECRET_KEY="too-short")
+
+
+def test_api_docs_default_to_development_only_and_can_be_enabled_explicitly() -> None:
+    assert Settings(APP_ENV="development").docs_enabled is True
+    assert production_settings().docs_enabled is False
+    assert production_settings(API_DOCS_ENABLED="true").docs_enabled is True

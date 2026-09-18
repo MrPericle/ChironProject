@@ -564,6 +564,11 @@ Descrizione: pubblicare OpenAPI e note di autenticazione/autorizzazione.
 
 Definition of done: documentazione accessibile in dev/staging.
 
+Stato: **completato**; `docs/api/API.md` descrive autenticazione, 2FA, ruoli,
+errori e route principali. Swagger, ReDoc e schema OpenAPI sono controllati da
+`API_DOCS_ENABLED`: attivi in sviluppo, attivabili esplicitamente in staging e
+disabilitati sul dominio production.
+
 ### `docs: documenta setup sviluppatore`
 
 Descrizione: README operativo per installazione, test, migrazioni e avvio locale.

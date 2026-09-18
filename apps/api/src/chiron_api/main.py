@@ -8,19 +8,20 @@ from chiron_api.admin.router import router as admin_router
 from chiron_api.auth.rate_limit import AuthRateLimiter
 from chiron_api.auth.router import router as auth_router
 from chiron_api.bookings.router import router as bookings_router
-from chiron_api.config import get_settings
+from chiron_api.config import Settings, get_settings
 from chiron_api.courses.router import router as courses_router
 from chiron_api.subscriptions.router import router as subscriptions_router
 
 
-def create_app() -> FastAPI:
-    settings = get_settings()
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
 
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
-        docs_url="/docs" if settings.app_env != "production" else None,
-        redoc_url="/redoc" if settings.app_env != "production" else None,
+        docs_url="/docs" if settings.docs_enabled else None,
+        redoc_url="/redoc" if settings.docs_enabled else None,
+        openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
     app.state.auth_rate_limiter = AuthRateLimiter(
         max_attempts=settings.auth_rate_limit_attempts,

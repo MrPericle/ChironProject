@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     app_name: str = Field(default="Chiron Project API", alias="APP_NAME")
+    api_docs_enabled: bool | None = Field(default=None, alias="API_DOCS_ENABLED")
     cors_origins: str = Field(
         default="http://localhost:5173,http://localhost:5174",
         alias="APP_CORS_ORIGINS",
@@ -54,6 +55,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def docs_enabled(self) -> bool:
+        if self.api_docs_enabled is not None:
+            return self.api_docs_enabled
+        return self.app_env.lower() != "production"
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":

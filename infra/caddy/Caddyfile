@@ -30,6 +30,6 @@ www.{$APP_DOMAIN} {
 
 {$API_DOMAIN} {
 	import common
-	header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+	header Content-Security-Policy "default-src 'none'; connect-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://fastapi.tiangolo.com; frame-ancestors 'none'"
 	reverse_proxy api:8000
 }

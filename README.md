@@ -32,6 +32,9 @@ Servizi attesi:
 - API: `http://localhost:8000`
 - Health check API: `http://localhost:8000/health`
 - Frontend: `http://localhost:5173`
+- Documentazione API: `http://localhost:8000/docs`
+
+La panoramica di autenticazione, ruoli e route e in `docs/api/API.md`.
 
 ## Preparazione production
 
