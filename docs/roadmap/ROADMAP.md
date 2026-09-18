@@ -596,6 +596,11 @@ Descrizione: checklist finale con casi d'uso utente/admin e verifica fuori-scope
 
 Definition of done: MVP approvabile, nessuna funzionalita di pagamento introdotta.
 
+Stato: **in preparazione**; `docs/release/MVP_ACCEPTANCE.md` raccoglie gate
+automatici, prove utente/admin mobile e desktop, sicurezza, operativita e firme.
+La chiusura resta subordinata al collaudo del commit candidato con il cliente;
+i pagamenti sono confermati fuori scope.
+
 ## Note TDD per aree critiche
 
 - Booking: prima testare capienza, duplicati, cancellazione, corso pieno e accesso non autorizzato.
