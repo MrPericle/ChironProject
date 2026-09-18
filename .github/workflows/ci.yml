@@ -90,6 +90,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate operations scripts
+        run: bash -n scripts/*.sh
+
       - name: Validate development Compose file
         run: docker compose config
 
