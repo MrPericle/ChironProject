@@ -94,6 +94,7 @@ Modificare esclusivamente questi valori in `.env.production`:
 ```dotenv
 APP_DOMAIN=makastudio.it
 API_DOMAIN=api.makastudio.it
+API_DOCS_ENABLED=false
 APP_CORS_ORIGINS=https://makastudio.it
 VITE_API_BASE_URL=https://api.makastudio.it
 ```

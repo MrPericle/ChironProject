@@ -585,6 +585,11 @@ Descrizione: guida VPS, env vars, deploy, rollback, backup e restore.
 
 Definition of done: procedura riproducibile senza conoscenza implicita.
 
+Stato: **completato**; `docs/deploy/DIGITALOCEAN.md` copre preparazione VPS e
+manutenzione, `docs/deploy/PRODUCTION_RELEASE.md` il rilascio protetto e il
+rollback, `docs/deploy/BACKUP_RESTORE.md` backup, verifica, retention e restore.
+Gli esempi ambiente includono documentazione API e limiti auth production.
+
 ### `release: collaudo mvp`
 
 Descrizione: checklist finale con casi d'uso utente/admin e verifica fuori-scope pagamenti.
