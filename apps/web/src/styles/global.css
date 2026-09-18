@@ -1669,73 +1669,6 @@ h3 {
   background: #f2f0ed;
 }
 
-.schedule-slot-list {
-  display: grid;
-  max-height: min(58vh, 540px);
-  gap: 10px;
-  padding-right: 5px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-color: #b5121b #dedbd7;
-  scrollbar-gutter: stable;
-}
-
-.schedule-slot {
-  display: grid;
-  min-width: 0;
-  gap: 10px;
-  margin: 0;
-  padding: 12px;
-  border: 1px solid rgba(11, 11, 13, 0.14);
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.schedule-slot legend {
-  padding: 0 5px;
-  color: #303034;
-  font-size: 0.86rem;
-  font-weight: 900;
-}
-
-.schedule-slot-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.schedule-slot-fields input {
-  width: 100%;
-  min-width: 0;
-}
-
-.schedule-slot-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.schedule-slot-actions .secondary-action {
-  width: 100%;
-}
-
-.add-schedule-slot {
-  width: 100%;
-}
-
-.schedule-batch-summary {
-  margin: 0;
-  padding: 10px 12px;
-  border-left: 4px solid #b5121b;
-  background: #ffffff;
-  color: #4c4c51;
-  line-height: 1.4;
-}
-
-.schedule-batch-summary strong {
-  color: #8f1720;
-}
-
 .schedule-mode-selector {
   display: grid;
   gap: 8px;
@@ -2639,29 +2572,6 @@ h3 {
     background: #111113;
   }
 
-  .schedule-slot-list {
-    scrollbar-color: #ef252c #29292d;
-  }
-
-  .schedule-slot {
-    border-color: rgba(239, 37, 44, 0.16);
-    background: #18181b;
-  }
-
-  .schedule-slot legend {
-    color: #ffd8da;
-  }
-
-  .schedule-batch-summary {
-    border-left-color: #ef252c;
-    background: #18181b;
-    color: #c4c4c8;
-  }
-
-  .schedule-batch-summary strong {
-    color: #ff8d93;
-  }
-
   .course-access-toggle {
     border-color: rgba(239, 37, 44, 0.16);
     background: #111113;
@@ -3179,10 +3089,6 @@ h3 {
   .schedule-mode-selector > div {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .schedule-slot-fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (min-width: 620px) {
@@ -3193,20 +3099,6 @@ h3 {
 
   .admin-new-course-trigger {
     width: auto;
-  }
-
-  .schedule-slot-fields {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .schedule-slot-actions {
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .schedule-slot-actions .secondary-action,
-  .add-schedule-slot {
-    width: fit-content;
   }
 
   .login-copy h1 {

@@ -207,11 +207,6 @@ export type CourseSchedulePayload = Omit<CourseSessionPayload, "weekday" | "occu
   weekdays: number[];
 };
 
-export type CourseScheduleBatchPayload = {
-  weekdays: number[];
-  slots: Array<Omit<CourseSessionPayload, "weekday" | "occurs_on">>;
-};
-
 export type AdminStatsItem = {
   id: string;
   name: string;
@@ -515,18 +510,6 @@ export class ChironApi {
     payload: CourseSchedulePayload,
   ): Promise<CourseSession[]> {
     return this.request<CourseSession[]>(`/admin/courses/${courseId}/schedule`, {
-      method: "POST",
-      token,
-      body: payload,
-    });
-  }
-
-  async createCourseScheduleBatch(
-    token: string,
-    courseId: string,
-    payload: CourseScheduleBatchPayload,
-  ): Promise<CourseSession[]> {
-    return this.request<CourseSession[]>(`/admin/courses/${courseId}/schedule/batch`, {
       method: "POST",
       token,
       body: payload,

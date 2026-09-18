@@ -515,30 +515,32 @@ function installFetchMock(
       });
     }
 
-    if (url.endsWith("/admin/courses/course-calisthenics/schedule/batch") && method === "POST") {
-      const body = JSON.parse(init?.body?.toString() ?? "{}") as {
-        weekdays: number[];
-        slots: Array<{
-          starts_at: string;
-          ends_at: string;
-          capacity: number;
-          cancellation_deadline_hours: number;
-        }>;
-      };
+    if (url.endsWith("/admin/courses/course-calisthenics/schedule") && method === "POST") {
       return jsonResponse(
-        body.slots.flatMap((slot, slotIndex) =>
-          body.weekdays.map((weekday) => ({
-            id: `session-${slotIndex}-${weekday}`,
+        [
+          {
+            id: "session-wednesday",
             course_id: "course-calisthenics",
-            weekday,
+            weekday: 3,
             occurs_on: null,
-            starts_at: slot.starts_at,
-            ends_at: slot.ends_at,
-            capacity: slot.capacity,
-            cancellation_deadline_hours: slot.cancellation_deadline_hours,
+            starts_at: "18:00",
+            ends_at: "19:00",
+            capacity: 12,
+            cancellation_deadline_hours: 24,
             is_active: true,
-          })),
-        ),
+          },
+          {
+            id: "session-friday",
+            course_id: "course-calisthenics",
+            weekday: 5,
+            occurs_on: null,
+            starts_at: "18:00",
+            ends_at: "19:00",
+            capacity: 12,
+            cancellation_deadline_hours: 24,
+            is_active: true,
+          },
+        ],
         { status: 201 },
       );
     }
@@ -1053,38 +1055,22 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /configura orari Calisthenics/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Mercoledi" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Venerdi" }));
-    fireEvent.change(screen.getByLabelText("Inizio fascia 1"), {
+    fireEvent.change(screen.getByLabelText("Ora inizio"), {
       target: { value: "18:00" },
     });
-    fireEvent.change(screen.getByLabelText("Fine fascia 1"), {
+    fireEvent.change(screen.getByLabelText("Ora fine"), {
       target: { value: "19:00" },
     });
-    fireEvent.change(screen.getByLabelText("Posti fascia 1"), {
+    fireEvent.change(screen.getByLabelText("Posti per lezione"), {
       target: { value: "12" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Duplica fascia 1" }));
-    fireEvent.change(screen.getByLabelText("Inizio fascia 2"), {
-      target: { value: "19:00" },
-    });
-    fireEvent.change(screen.getByLabelText("Fine fascia 2"), {
-      target: { value: "20:00" },
-    });
-    fireEvent.change(screen.getByLabelText("Posti fascia 2"), {
-      target: { value: "10" },
-    });
-    expect(screen.getByText("4 ricorrenze")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Crea 4 ricorrenze" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salva ricorrenze" }));
 
-    await screen.findByText("4 ricorrenze create.");
+    await screen.findByText("Ricorrenze create.");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/admin/courses/course-calisthenics/schedule/batch",
-      expect.objectContaining({
-        body: expect.stringContaining('"starts_at":"19:00"'),
-        method: "POST",
-      }),
+      "http://localhost:8000/admin/courses/course-calisthenics/schedule",
+      expect.objectContaining({ method: "POST" }),
     );
-    expect(screen.getByRole("checkbox", { name: "Mercoledi" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Venerdi" })).toBeChecked();
 
     fireEvent.click(screen.getByRole("radio", { name: "Data singola" }));
     fireEvent.change(screen.getByLabelText("Data della lezione"), {

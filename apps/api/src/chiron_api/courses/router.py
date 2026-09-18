@@ -24,7 +24,6 @@ from chiron_api.courses.schemas import (
     CourseDisciplineCreate,
     CourseDisciplineResponse,
     CourseResponse,
-    CourseScheduleBatchCreate,
     CourseScheduleCreate,
     CourseSessionCreate,
     CourseSessionResponse,
@@ -560,61 +559,6 @@ def create_course_schedule(
                 cancellation_deadline_hours=payload.cancellation_deadline_hours,
             ),
         )
-
-    db.add_all(sessions)
-    commit_course_change(db, conflict_detail="Una delle ricorrenze esiste gia per il corso.")
-    for course_session in sessions:
-        db.refresh(course_session)
-    return sessions
-
-
-@router.post(
-    "/admin/courses/{course_id}/schedule/batch",
-    response_model=list[CourseSessionResponse],
-    status_code=status.HTTP_201_CREATED,
-)
-def create_course_schedule_batch(
-    course_id: UUID,
-    payload: CourseScheduleBatchCreate,
-    _: User = backoffice_user,
-    db: Session = Depends(get_db_session),
-) -> list[CourseSession]:
-    get_course_or_404(db, course_id)
-    if len(set(payload.weekdays)) != len(payload.weekdays):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Seleziona ogni giorno una sola volta.",
-        )
-
-    slot_keys = [(slot.starts_at, slot.ends_at) for slot in payload.slots]
-    if len(set(slot_keys)) != len(slot_keys):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Ogni fascia oraria deve essere inserita una sola volta.",
-        )
-
-    sessions: list[CourseSession] = []
-    for slot in payload.slots:
-        ensure_time_order(slot.starts_at, slot.ends_at)
-        for weekday in sorted(payload.weekdays):
-            ensure_session_available(
-                db,
-                course_id=course_id,
-                weekday=weekday,
-                occurs_on=None,
-                starts_at=slot.starts_at,
-                ends_at=slot.ends_at,
-            )
-            sessions.append(
-                CourseSession(
-                    course_id=course_id,
-                    weekday=weekday,
-                    starts_at=slot.starts_at,
-                    ends_at=slot.ends_at,
-                    capacity=slot.capacity,
-                    cancellation_deadline_hours=slot.cancellation_deadline_hours,
-                ),
-            )
 
     db.add_all(sessions)
     commit_course_change(db, conflict_detail="Una delle ricorrenze esiste gia per il corso.")
