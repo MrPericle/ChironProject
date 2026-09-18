@@ -1445,6 +1445,42 @@ h3 {
   gap: 12px;
 }
 
+.admin-course-toolbar,
+.admin-course-search-group {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-course-search-group {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.admin-new-course-trigger {
+  width: 100%;
+}
+
+.admin-course-create-form {
+  padding: 14px;
+  border-left: 4px solid #b5121b;
+  background: #f2f0ed;
+}
+
+.admin-empty-search {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px 16px;
+  color: #4c4c51;
+  text-align: center;
+}
+
+.admin-empty-search > svg {
+  width: 28px;
+  height: 28px;
+  color: #b5121b;
+}
+
 .discipline-control {
   display: grid;
   grid-column: 1 / -1;
@@ -1496,9 +1532,28 @@ h3 {
   min-width: 0;
 }
 
+.course-manage-toggle {
+  width: 100%;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.course-manage-toggle svg {
+  transition: transform 160ms ease;
+}
+
+.course-manage-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
 .admin-course-item > .course-visual {
   width: 100%;
   min-height: 150px;
+}
+
+.admin-course-item:not(.is-expanded) > .course-visual {
+  height: 112px;
+  min-height: 112px;
 }
 
 .image-upload-action {
@@ -1561,6 +1616,15 @@ h3 {
   display: grid;
   grid-column: 1 / -1;
   gap: 12px;
+}
+
+.course-session-admin-list {
+  max-height: min(55vh, 520px);
+  padding-right: 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #b5121b #dedbd7;
+  scrollbar-gutter: stable;
 }
 
 .schedule-form {
@@ -2430,6 +2494,28 @@ h3 {
     min-height: 132px;
   }
 
+  .admin-course-item:not(.is-expanded) > .course-visual {
+    height: 104px;
+    min-height: 104px;
+  }
+
+  .admin-course-create-form {
+    border-left-color: #ef252c;
+    background: #111113;
+  }
+
+  .admin-empty-search {
+    color: #b8b8bd;
+  }
+
+  .admin-empty-search > svg {
+    color: #ef252c;
+  }
+
+  .course-session-admin-list {
+    scrollbar-color: #ef252c #29292d;
+  }
+
   .schedule-form {
     border-color: rgba(239, 37, 44, 0.16);
     background: #111113;
@@ -2936,6 +3022,15 @@ h3 {
 }
 
 @media (min-width: 620px) {
+  .admin-course-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .admin-new-course-trigger {
+    width: auto;
+  }
+
   .login-copy h1 {
     font-size: 3.55rem;
   }

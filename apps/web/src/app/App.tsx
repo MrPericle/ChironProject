@@ -2469,8 +2469,45 @@ function CoursesManager({
   const [sessionDraft, setSessionDraft] = useState<CourseSession | null>(null);
   const [confirmingDeleteCourseId, setConfirmingDeleteCourseId] = useState<string | null>(null);
   const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [courseQuery, setCourseQuery] = useState("");
+  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
 
   const selectedLocationId = locationId || locations[0]?.id || "";
+  const visibleCourses = useMemo(() => {
+    const queryTokens = courseQuery
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .toLocaleLowerCase("it-IT")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (queryTokens.length === 0) {
+      return courses;
+    }
+
+    return courses.filter((course) => {
+      const locationName = locations.find((location) => location.id === course.location_id)?.name ?? "";
+      const searchableCourse = [course.title, course.discipline, locationName, course.description ?? ""]
+        .join(" ")
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .toLocaleLowerCase("it-IT");
+      return queryTokens.every((token) => searchableCourse.includes(token));
+    });
+  }, [courseQuery, courses, locations]);
+
+  function toggleCourseManagement(courseId: string): void {
+    const nextCourseId = expandedCourseId === courseId ? null : courseId;
+    setExpandedCourseId(nextCourseId);
+    setEditingCourseId(null);
+    setCourseDraft(null);
+    setSchedulingCourseId(null);
+    setEditingSessionId(null);
+    setSessionDraft(null);
+    setConfirmingDeleteCourseId(null);
+  }
 
   async function handleCreateDiscipline(): Promise<void> {
     if (newDisciplineName.trim() === "") {
@@ -2516,6 +2553,8 @@ function CoursesManager({
       setDescription("");
       setRequiresActiveSubscription(true);
       setCourseImage(null);
+      setIsCreateFormOpen(false);
+      setExpandedCourseId(savedCourse.id);
       onNotice({ tone: "success", message: "Corso creato." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
@@ -2646,6 +2685,9 @@ function CoursesManager({
       if (schedulingCourseId === course.id) {
         setSchedulingCourseId(null);
       }
+      if (expandedCourseId === course.id) {
+        setExpandedCourseId(null);
+      }
       onNotice({
         tone: "success",
         message: "Corso eliminato definitivamente insieme a lezioni e prenotazioni.",
@@ -2688,7 +2730,44 @@ function CoursesManager({
     <section className="admin-panel" aria-labelledby="courses-title">
       <SectionTitle icon={<Dumbbell aria-hidden="true" />} title="Corsi e sessioni" id="courses-title" />
       <p className="muted">Prepara il catalogo prenotabile: titolo, sede, stato e sessioni operative.</p>
-      <form className="admin-form" onSubmit={handleCreateCourse}>
+      <div className="admin-course-toolbar">
+        <div className="admin-course-search-group">
+          <label className="course-search">
+            <Search aria-hidden="true" />
+            <span className="sr-only">Cerca corsi da gestire</span>
+            <input
+              onChange={(event) => setCourseQuery(event.target.value)}
+              placeholder="Cerca corso, disciplina o sede"
+              type="search"
+              value={courseQuery}
+            />
+            {courseQuery !== "" ? (
+              <button
+                aria-label="Cancella ricerca corsi"
+                className="course-search-clear"
+                onClick={() => setCourseQuery("")}
+                type="button"
+              >
+                <X aria-hidden="true" />
+              </button>
+            ) : null}
+          </label>
+          <span className="catalog-result-count" aria-live="polite">
+            {visibleCourses.length} {visibleCourses.length === 1 ? "corso" : "corsi"}
+          </span>
+        </div>
+        <button
+          aria-expanded={isCreateFormOpen}
+          className="primary-action admin-new-course-trigger"
+          onClick={() => setIsCreateFormOpen((current) => !current)}
+          type="button"
+        >
+          {isCreateFormOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
+          {isCreateFormOpen ? "Chiudi" : "Nuovo corso"}
+        </button>
+      </div>
+      {isCreateFormOpen ? (
+        <form className="admin-form admin-course-create-form" onSubmit={handleCreateCourse}>
         <label className="field">
           <span>Titolo corso</span>
           <input required value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -2802,19 +2881,34 @@ function CoursesManager({
           <Plus aria-hidden="true" />
           Crea corso
         </button>
-      </form>
+        </form>
+      ) : null}
 
       <div className="admin-list">
         {courses.length === 0 ? (
           <p className="muted">Nessun corso presente.</p>
+        ) : visibleCourses.length === 0 ? (
+          <div className="admin-empty-search">
+            <Search aria-hidden="true" />
+            <strong>Nessun corso corrisponde alla ricerca.</strong>
+            <button className="secondary-action" onClick={() => setCourseQuery("")} type="button">
+              <X aria-hidden="true" />
+              Cancella ricerca
+            </button>
+          </div>
         ) : (
-          courses.map((course) => (
-            <article className="admin-list-item admin-course-item" key={course.id}>
+          visibleCourses.map((course) => (
+            <article
+              className={`admin-list-item admin-course-item${
+                expandedCourseId === course.id ? " is-expanded" : ""
+              }`}
+              key={course.id}
+            >
               <CourseVisual discipline={course.discipline} imageUrl={course.image_url} />
               <div className="admin-course-body">
                 <h3>{course.title}</h3>
                 <p>{course.description ?? "Descrizione non inserita."}</p>
-                {editingCourseId === course.id && courseDraft !== null ? (
+                {expandedCourseId === course.id && editingCourseId === course.id && courseDraft !== null ? (
                   <div className="inline-edit-grid">
                     <label className="field">
                       <span>Titolo corso da modificare</span>
@@ -2909,17 +3003,31 @@ function CoursesManager({
                     {course.requires_active_subscription ? "Iscrizione richiesta" : "Aperto a tutti"}
                   </span>
                 </div>
-                <label className="secondary-action image-upload-action">
-                  <ImagePlus aria-hidden="true" />
-                  <span>Aggiorna foto</span>
-                  <input
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={(event) => handleUploadImage(course, event.target.files?.[0])}
-                    type="file"
-                  />
-                </label>
+                <button
+                  aria-controls={`course-management-${course.id}`}
+                  aria-expanded={expandedCourseId === course.id}
+                  aria-label={`Gestisci ${course.title}`}
+                  className="secondary-action course-manage-toggle"
+                  onClick={() => toggleCourseManagement(course.id)}
+                  type="button"
+                >
+                  <span>{expandedCourseId === course.id ? "Chiudi gestione" : "Gestisci"}</span>
+                  <ChevronDown aria-hidden="true" />
+                </button>
+                {expandedCourseId === course.id ? (
+                  <label className="secondary-action image-upload-action">
+                    <ImagePlus aria-hidden="true" />
+                    <span>Aggiorna foto</span>
+                    <input
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(event) => handleUploadImage(course, event.target.files?.[0])}
+                      type="file"
+                    />
+                  </label>
+                ) : null}
               </div>
-              <div className="admin-row-actions">
+              {expandedCourseId === course.id ? (
+                <div className="admin-row-actions" id={`course-management-${course.id}`}>
                 {editingCourseId === course.id ? (
                   <button
                     aria-label={`Salva corso ${course.title}`}
@@ -2973,7 +3081,8 @@ function CoursesManager({
                   <Trash2 aria-hidden="true" />
                   Elimina definitivamente
                 </button>
-              </div>
+                </div>
+              ) : null}
               {confirmingDeleteCourseId === course.id ? (
                 <div
                   className="destructive-confirmation"
@@ -3108,7 +3217,8 @@ function CoursesManager({
                   </button>
                 </form>
               ) : null}
-              <div className="course-session-admin-list">
+              {expandedCourseId === course.id ? (
+                <div className="course-session-admin-list" aria-label={`Orari attivi ${course.title}`}>
                 {course.sessions.every((session) => !session.is_active) ? (
                   <p className="muted schedule-empty-state">
                     Nessuna lezione pianificata. Il corso puo restare senza ricorrenze.
@@ -3223,7 +3333,8 @@ function CoursesManager({
                     </article>
                   );
                 })}
-              </div>
+                </div>
+              ) : null}
             </article>
           ))
         )}

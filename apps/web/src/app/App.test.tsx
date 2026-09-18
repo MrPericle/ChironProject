@@ -1017,6 +1017,7 @@ describe("App", () => {
     await loginAdmin();
 
     fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuovo corso" }));
     fireEvent.change(screen.getByLabelText("Titolo corso"), { target: { value: "Martial Flow" } });
     fireEvent.change(screen.getByLabelText("Descrizione corso"), {
       target: { value: "Tecnica e mobilita." },
@@ -1040,6 +1041,7 @@ describe("App", () => {
       expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Gestisci Calisthenics Foundation" }));
     fireEvent.click(screen.getByRole("button", { name: /modifica Calisthenics/i }));
     fireEvent.click(screen.getByRole("button", { name: /salva corso Calisthenics/i }));
 
@@ -1099,6 +1101,7 @@ describe("App", () => {
     render(<App />);
     await loginAdmin();
     fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuovo corso" }));
     fireEvent.click(screen.getByRole("button", { name: "Nuova disciplina" }));
     fireEvent.change(screen.getByLabelText("Nome nuova disciplina"), {
       target: { value: "Danza aerea" },
@@ -1122,6 +1125,7 @@ describe("App", () => {
     render(<App />);
     await loginAdmin();
     fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Gestisci Calisthenics Foundation" }));
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -1146,6 +1150,29 @@ describe("App", () => {
       "http://localhost:8000/admin/courses/course-calisthenics",
       expect.objectContaining({ method: "DELETE" }),
     );
+  });
+
+  it("keeps course management compact and searchable", async () => {
+    installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+
+    expect(screen.queryByRole("button", { name: /modifica Calisthenics/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Cerca corsi da gestire"), {
+      target: { value: "pole" },
+    });
+    expect(screen.getByText("Nessun corso corrisponde alla ricerca.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancella ricerca" }));
+    const manageButton = screen.getByRole("button", { name: "Gestisci Calisthenics Foundation" });
+    expect(manageButton).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(manageButton);
+
+    expect(manageButton).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /modifica Calisthenics/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Orari attivi Calisthenics Foundation")).toBeInTheDocument();
   });
 
   it("manages users and subscriptions from a dedicated backoffice tab", async () => {
