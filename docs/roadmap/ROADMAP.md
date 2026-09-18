@@ -477,17 +477,26 @@ Descrizione: completare pipeline con lint, unit, integration e build frontend.
 
 Definition of done: pipeline blocca merge con test rotti.
 
+Stato: **completato**; la pipeline esegue lint, migrazioni e test backend su
+PostgreSQL, oltre a lint, test e build frontend.
+
 ### `ci: aggiungi build immagini docker`
 
 Descrizione: generare immagini Docker per API e web.
 
 Definition of done: immagini buildabili in CI e localmente.
 
+Stato: **completato**; la CI valida i file Compose e costruisce le immagini
+production di API e web.
+
 ### `chore: configura reverse proxy caddy`
 
 Descrizione: predisporre Caddy per API, web, HTTPS automatico e redirect da `www`.
 
 Definition of done: configurazione documentata e validabile in staging.
+
+Stato: **completato**; Caddy gestisce web, API, HTTPS automatico e redirect
+`www`, con configurazione validata in CI e nello staging.
 
 ### `chore: configura deploy staging`
 
@@ -504,7 +513,11 @@ Descrizione: deploy produzione manualmente approvato o protetto da environment G
 
 Definition of done: produzione deployabile in modo riproducibile e documentato.
 
-Stato: **non iniziato**; richiede prima il collaudo staging.
+Stato: **preparazione completata, cutover non eseguito**. Sono presenti un
+workflow GitHub manuale protetto, uno script di release con backup, migrazioni,
+healthcheck e smoke test, e il runbook `docs/deploy/PRODUCTION_RELEASE.md`.
+Configurazione dei secret, DNS, modifica dell'environment sul VPS e approvazione
+del rilascio verranno eseguite insieme.
 
 ### `docs: runbook backup e restore`
 
@@ -569,4 +582,7 @@ Definition of done: MVP approvabile, nessuna funzionalita di pagamento introdott
 
 ## Prossimo passo consigliato
 
-Procedere con la Milestone 9: consolidare CI/CD, immagini Docker di produzione e deploy staging su VPS. Ogni microtask resta un commit atomico.
+Completare insieme il cutover controllato della Milestone 9 seguendo
+`docs/deploy/PRODUCTION_RELEASE.md`. Dopo il collaudo sul dominio definitivo,
+avviare la Milestone 10 dalla suite end-to-end dei flussi critici. Ogni
+microtask resta un commit atomico.

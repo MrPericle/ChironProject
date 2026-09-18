@@ -482,6 +482,12 @@ firma del cliente sulla checklist.
 
 ## 13. Rilasci successivi
 
+La promozione dello staging MAKA al dominio definitivo e la configurazione del
+workflow GitHub protetto sono descritte in
+[`PRODUCTION_RELEASE.md`](./PRODUCTION_RELEASE.md). Il workflow usa lo script
+`scripts/deploy-release.sh`, che aggiunge backup pre-release, verifica del
+commit, lock contro deploy concorrenti e smoke test HTTPS alla sequenza seguente.
+
 Prima di ogni release:
 
 1. annunciare la finestra di manutenzione, se necessaria;
