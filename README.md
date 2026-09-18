@@ -56,6 +56,8 @@ La procedura VPS e in `docs/deploy/DIGITALOCEAN.md`; backup e verifica restore
 sono descritti in `docs/deploy/BACKUP_RESTORE.md`.
 
 La checklist di sicurezza applicativa e in `docs/security/HARDENING.md`.
+L'audit periodico delle dipendenze e descritto in
+`docs/security/DEPENDENCY_AUDIT.md`.
 
 ## Test end-to-end
 

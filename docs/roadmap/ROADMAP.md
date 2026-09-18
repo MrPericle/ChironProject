@@ -558,6 +558,11 @@ Descrizione: introdurre audit dipendenze e aggiornamenti sicuri.
 
 Definition of done: job CI o procedura documentata.
 
+Stato: **completato**; il job CI `Dependency audit` verifica l'intero lockfile
+npm e le dipendenze Python tramite OSV. La remediation ha aggiornato Vite,
+Vitest, Playwright e `js-yaml`; procedura e regole di aggiornamento sono in
+`docs/security/DEPENDENCY_AUDIT.md`.
+
 ### `docs: documenta api principali`
 
 Descrizione: pubblicare OpenAPI e note di autenticazione/autorizzazione.

@@ -7,6 +7,39 @@ on:
       - main
 
 jobs:
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Audit JavaScript dependencies
+        run: npm audit --audit-level=high
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies and auditor
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --editable apps/api pip-audit==2.10.1
+
+      - name: Audit Python dependencies
+        run: pip-audit --local --skip-editable --vulnerability-service osv
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
