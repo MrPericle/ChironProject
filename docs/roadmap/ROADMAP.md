@@ -575,6 +575,10 @@ Descrizione: README operativo per installazione, test, migrazioni e avvio locale
 
 Definition of done: nuovo sviluppatore puo avviare il progetto seguendo la guida.
 
+Stato: **completato**; `docs/development/SETUP.md` accompagna dal clone al primo
+avvio con ordine corretto di build, database e migrazioni, poi documenta admin
+locale, test, rebuild, configurazione e diagnostica senza dipendenze implicite.
+
 ### `docs: documenta deploy e manutenzione`
 
 Descrizione: guida VPS, env vars, deploy, rollback, backup e restore.

@@ -24,7 +24,11 @@ tests/e2e     Test end-to-end Playwright
 ## Avvio locale
 
 ```bash
-docker compose up --build
+cp .env.example .env
+docker compose build
+docker compose up -d db
+docker compose run --rm api alembic upgrade head
+docker compose up -d api web
 ```
 
 Servizi attesi:
@@ -35,6 +39,8 @@ Servizi attesi:
 - Documentazione API: `http://localhost:8000/docs`
 
 La panoramica di autenticazione, ruoli e route e in `docs/api/API.md`.
+La guida completa per ambiente, migrazioni, test e diagnostica e in
+`docs/development/SETUP.md`.
 
 ## Preparazione production
 
