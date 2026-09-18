@@ -15,7 +15,7 @@
     "test:e2e:local": "./scripts/test-e2e.sh"
   },
   "devDependencies": {
-    "@playwright/test": "1.49.1"
+    "@playwright/test": "1.63.0"
   },
   "engines": {
     "node": ">=20"
