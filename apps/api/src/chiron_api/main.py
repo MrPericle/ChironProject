@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from chiron_api.admin.router import router as admin_router
+from chiron_api.auth.rate_limit import AuthRateLimiter
 from chiron_api.auth.router import router as auth_router
 from chiron_api.bookings.router import router as bookings_router
 from chiron_api.config import get_settings
@@ -21,14 +22,29 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.app_env != "production" else None,
         redoc_url="/redoc" if settings.app_env != "production" else None,
     )
+    app.state.auth_rate_limiter = AuthRateLimiter(
+        max_attempts=settings.auth_rate_limit_attempts,
+        window_seconds=settings.auth_rate_limit_window_seconds,
+    )
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
     )
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if request.url.path.startswith(("/auth", "/admin", "/bookings", "/subscriptions")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     upload_dir = Path(settings.course_upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)

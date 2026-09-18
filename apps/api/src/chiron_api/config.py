@@ -1,6 +1,7 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,18 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
     auth_token_issuer: str = Field(default="chiron-api", alias="AUTH_TOKEN_ISSUER")
+    auth_rate_limit_attempts: int = Field(
+        default=8,
+        ge=3,
+        le=100,
+        alias="AUTH_RATE_LIMIT_ATTEMPTS",
+    )
+    auth_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=3600,
+        alias="AUTH_RATE_LIMIT_WINDOW_SECONDS",
+    )
     waitlist_enabled: bool = Field(default=False, alias="WAITLIST_ENABLED")
     app_timezone: str = Field(default="Europe/Rome", alias="APP_TIMEZONE")
     booking_horizon_days: int = Field(
@@ -41,6 +54,37 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.app_env.lower() != "production":
+            return self
+
+        if len(self.app_secret_key) < 64 or self.app_secret_key.startswith("dev-only"):
+            raise ValueError("APP_SECRET_KEY must contain at least 64 characters in production")
+
+        origins = self.cors_origin_list
+        if not origins:
+            raise ValueError("APP_CORS_ORIGINS must contain at least one production origin")
+
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if (
+                origin == "*"
+                or parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.query
+                or parsed.fragment
+                or parsed.path not in {"", "/"}
+            ):
+                raise ValueError(
+                    "APP_CORS_ORIGINS must contain only HTTPS origins without paths "
+                    "in production",
+                )
+
+        return self
 
 
 @lru_cache

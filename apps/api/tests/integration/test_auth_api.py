@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.passwords import hash_password
+from chiron_api.auth.rate_limit import AuthRateLimiter
 from chiron_api.auth.totp import generate_totp_code
 from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
@@ -134,6 +135,63 @@ def test_login_rejects_invalid_password() -> None:
     assert response.status_code == 401
 
 
+def test_login_is_rate_limited_after_repeated_failures() -> None:
+    client, session_factory = make_client()
+    client.app.state.auth_rate_limiter = AuthRateLimiter(max_attempts=3, window_seconds=60)
+    create_user(session_factory, email="limited@example.com", password="CorrectPass123!")
+
+    responses = [
+        client.post(
+            "/auth/login",
+            json={"email": "limited@example.com", "password": "WrongPass123!"},
+        )
+        for _ in range(3)
+    ]
+
+    assert [response.status_code for response in responses] == [401, 401, 429]
+    assert responses[-1].headers["Retry-After"]
+
+    blocked_valid_login = client.post(
+        "/auth/login",
+        json={"email": "limited@example.com", "password": "CorrectPass123!"},
+    )
+    assert blocked_valid_login.status_code == 429
+
+
+def test_api_security_headers_and_cors_policy() -> None:
+    client, _ = make_client()
+
+    auth_response = client.post(
+        "/auth/login",
+        json={"email": "missing@example.com", "password": "WrongPass123!"},
+    )
+    assert auth_response.headers["X-Content-Type-Options"] == "nosniff"
+    assert auth_response.headers["X-Frame-Options"] == "DENY"
+    assert auth_response.headers["Referrer-Policy"] == "no-referrer"
+    assert auth_response.headers["Cache-Control"] == "no-store"
+
+    allowed_preflight = client.options(
+        "/auth/login",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert allowed_preflight.status_code == 200
+    assert allowed_preflight.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
+    assert "Access-Control-Allow-Credentials" not in allowed_preflight.headers
+
+    rejected_preflight = client.options(
+        "/auth/login",
+        headers={
+            "Origin": "https://malicious.example",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert "Access-Control-Allow-Origin" not in rejected_preflight.headers
+
+
 def test_backoffice_session_requires_staff_or_admin_role() -> None:
     client, session_factory = make_client()
     create_user(session_factory, email="member@example.com", password="MemberPass123!")
@@ -200,6 +258,35 @@ def test_admin_must_complete_2fa_before_backoffice_access() -> None:
     )
     assert totp_login_response.status_code == 200
     assert totp_login_response.json()["user"]["role"] == "admin"
+
+
+def test_two_factor_confirmation_is_rate_limited() -> None:
+    client, session_factory = make_client()
+    client.app.state.auth_rate_limiter = AuthRateLimiter(max_attempts=3, window_seconds=60)
+    create_user(
+        session_factory,
+        email="limited-admin@example.com",
+        password="AdminPass123!",
+        role=UserRole.ADMIN,
+    )
+
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "limited-admin@example.com", "password": "AdminPass123!"},
+    )
+    setup_token = login_response.json()["setup_token"]
+    assert client.post("/auth/2fa/setup", json={"setup_token": setup_token}).status_code == 200
+
+    responses = [
+        client.post(
+            "/auth/2fa/confirm",
+            json={"setup_token": setup_token, "totp_code": "000000"},
+        )
+        for _ in range(3)
+    ]
+
+    assert [response.status_code for response in responses] == [401, 401, 429]
+    assert responses[-1].headers["Retry-After"]
 
 
 def test_delete_me_anonymizes_account_and_releases_bookings() -> None:

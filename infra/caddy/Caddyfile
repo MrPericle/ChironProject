@@ -4,6 +4,14 @@
 
 (common) {
 	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
 	log {
 		output stdout
 		format json
@@ -12,6 +20,7 @@
 
 {$APP_DOMAIN} {
 	import common
+	header Content-Security-Policy "default-src 'self'; connect-src 'self' https://{$API_DOMAIN}; img-src 'self' data: blob: https://{$API_DOMAIN}; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
 	reverse_proxy web:80
 }
 
@@ -21,5 +30,6 @@ www.{$APP_DOMAIN} {
 
 {$API_DOMAIN} {
 	import common
+	header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
 	reverse_proxy api:8000
 }

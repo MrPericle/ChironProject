@@ -1,13 +1,14 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from chiron_api.auth.dependencies import get_current_user, require_roles
 from chiron_api.auth.passwords import hash_password, verify_password
+from chiron_api.auth.rate_limit import AuthRateLimiter, auth_rate_limit_key
 from chiron_api.auth.schemas import (
     LoginRequest,
     LogoutRequest,
@@ -42,6 +43,35 @@ from chiron_api.db.models import AdminTwoFactor, User, UserProfile, UserRole, Us
 from chiron_api.db.session import get_db_session
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def get_auth_rate_limiter(request: Request) -> AuthRateLimiter:
+    return request.app.state.auth_rate_limiter
+
+
+def rate_limit_key(request: Request, scope: str, identity: str) -> str:
+    client_host = request.client.host if request.client is not None else None
+    return auth_rate_limit_key(scope, identity, client_host)
+
+
+def raise_if_rate_limited(limiter: AuthRateLimiter, key: str) -> None:
+    retry_after = limiter.retry_after(key)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many authentication attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def record_auth_failure(limiter: AuthRateLimiter, key: str) -> None:
+    retry_after = limiter.record_failure(key)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many authentication attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 def normalize_email(email: str) -> str:
@@ -120,16 +150,26 @@ def register(
 )
 def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    limiter: AuthRateLimiter = Depends(get_auth_rate_limiter),
 ) -> TokenPairResponse | TwoFactorRequiredResponse | TwoFactorSetupRequiredResponse:
+    normalized_email = normalize_email(payload.email)
+    limiter_key = rate_limit_key(request, "login", normalized_email)
+    raise_if_rate_limited(limiter, limiter_key)
+
     user = get_user_by_email(db, payload.email)
     if user is None or user.status != UserStatus.ACTIVE:
+        record_auth_failure(limiter, limiter_key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     if not verify_password(payload.password, user.password_hash):
+        record_auth_failure(limiter, limiter_key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    limiter.reset(limiter_key)
 
     if is_backoffice_role(user.role):
         two_factor = user.admin_2fa
@@ -151,15 +191,23 @@ def login(
 @router.post("/2fa/verify", response_model=TokenPairResponse)
 def verify_two_factor(
     payload: TwoFactorVerifyRequest,
+    request: Request,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    limiter: AuthRateLimiter = Depends(get_auth_rate_limiter),
 ) -> TokenPairResponse:
-    user = user_from_two_factor_token(
-        db,
-        payload.challenge_token,
-        settings,
-        expected_type=TWO_FACTOR_CHALLENGE_TOKEN_TYPE,
-    )
+    limiter_key = rate_limit_key(request, "2fa-verify", payload.challenge_token)
+    raise_if_rate_limited(limiter, limiter_key)
+    try:
+        user = user_from_two_factor_token(
+            db,
+            payload.challenge_token,
+            settings,
+            expected_type=TWO_FACTOR_CHALLENGE_TOKEN_TYPE,
+        )
+    except HTTPException:
+        record_auth_failure(limiter, limiter_key)
+        raise
     two_factor = user.admin_2fa
     if two_factor is None or two_factor.confirmed_at is None:
         raise HTTPException(
@@ -169,8 +217,10 @@ def verify_two_factor(
 
     secret = decrypt_secret(two_factor.secret_encrypted, settings.app_secret_key)
     if not verify_totp_code(secret, payload.totp_code):
+        record_auth_failure(limiter, limiter_key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid 2FA code")
 
+    limiter.reset(limiter_key)
     return build_token_response(db, user, settings)
 
 
@@ -265,18 +315,28 @@ def setup_two_factor(
 @router.post("/2fa/confirm", response_model=TokenPairResponse)
 def confirm_two_factor(
     payload: TwoFactorConfirmRequest,
+    request: Request,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    limiter: AuthRateLimiter = Depends(get_auth_rate_limiter),
 ) -> TokenPairResponse:
-    user = user_from_setup_token(db, payload.setup_token, settings)
+    limiter_key = rate_limit_key(request, "2fa-confirm", payload.setup_token)
+    raise_if_rate_limited(limiter, limiter_key)
+    try:
+        user = user_from_setup_token(db, payload.setup_token, settings)
+    except HTTPException:
+        record_auth_failure(limiter, limiter_key)
+        raise
     two_factor = user.admin_2fa
     if two_factor is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="2FA setup missing")
 
     secret = decrypt_secret(two_factor.secret_encrypted, settings.app_secret_key)
     if not verify_totp_code(secret, payload.totp_code):
+        record_auth_failure(limiter, limiter_key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid 2FA code")
 
+    limiter.reset(limiter_key)
     two_factor.confirmed_at = datetime.now(UTC)
     db.add(two_factor)
     db.commit()

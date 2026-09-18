@@ -46,6 +46,8 @@ docker compose --env-file .env.production.example -f docker-compose.prod.yml bui
 La procedura VPS e in `docs/deploy/DIGITALOCEAN.md`; backup e verifica restore
 sono descritti in `docs/deploy/BACKUP_RESTORE.md`.
 
+La checklist di sicurezza applicativa e in `docs/security/HARDENING.md`.
+
 ## Test end-to-end
 
 La suite critica usa uno stack Docker isolato e copre desktop e mobile:

@@ -547,6 +547,11 @@ Descrizione: rate limit login, CORS, security headers, cookie policy e protezion
 
 Definition of done: controlli verificati con test o checklist tecnica.
 
+Stato: **completato**; login e 2FA hanno rate limit configurabile con risposta
+`429`, la configurazione production rifiuta secret e origini CORS insicuri, API,
+Nginx e Caddy applicano header difensivi e CSP. Test automatici e checklist sono
+documentati in `docs/security/HARDENING.md`.
+
 ### `security: audit dipendenze`
 
 Descrizione: introdurre audit dipendenze e aggiornamenti sicuri.
