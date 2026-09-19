@@ -8,89 +8,89 @@ dominio production. Un punto non verificato non equivale a un punto superato.
 
 | Campo | Valore |
 | --- | --- |
-| Commit | `DA_COMPILARE` |
-| Ambiente | `staging.makastudio.it` |
-| Data e ora | `DA_COMPILARE` |
-| Tecnico | `DA_COMPILARE` |
-| Referente cliente | `DA_COMPILARE` |
-| Dispositivo mobile reale | `DA_COMPILARE` |
-| Browser desktop | `DA_COMPILARE` |
+| Commit | `6a6fe2e` |
+| Ambiente | `staging.makastudio.it`, poi `makastudio.it` |
+| Data e ora | 19 settembre 2026 |
+| Tecnico | Pericle Pergamo |
+| Referente cliente | Mattia Spaziani |
+| Dispositivo mobile reale | Verificato, dettaglio non annotato |
+| Browser desktop | Verificato, dettaglio non annotato |
 
 Esiti ammessi: `OK`, `KO`, `N/A`. Ogni `KO` deve avere issue, responsabile e
 decisione di rilascio associati.
 
 ## Gate automatici
 
-- [ ] CI GitHub verde sul commit indicato.
-- [ ] Lint e  test backend verdi.
-- [ ] Lint, test e build frontend verdi.
-- [ ] E2E Chromium desktop e Pixel 5 verdi.
-- [ ] Immagini API e web production costruite.
-- [ ] Docker Compose production e Caddy validati.
-- [ ] Audit dipendenze senza vulnerabilita bloccanti accettate tacitamente.
+- [x] CI GitHub verde sul commit indicato.
+- [x] Lint e test backend verdi.
+- [x] Lint, test e build frontend verdi.
+- [x] E2E Chromium desktop e Pixel 5 verdi.
+- [x] Immagini API e web production costruite.
+- [x] Docker Compose production e Caddy validati.
+- [x] Audit dipendenze senza vulnerabilita bloccanti accettate tacitamente.
 
 ## Area utente
 
-- [ ] Registrazione, login, refresh automatico e logout funzionano.
-- [ ] Errori di credenziali e rete sono comprensibili e non cancellano dati UI.
-- [ ] Catalogo usabile con molti corsi: ricerca, filtri, date e sedi.
-- [ ] Schede corso mostrano immagine corretta, orario, sede e posti effettivi.
-- [ ] Un corso libero e prenotabile senza iscrizione attiva.
-- [ ] Un corso protetto rifiuta utenti senza iscrizione valida per quella data.
-- [ ] Prenotando, i posti si aggiornano senza refresh e il pulsante diventa
+- [x] Registrazione, login, refresh automatico e logout funzionano.
+- [x] Errori di credenziali e rete sono comprensibili e non cancellano dati UI.
+- [x] Catalogo usabile con molti corsi: ricerca, filtri, date e sedi.
+- [x] Schede corso mostrano immagine corretta, orario, sede e posti effettivi.
+- [x] Un corso libero e prenotabile senza iscrizione attiva.
+- [x] Un corso protetto rifiuta utenti senza iscrizione valida per quella data.
+- [x] Prenotando, i posti si aggiornano senza refresh e il pulsante diventa
   `Prenotato` non azionabile.
-- [ ] Cancellando, la prenotazione scompare subito e il posto torna disponibile.
-- [ ] Le lezioni terminate non si accumulano in `Le tue prenotazioni`.
-- [ ] Il layout mobile non sovrappone pulsanti, filtri, modali o navigazione.
-- [ ] Tastiera, focus visibile, label e messaggi sono utilizzabili senza mouse.
+- [x] Cancellando, la prenotazione scompare subito e il posto torna disponibile.
+- [x] Le lezioni terminate non si accumulano in `Le tue prenotazioni`.
+- [x] Il layout mobile non sovrappone pulsanti, filtri, modali o navigazione.
+- [x] Tastiera, focus visibile, label e messaggi sono utilizzabili senza mouse.
 
 ## Backoffice accesso
 
-- [ ] Admin e collaboratore inseriscono prima email/password e poi il codice 2FA.
-- [ ] Il primo setup 2FA funziona con QR code e inserimento manuale del secret.
-- [ ] Sessione admin e collaboratore resta valida secondo le regole definite.
-- [ ] Le notifiche restano visibili durante lo scorrimento senza coprire azioni.
+- [x] Admin e collaboratore inseriscono prima email/password e poi il codice 2FA.
+- [x] Il primo setup 2FA funziona con QR code e inserimento manuale del secret.
+- [x] Sessione admin e collaboratore resta valida secondo le regole definite.
+- [x] Le notifiche restano visibili durante lo scorrimento senza coprire azioni.
 
 ## Backoffice corsi e calendario
 
-- [ ] Dashboard riepiloga iscritti per corso e sede con dati coerenti.
-- [ ] CRUD sedi funziona; disattivazione ed eliminazione rimuovono corsi e
+- [x] Dashboard riepiloga iscritti per corso e sede con dati coerenti.
+- [x] CRUD sedi funziona; disattivazione ed eliminazione rimuovono corsi e
   prenotazioni collegate.
-- [ ] CRUD corsi funziona, inclusa eliminazione definitiva e pulizia prenotazioni.
-- [ ] Foto JPG, PNG e WebP valida viene caricata e persiste dopo il restart.
-- [ ] File non supportato o oltre 5 MB viene rifiutato con messaggio comprensibile.
-- [ ] Discipline predefinite sono presenti e un admin puo aggiungerne una nuova.
-- [ ] Si possono creare corsi con e senza iscrizione obbligatoria.
-- [ ] Si possono creare lezioni singole senza periodizzazione.
-- [ ] La creazione batch aggiunge piu giorni allo stesso orario senza reinserire i
+- [x] CRUD corsi funziona, inclusa eliminazione definitiva e pulizia prenotazioni.
+- [x] Foto JPG, PNG e WebP valida viene caricata e persiste dopo il restart.
+- [x] File non supportato o oltre 5 MB viene rifiutato con messaggio comprensibile.
+- [x] Discipline predefinite sono presenti e un admin puo aggiungerne una nuova.
+- [x] Si possono creare corsi con e senza iscrizione obbligatoria.
+- [x] Si possono creare lezioni singole senza periodizzazione.
+- [x] La creazione batch aggiunge piu giorni allo stesso orario senza reinserire i
   dati comuni.
-- [ ] Duplicati e sovrapposizioni nella stessa sede vengono rifiutati.
-- [ ] Capienza non puo scendere sotto le prenotazioni confermate.
-- [ ] Calendario mostra posti disponibili su totali, per esempio `5 su 6`.
-- [ ] Dal calendario si apre e chiude l'elenco prenotati senza perdere posizione.
-- [ ] Con molti corsi, ricerca e pannelli scorrevoli restano rapidi su mobile.
+- [x] Duplicati e sovrapposizioni nella stessa sede vengono rifiutati.
+- [x] Capienza non puo scendere sotto le prenotazioni confermate.
+- [x] Calendario mostra posti disponibili su totali, per esempio `5 su 6`.
+- [x] Dal calendario si apre e chiude l'elenco prenotati senza perdere posizione.
+- [x] Con molti corsi, ricerca e pannelli scorrevoli restano rapidi su mobile.
 
 ## Backoffice utenti e ruoli
 
-- [ ] Admin crea, modifica, disabilita ed elimina utenti con azioni comprensibili.
-- [ ] Admin attiva e modifica iscrizioni; una scaduta appare non attiva.
-- [ ] Disabilitare o eliminare un utente libera le prenotazioni future.
-- [ ] Admin promuove e rimuove un collaboratore.
-- [ ] Collaboratore gestisce sedi, corsi, calendario e partecipanti.
-- [ ] Collaboratore puo usare anche l'area utente e prenotarsi.
-- [ ] Collaboratore non vede e non puo chiamare API utenti o iscrizioni.
+- [x] Admin crea, modifica, disabilita ed elimina utenti con azioni comprensibili.
+- [x] Admin attiva e modifica iscrizioni; una scaduta appare non attiva.
+- [x] Disabilitare o eliminare un utente libera le prenotazioni future.
+- [x] Admin promuove e rimuove un collaboratore.
+- [x] Collaboratore gestisce sedi, corsi, calendario e partecipanti.
+- [x] Collaboratore puo usare anche l'area utente e prenotarsi.
+- [x] Collaboratore non vede e non puo chiamare API utenti o iscrizioni.
 
 ## Sicurezza e operativita
 
-- [ ] Tentativi ripetuti di login e 2FA ricevono `429` e `Retry-After`.
-- [ ] Un'origine CORS non autorizzata non riceve accesso dal browser.
-- [ ] Swagger, ReDoc e OpenAPI non sono pubblici sul dominio production.
-- [ ] Header HSTS, CSP, anti-frame, `nosniff` e referrer policy sono presenti.
-- [ ] Porte database, API e dev server non sono esposte direttamente da Internet.
-- [ ] Tutti i container risultano healthy e ripartono dopo reboot del VPS.
-- [ ] Log recenti non contengono traceback, panic o errori critici.
-- [ ] Backup database/upload creato, checksum valido e restore temporaneo riuscito.
-- [ ] Rollback e contatti operativi sono disponibili durante la finestra release.
+- [x] Tentativi ripetuti di login e 2FA ricevono `429` e `Retry-After`.
+- [x] Un'origine CORS non autorizzata non riceve accesso dal browser.
+- [x] Swagger, ReDoc e OpenAPI non sono pubblici sul dominio production.
+- [x] Header HSTS, CSP, anti-frame, `nosniff` e referrer policy sono presenti.
+- [x] Porte database, API e dev server non sono esposte direttamente da Internet.
+- [x] Tutti i container risultano healthy e ripartono dopo reboot del VPS.
+- [x] Log recenti non contengono traceback, panic o errori critici.
+- [x] Backup database/upload creato, checksum valido e restore temporaneo riuscito.
+- [x] Rollback e contatti operativi sono disponibili durante la finestra release.
 
 ## Fuori scope MVP
 
@@ -103,16 +103,16 @@ legale, fiscale, privacy e sicurezza.
 
 | ID | Descrizione | Impatto | Decisione/Scadenza |
 | --- | --- | --- | --- |
-| | | | |
+| Nessuno | Nessun difetto bloccante rilevato | N/A | MVP approvato |
 
 ## Approvazione
 
-- [ ] Il tecnico conferma commit, backup e piano di rollback.
-- [ ] Il referente cliente approva i flussi utente e backoffice.
-- [ ] Non restano `KO` bloccanti o vulnerabilita critiche/high non valutate.
-- [ ] E autorizzata la promozione al dominio definitivo.
+- [x] Il tecnico conferma commit, backup e piano di rollback.
+- [x] Il referente cliente approva i flussi utente e backoffice.
+- [x] Non restano `KO` bloccanti o vulnerabilita critiche/high non valutate.
+- [x] E autorizzata la promozione al dominio definitivo.
 
 | Ruolo | Nome | Data | Conferma |
 | --- | --- | --- | --- |
-| Tecnico | | | |
-| Cliente | | | |
+| Tecnico | Pericle Pergamo | 19 settembre 2026 | Verificato |
+| Cliente | Mattia Spaziani | 19 settembre 2026 | Approvazione confermata |

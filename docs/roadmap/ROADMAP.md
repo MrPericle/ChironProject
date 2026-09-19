@@ -464,12 +464,12 @@ impediscono inoltre di creare corsi in una sede inattiva.
 
 ## Milestone 9 - CI/CD e deploy VPS
 
-Stato deploy al 11 settembre 2026: lo staging e raggiungibile su
-`staging.makastudio.it`, con API su `api.staging.makastudio.it`, HTTPS e
-redirect `www` attivi. Migrazioni applicate fino a `20260911_0006`, stack
-Docker sano e primo amministratore tecnico verificato con login 2FA. Backup e
-restore sono stati provati sul VPS: checksum validi e 12 tabelle ripristinate
-nel database temporaneo di verifica.
+Stato deploy al 19 settembre 2026: il commit applicativo `6a6fe2e` e in
+produzione su `makastudio.it`, con API su `api.makastudio.it`, HTTPS e redirect
+`www` attivi. Il rilascio e stato eseguito dal workflow GitHub protetto dopo il
+collaudo dello staging e l'approvazione del cliente. Stack Docker, smoke test,
+backup e restore temporaneo risultano verificati; una copia del backup finale e
+conservata anche fuori dal VPS.
 
 ### `ci: aggiungi test backend e frontend`
 
@@ -504,8 +504,8 @@ Descrizione: deploy via SSH su VPS con Docker Compose e variabili ambiente separ
 
 Definition of done: staging raggiungibile, migrazioni applicate in modo controllato.
 
-Stato: **completato** nello staging con deploy manuale riproducibile, HTTPS,
-migrazioni controllate e smoke test esterni superati.
+Stato: **completato**; lo staging ha validato deploy manuale, HTTPS, migrazioni
+controllate e smoke test prima della promozione in produzione.
 
 ### `chore: configura deploy produzione`
 
@@ -513,11 +513,11 @@ Descrizione: deploy produzione manualmente approvato o protetto da environment G
 
 Definition of done: produzione deployabile in modo riproducibile e documentato.
 
-Stato: **preparazione completata, cutover non eseguito**. Sono presenti un
-workflow GitHub manuale protetto, uno script di release con backup, migrazioni,
-healthcheck e smoke test, e il runbook `docs/deploy/PRODUCTION_RELEASE.md`.
-Configurazione dei secret, DNS, modifica dell'environment sul VPS e approvazione
-del rilascio verranno eseguite insieme.
+Stato: **completato**. Il cutover e stato eseguito il 19 settembre 2026 tramite
+environment GitHub protetto e workflow manualmente approvato. DNS, Caddy, CORS
+e frontend puntano ai domini definitivi; healthcheck, certificati, redirect,
+header di sicurezza e documentazione API disabilitata sono stati verificati
+dall'esterno.
 
 ### `docs: runbook backup e restore`
 
@@ -525,8 +525,9 @@ Descrizione: documentare backup PostgreSQL, restore e responsabilita operative.
 
 Definition of done: procedura provata almeno una volta in staging.
 
-Stato: **completato** nello staging; dump PostgreSQL e archivio upload verificati
-tramite checksum e restore in un database temporaneo poi rimosso.
+Stato: **completato**; dump PostgreSQL e archivio upload sono stati verificati
+tramite checksum e restore temporaneo sia prima sia dopo il rilascio. Il backup
+production `maka-20260919T062851Z` e presente sul VPS e in copia esterna.
 
 ## Milestone 10 - Hardening, test finali e documentazione
 
@@ -601,10 +602,10 @@ Descrizione: checklist finale con casi d'uso utente/admin e verifica fuori-scope
 
 Definition of done: MVP approvabile, nessuna funzionalita di pagamento introdotta.
 
-Stato: **in preparazione**; `docs/release/MVP_ACCEPTANCE.md` raccoglie gate
-automatici, prove utente/admin mobile e desktop, sicurezza, operativita e firme.
-La chiusura resta subordinata al collaudo del commit candidato con il cliente;
-i pagamenti sono confermati fuori scope.
+Stato: **completato** sul commit applicativo `6a6fe2e`; gate automatici, prove
+utente/admin mobile e desktop, sicurezza e operativita sono stati verificati.
+Il cliente ha approvato staging e produzione. I pagamenti restano confermati
+fuori scope.
 
 ## Note TDD per aree critiche
 
@@ -616,7 +617,7 @@ i pagamenti sono confermati fuori scope.
 
 ## Prossimo passo consigliato
 
-Completare insieme il cutover controllato della Milestone 9 seguendo
-`docs/deploy/PRODUCTION_RELEASE.md`. Dopo il collaudo sul dominio definitivo,
-avviare la Milestone 10 dalla suite end-to-end dei flussi critici. Ogni
-microtask resta un commit atomico.
+Entrare nella manutenzione ordinaria: monitorare log e disponibilita, verificare
+periodicamente i backup, applicare aggiornamenti dipendenze tramite CI e usare il
+workflow protetto per i rilasci successivi. Nuove funzionalita devono essere
+pianificate in milestone separate dall'MVP approvato.
