@@ -607,6 +607,150 @@ utente/admin mobile e desktop, sicurezza e operativita sono stati verificati.
 Il cliente ha approvato staging e produzione. I pagamenti restano confermati
 fuori scope.
 
+## Milestone 11 - Affidabilita account e recupero accesso
+
+Stato: **pianificata, implementazione non iniziata**.
+
+Obiettivo: correggere i difetti emersi dopo il rilascio e introdurre verifica
+email e recupero accesso senza compromettere gli account gia presenti in
+produzione. La milestone procede per incrementi distribuibili e prevede backup,
+migrazione, test in staging e approvazione prima del deploy production.
+
+### Decisioni preliminari
+
+- L'applicazione usa oggi l'email come identificativo di accesso e non possiede
+  uno username separato. L'opzione consigliata e mantenere questo modello,
+  chiamando la credenziale `Email di accesso` in tutta la UI. Un vero username
+  richiederebbe un nuovo campo univoco, backfill degli utenti production e
+  modifica di login, registrazione e amministrazione: va approvato esplicitamente
+  prima di estendere lo schema.
+- Scegliere il servizio email transazionale e verificare mittente, SPF, DKIM e
+  DMARC. Il codice deve dipendere da un'interfaccia email e non dal provider;
+  SMTP autenticato e la base prevista per il primo rilascio.
+- Definire indirizzo mittente, URL frontend pubblico, durata dei token e testi
+  delle email prima del collaudo end-to-end.
+
+### `fix: correggi upload immagine durante modifica corso`
+
+Descrizione: allineare il contratto multipart tra React e FastAPI. Il frontend
+invia attualmente il campo `image`, mentre l'endpoint accetta `file`.
+
+Attivita:
+
+- correggere il nome del campo multipart e mantenere il limite di 5 MB e i
+  formati JPG, PNG e WebP;
+- mostrare un errore comprensibile senza perdere le modifiche del form;
+- verificare sostituzione dell'immagine e rimozione del file precedente;
+- aggiungere test frontend sul `FormData`, integrazione API e scenario E2E di
+  modifica corso con immagine.
+
+Definition of done: un admin modifica un corso, carica o sostituisce la foto e
+vede subito la nuova immagine su backoffice e catalogo, anche dopo un restart.
+
+### `fix: elimina definitivamente utenti e dati collegati`
+
+Descrizione: sostituire la soft-delete con cancellazione fisica amministrativa.
+La risposta API non deve restituire un utente anonimizzato e la UI deve rimuovere
+immediatamente la riga.
+
+Attivita:
+
+- eliminare tutte le prenotazioni dell'utente, incluse quelle confermate, in
+  attesa, cancellate e storiche, liberando immediatamente la capienza futura;
+- eliminare profilo, iscrizioni, refresh token, configurazione 2FA e token email;
+- impostare a `NULL` l'eventuale riferimento istruttore nei corsi e preservare i
+  soli audit log tecnici senza dati personali o riferimento attore attivo;
+- usare vincoli `ON DELETE` coerenti e una singola transazione atomica;
+- impedire a un admin di eliminare se stesso o l'ultimo amministratore attivo;
+- restituire `204 No Content`, rimuovere l'utente dallo stato React e aggiornare
+  contatori, partecipanti e posti senza refresh;
+- aggiornare conferma distruttiva e test API, UI ed E2E verificando l'assenza di
+  ogni riga collegata.
+
+Definition of done: dopo la conferma l'utente non compare piu nel backoffice,
+non puo autenticarsi, non ha dati collegati nel database e tutti i posti delle
+sue prenotazioni risultano disponibili.
+
+### `feat: aggiungi infrastruttura email transazionale`
+
+Descrizione: introdurre un servizio email sostituibile, configurazione via
+secret e template MAKA responsive in testo e HTML.
+
+Attivita:
+
+- aggiungere configurazione per host, porta, TLS, credenziali, mittente e URL
+  frontend, con validazione obbligatoria in production;
+- fornire un backend locale di test che non invii email reali e documentare la
+  configurazione staging/production;
+- evitare credenziali nei log e rendere osservabili consegna ed errori senza
+  esporre token o indirizzi completi;
+- configurare SPF, DKIM e DMARC prima dell'abilitazione production.
+
+Definition of done: staging invia un messaggio reale dal dominio MAKA e gli
+errori di consegna producono un esito gestibile senza creare account incoerenti.
+
+### `feat: verifica indirizzo email`
+
+Descrizione: i nuovi account devono confermare l'indirizzo prima di ottenere una
+sessione. Gli utenti gia presenti vengono marcati verificati dalla migrazione per
+evitare blocchi al rilascio.
+
+Attivita:
+
+- aggiungere `email_verified_at` e token monouso memorizzati solo come hash, con
+  scadenza, finalita, data di utilizzo e revoca;
+- cambiare la registrazione: creare l'account non verificato, inviare il link e
+  non emettere access/refresh token prima della conferma;
+- aggiungere conferma e reinvio con risposte anti-enumerazione, rate limit e
+  invalidazione dei token precedenti;
+- marcare verificati gli account esistenti e quelli bootstrap creati dalla CLI;
+- richiedere una nuova verifica quando l'email viene modificata;
+- creare schermate mobile-first per `Controlla la posta`, conferma, link scaduto
+  e reinvio, con focus e annunci accessibili.
+
+Definition of done: un nuovo utente non puo accedere prima della verifica, il
+link e monouso e gli account esistenti continuano a funzionare dopo la migrazione.
+
+### `feat: recupero credenziale e password`
+
+Descrizione: aggiungere un unico percorso `Problemi di accesso?`. Nel modello
+attuale l'email e il nome utente: la UI lo rende esplicito e il recupero password
+avviene tramite l'indirizzo verificato. Se viene approvato uno username separato,
+questo incremento verra esteso con campo univoco e promemoria username via email.
+
+Attivita:
+
+- endpoint di richiesta sempre generico, per non rivelare se un account esiste;
+- token di reset casuale, monouso, hashato e con scadenza breve;
+- schermate richiesta, email inviata, nuova password, token scaduto e successo;
+- dopo il reset revocare tutti i refresh token e mantenere il 2FA dei ruoli
+  backoffice;
+- applicare rate limit per IP e identificativo, requisiti password esistenti e
+  audit privo di segreti;
+- offrire un percorso di contatto con la segreteria quando l'utente non ricorda
+  l'email usata per l'account, senza lookup pubblico basato su dati personali.
+
+Definition of done: un utente con email verificata reimposta la password da un
+link monouso; le vecchie sessioni vengono revocate e nessuna risposta consente
+di enumerare gli account.
+
+### `test: collauda lifecycle account in staging`
+
+Descrizione: coprire migrazione e flussi critici prima del deploy production.
+
+Attivita:
+
+- test unitari per token, scadenze, hashing e template;
+- test di integrazione PostgreSQL per verifica, reinvio, reset, cancellazione e
+  cascata completa;
+- test frontend ed E2E desktop/mobile per form, errori, link scaduti e ritorno al
+  login;
+- backup e restore prima della migrazione production, smoke test email reale e
+  piano di rollback senza riutilizzare token gia emessi.
+
+Definition of done: CI verde, migrazione provata su copia dei dati, email staging
+consegnate, nessun difetto bloccante e deploy production approvato insieme.
+
 ## Note TDD per aree critiche
 
 - Booking: prima testare capienza, duplicati, cancellazione, corso pieno e accesso non autorizzato.
@@ -617,7 +761,7 @@ fuori scope.
 
 ## Prossimo passo consigliato
 
-Entrare nella manutenzione ordinaria: monitorare log e disponibilita, verificare
-periodicamente i backup, applicare aggiornamenti dipendenze tramite CI e usare il
-workflow protetto per i rilasci successivi. Nuove funzionalita devono essere
-pianificate in milestone separate dall'MVP approvato.
+Confermare la decisione sull'identificativo di accesso e il provider email,
+quindi avviare la Milestone 11 dal bugfix multipart dell'immagine e dalla
+cancellazione fisica utenti. Ogni incremento deve essere un micro-commit
+autonomo, passare dalla CI e arrivare in staging prima della produzione.
