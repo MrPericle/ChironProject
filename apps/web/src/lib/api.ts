@@ -3,6 +3,7 @@ export type UserRole = "admin" | "staff" | "user";
 export type User = {
   id: string;
   email: string;
+  email_verified?: boolean;
   role: UserRole;
 };
 
@@ -108,6 +109,8 @@ export type AdminUserSubscription = SubscriptionInfo & {
 export type AdminUser = {
   id: string;
   email: string;
+  email_verified?: boolean;
+  pending_email?: string | null;
   role: UserRole;
   status: UserStatus;
   first_name: string | null;
@@ -335,10 +338,28 @@ export class ChironApi {
     });
   }
 
+  async confirmEmailChange(token: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>("/auth/email/change/confirm", {
+      method: "POST",
+      body: { token },
+    });
+  }
+
   async resendVerificationEmail(email: string): Promise<MessageResponse> {
     return this.request<MessageResponse>("/auth/email/resend", {
       method: "POST",
       body: { email },
+    });
+  }
+
+  async requestEmailChange(
+    currentEmail: string,
+    password: string,
+    newEmail: string,
+  ): Promise<MessageResponse> {
+    return this.request<MessageResponse>("/auth/email/change/request", {
+      method: "POST",
+      body: { current_email: currentEmail, password, new_email: newEmail },
     });
   }
 
@@ -353,6 +374,18 @@ export class ChironApi {
     return this.request<MessageResponse>("/auth/password/reset", {
       method: "POST",
       body: { token, password },
+    });
+  }
+
+  async changePassword(
+    token: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<MessageResponse> {
+    return this.request<MessageResponse>("/auth/password/change", {
+      method: "POST",
+      token,
+      body: { current_password: currentPassword, new_password: newPassword },
     });
   }
 

@@ -261,7 +261,12 @@ function installFetchMock(
       }
 
       if (isUnverified) {
-        return jsonResponse({ requires_email_verification: true }, { status: 403 });
+        return jsonResponse({
+          access_token: "unverified-access-token",
+          refresh_token: "unverified-refresh-token",
+          token_type: "bearer",
+          user: { id: "unverified-1", email: "unverified@example.com", email_verified: false, role: "user" },
+        });
       }
 
       return jsonResponse({
@@ -343,6 +348,14 @@ function installFetchMock(
       const authorization = new Headers(init?.headers).get("Authorization");
       if (authorization === "Bearer staff-access-token") {
         return jsonResponse({ id: "staff-1", email: "staff@example.com", role: "staff" });
+      }
+      if (authorization === "Bearer unverified-access-token") {
+        return jsonResponse({
+          id: "unverified-1",
+          email: "unverified@example.com",
+          email_verified: false,
+          role: "user",
+        });
       }
       return jsonResponse({ id: "user-1", email: "mattia@example.com", role: "user" });
     }
@@ -784,8 +797,8 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Crea account" }));
 
-    await screen.findByRole("heading", { name: "Controlla la posta" });
-    expect(screen.getByText(/nuovo@example.com/)).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Entra nell'area utente" });
+    expect(screen.getByText(/controlla la posta per confermare il tuo account/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/auth/register",
       expect.objectContaining({
@@ -800,7 +813,7 @@ describe("App", () => {
     );
   });
 
-  it("offers a verification resend after valid credentials for an unverified account", async () => {
+  it("guides an unverified user without blocking access", async () => {
     const fetchMock = installFetchMock();
     render(<App />);
 
@@ -812,9 +825,9 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
 
-    await screen.findByRole("heading", { name: "Controlla la posta" });
-    fireEvent.click(screen.getByRole("button", { name: "Invia di nuovo" }));
-    await screen.findByText(/riceverai una nuova email/i);
+    await screen.findByText("Email da verificare");
+    fireEvent.click(screen.getByRole("button", { name: "Invia link di conferma" }));
+    await screen.findByText(/ti abbiamo inviato un nuovo link/i);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/auth/email/resend",
       expect.objectContaining({
@@ -929,7 +942,7 @@ describe("App", () => {
 
     const catalog = screen.getByRole("region", { name: "Prenota una sessione" });
 
-    expect(screen.getByText("mattia@example.com")).toBeInTheDocument();
+    expect(screen.getAllByText("mattia@example.com").length).toBeGreaterThan(0);
     expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
     expect(within(catalog).getByText("Pole Flow")).toBeInTheDocument();
     expect(screen.getByText("Scade il 31/08/2026")).toBeInTheDocument();

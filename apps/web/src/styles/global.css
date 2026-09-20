@@ -667,6 +667,74 @@ h3 {
   padding: 16px;
 }
 
+.account-settings-panel {
+  align-content: start;
+}
+
+.email-verification {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(181, 18, 27, 0.32);
+  border-radius: 8px;
+  background: #fff4f4;
+  color: #98141e;
+}
+
+.email-verification.is-verified {
+  border-color: rgba(31, 107, 76, 0.3);
+  background: var(--status-success-soft);
+  color: var(--status-success);
+}
+
+.email-verification div {
+  min-width: 0;
+}
+
+.email-verification strong,
+.email-verification p {
+  display: block;
+}
+
+.email-verification p,
+.account-settings-message {
+  margin: 4px 0 0;
+  color: inherit;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.email-verification svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.account-settings-disclosure {
+  border-top: 1px solid rgba(11, 11, 13, 0.13);
+}
+
+.account-settings-disclosure summary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  color: #303034;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.account-settings-disclosure form {
+  display: grid;
+  gap: 12px;
+  padding: 4px 0 2px;
+}
+
+.account-settings-disclosure .primary-action {
+  width: 100%;
+}
+
 .section-heading,
 .section-title {
   display: flex;
@@ -2217,6 +2285,32 @@ h3 {
   .notice-error {
     background: #351416;
     color: #ffe8e9;
+  }
+
+  .notice-info {
+    border-color: rgba(239, 37, 44, 0.32);
+    background: #29292e;
+    color: #ffe1e3;
+  }
+
+  .email-verification {
+    border-color: rgba(239, 37, 44, 0.36);
+    background: #351416;
+    color: #ffe8e9;
+  }
+
+  .email-verification.is-verified {
+    border-color: rgba(79, 192, 139, 0.32);
+    background: #172b23;
+    color: #d8f7e8;
+  }
+
+  .account-settings-disclosure {
+    border-color: rgba(239, 37, 44, 0.16);
+  }
+
+  .account-settings-disclosure summary {
+    color: #f7f6f3;
   }
 
   .admin-notice {

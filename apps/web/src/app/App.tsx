@@ -14,6 +14,7 @@ import {
   ListChecks,
   LockKeyhole,
   LogOut,
+  MailCheck,
   MapPin,
   Pencil,
   Plus,
@@ -73,7 +74,7 @@ type Filters = {
 };
 
 type Notice = {
-  tone: "success" | "error";
+  tone: "success" | "error" | "info";
   message: string;
 };
 
@@ -435,6 +436,18 @@ export function App() {
   }, [session, workspaceMode]);
 
   useEffect(() => {
+    if (loadState !== "ready" || user?.email_verified !== false) {
+      return;
+    }
+    setNotice((current) =>
+      current ?? {
+        tone: "info",
+        message: "Verifica il tuo indirizzo email: trovi il link nella sezione Profilo.",
+      },
+    );
+  }, [loadState, user?.email_verified, user?.id]);
+
+  useEffect(() => {
     if (session === null) {
       return;
     }
@@ -680,6 +693,11 @@ export function App() {
     }
   }
 
+  async function handleResendVerification(email: string): Promise<void> {
+    const result = await api.resendVerificationEmail(email);
+    setNotice({ tone: "success", message: result.message });
+  }
+
   function handleLogout(): void {
     localStorage.removeItem(sessionStorageKey);
     setSession(null);
@@ -690,6 +708,11 @@ export function App() {
     setNotice(null);
     setLoadState("idle");
     setWorkspaceMode("backoffice");
+  }
+
+  function handlePasswordChanged(): void {
+    handleLogout();
+    setNotice({ tone: "success", message: "Password aggiornata. Accedi di nuovo per continuare." });
   }
 
   function handleOpenPersonalArea(): void {
@@ -703,7 +726,8 @@ export function App() {
     setWorkspaceMode("backoffice");
   }
 
-  if (session === null) {
+  const accountAction = new URLSearchParams(window.location.search).get("auth");
+  if (session === null || accountAction === "verify-email" || accountAction === "verify-email-change" || accountAction === "reset-password") {
     return (
       <LoginScreen
         notice={notice}
@@ -739,7 +763,13 @@ export function App() {
 
         {notice !== null ? (
           <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">
-            {notice.tone === "success" ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
+            {notice.tone === "success" ? (
+              <CheckCircle2 aria-hidden="true" />
+            ) : notice.tone === "info" ? (
+              <MailCheck aria-hidden="true" />
+            ) : (
+              <XCircle aria-hidden="true" />
+            )}
             <span>{notice.message}</span>
           </div>
         ) : null}
@@ -792,6 +822,12 @@ export function App() {
 
               <aside className="side-stack" aria-label="Area personale">
                 <SubscriptionPanel subscription={subscription} />
+                <AccountSettingsPanel
+                  onPasswordChanged={handlePasswordChanged}
+                  onResendVerification={handleResendVerification}
+                  token={session.access_token}
+                  user={user ?? session.user}
+                />
                 <BookingsPanel
                   bookings={currentBookings}
                   courses={courses}
@@ -874,6 +910,17 @@ function BackofficeScreen({
     }, 5_000);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (user.email_verified === false) {
+      setNotice((current) =>
+        current ?? {
+          tone: "info",
+          message: "Verifica il tuo indirizzo email dalla sezione Il tuo profilo.",
+        },
+      );
+    }
+  }, [user.email_verified]);
 
   const activeLocations = locations.filter((location) => location.is_active);
   const activeMembers = stats?.active_members ?? 0;
@@ -1055,6 +1102,8 @@ function BackofficeScreen({
               >
                 {notice.tone === "success" ? (
                   <CheckCircle2 aria-hidden="true" />
+                ) : notice.tone === "info" ? (
+                  <MailCheck aria-hidden="true" />
                 ) : (
                   <XCircle aria-hidden="true" />
                 )}
@@ -1080,6 +1129,17 @@ function BackofficeScreen({
                   <AdminDashboardPanel
                     activeLocations={activeLocations.length}
                     activeMembers={activeMembers}
+                    accountSettings={
+                      <AccountSettingsPanel
+                        onPasswordChanged={onLogout}
+                        onResendVerification={async (email) => {
+                          const result = await api.resendVerificationEmail(email);
+                          setNotice({ tone: "success", message: result.message });
+                        }}
+                        token={session.access_token}
+                        user={user}
+                      />
+                    }
                     publishedCourses={publishedCourses}
                     stats={stats}
                   />
@@ -1645,11 +1705,13 @@ function AdminCalendarPanel({
 function AdminDashboardPanel({
   activeLocations,
   activeMembers,
+  accountSettings,
   publishedCourses,
   stats,
 }: {
   activeLocations: number;
   activeMembers: number;
+  accountSettings: ReactNode;
   publishedCourses: number;
   stats: AdminStats | null;
 }) {
@@ -1681,6 +1743,7 @@ function AdminDashboardPanel({
       </section>
       <PerformancePanel title="Corsi migliori" items={stats?.courses ?? []} />
       <PerformancePanel title="Sedi migliori" items={stats?.locations ?? []} />
+      {accountSettings}
     </div>
   );
 }
@@ -3455,9 +3518,16 @@ function LoginScreen({
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
   const [recoverySent, setRecoverySent] = useState(false);
   const [resetComplete, setResetComplete] = useState(false);
+  const [verificationKind] = useState<"email" | "email-change" | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth") === "verify-email") {
+      return "email";
+    }
+    return params.get("auth") === "verify-email-change" ? "email-change" : null;
+  });
   const [verificationToken] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get("auth") === "verify-email" ? params.get("token") : null;
+    return verificationKind === null ? null : params.get("token");
   });
   const [verificationState, setVerificationState] = useState<
     "checking" | "success" | "error" | null
@@ -3473,8 +3543,11 @@ function LoginScreen({
     }
     let ignore = false;
     window.history.replaceState({}, "", window.location.pathname);
-    api
-      .verifyEmail(verificationToken)
+    const confirmation =
+      verificationKind === "email-change"
+        ? api.confirmEmailChange(verificationToken)
+        : api.verifyEmail(verificationToken);
+    confirmation
       .then(() => {
         if (!ignore) {
           setVerificationState("success");
@@ -3488,7 +3561,7 @@ function LoginScreen({
     return () => {
       ignore = true;
     };
-  }, [verificationToken]);
+  }, [verificationKind, verificationToken]);
 
   useEffect(() => {
     if (resetToken !== null) {
@@ -3509,7 +3582,8 @@ function LoginScreen({
     } else if (mode === "register") {
       const registered = await onRegister({ email, firstName, lastName, password });
       if (registered) {
-        setTwoFactorStep({ kind: "email", email });
+        setMode("login");
+        setPassword("");
       }
     } else if (mode === "forgot") {
       try {
@@ -3594,7 +3668,9 @@ function LoginScreen({
                     : verificationState === "checking"
                       ? "Verifica in corso"
                       : verificationState === "success"
-                        ? "Email confermata"
+                        ? verificationKind === "email-change"
+                          ? "Indirizzo aggiornato"
+                          : "Email confermata"
                         : verificationState === "error"
                           ? "Link non valido"
                           : mode === "forgot"
@@ -3640,7 +3716,13 @@ function LoginScreen({
 
           {notice !== null ? (
             <div className={`notice notice-${notice.tone}`} role="alert">
-              <XCircle aria-hidden="true" />
+              {notice.tone === "success" ? (
+                <CheckCircle2 aria-hidden="true" />
+              ) : notice.tone === "info" ? (
+                <MailCheck aria-hidden="true" />
+              ) : (
+                <XCircle aria-hidden="true" />
+              )}
               <span>{notice.message}</span>
             </div>
           ) : null}
@@ -3660,13 +3742,17 @@ function LoginScreen({
               {verificationState === "success" ? (
                 <>
                   <CheckCircle2 aria-hidden="true" />
-                  <p>Il tuo indirizzo email e confermato. Ora puoi accedere.</p>
+                  <p>
+                    {verificationKind === "email-change"
+                      ? "Il nuovo indirizzo email e confermato. Accedi di nuovo per continuare."
+                      : "Il tuo indirizzo email e confermato. Ora puoi usare l'app normalmente."}
+                  </p>
                   <button
                     className="secondary-action"
-                    onClick={() => setVerificationState(null)}
+                    onClick={() => window.location.assign(window.location.pathname)}
                     type="button"
                   >
-                    Vai al login
+                    Continua
                   </button>
                 </>
               ) : null}
@@ -3676,7 +3762,7 @@ function LoginScreen({
                   <p>Il link e scaduto o e gia stato utilizzato.</p>
                   <button
                     className="secondary-action"
-                    onClick={() => setVerificationState(null)}
+                    onClick={() => window.location.assign(window.location.pathname)}
                     type="button"
                   >
                     Torna al login
@@ -4380,6 +4466,175 @@ function CourseVisual({
       )}
       <span>{disciplineLabel(discipline)}</span>
     </div>
+  );
+}
+
+function AccountSettingsPanel({
+  onPasswordChanged,
+  onResendVerification,
+  token,
+  user,
+}: {
+  onPasswordChanged: () => void;
+  onResendVerification: (email: string) => Promise<void>;
+  token: string;
+  user: User;
+}) {
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [sending, setSending] = useState<"email" | "password" | "verify" | null>(null);
+  const isVerified = user.email_verified !== false;
+
+  async function handleEmailChange(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setMessage(null);
+    setSending("email");
+    try {
+      const result = await api.requestEmailChange(user.email, emailPassword, newEmail);
+      setMessage(result.message);
+      setEmailPassword("");
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      setSending(null);
+    }
+  }
+
+  async function handlePasswordChange(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setMessage("Le nuove password non coincidono.");
+      return;
+    }
+    setMessage(null);
+    setSending("password");
+    try {
+      const result = await api.changePassword(token, currentPassword, newPassword);
+      setMessage(result.message);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      onPasswordChanged();
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      setSending(null);
+    }
+  }
+
+  async function handleResend(): Promise<void> {
+    setMessage(null);
+    setSending("verify");
+    try {
+      await onResendVerification(user.email);
+      setMessage("Ti abbiamo inviato un nuovo link di conferma.");
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      setSending(null);
+    }
+  }
+
+  return (
+    <section className="panel compact-panel account-settings-panel" aria-labelledby="account-settings-title">
+      <SectionTitle icon={<UserRound aria-hidden="true" />} title="Il tuo profilo" id="account-settings-title" />
+      <div className={isVerified ? "email-verification is-verified" : "email-verification"}>
+        <div>
+          <strong>{isVerified ? "Email verificata" : "Email da verificare"}</strong>
+          <p>{user.email}</p>
+        </div>
+        {isVerified ? <ShieldCheck aria-hidden="true" /> : <MailCheck aria-hidden="true" />}
+      </div>
+      {!isVerified ? (
+        <button
+          className="secondary-action"
+          disabled={sending !== null}
+          onClick={() => void handleResend()}
+          type="button"
+        >
+          <MailCheck aria-hidden="true" />
+          {sending === "verify" ? "Invio in corso" : "Invia link di conferma"}
+        </button>
+      ) : null}
+
+      <details className="account-settings-disclosure">
+        <summary>Modifica indirizzo email</summary>
+        <form onSubmit={handleEmailChange}>
+          <label className="field">
+            <span>Nuovo indirizzo email</span>
+            <input
+              autoComplete="email"
+              inputMode="email"
+              onChange={(event) => setNewEmail(event.target.value)}
+              required
+              type="email"
+              value={newEmail}
+            />
+          </label>
+          <label className="field">
+            <span>Password attuale</span>
+            <input
+              autoComplete="current-password"
+              onChange={(event) => setEmailPassword(event.target.value)}
+              required
+              type="password"
+              value={emailPassword}
+            />
+          </label>
+          <button className="primary-action" disabled={sending !== null} type="submit">
+            <MailCheck aria-hidden="true" />
+            {sending === "email" ? "Invio in corso" : "Conferma nuovo indirizzo"}
+          </button>
+        </form>
+      </details>
+
+      <details className="account-settings-disclosure">
+        <summary>Modifica password</summary>
+        <form onSubmit={handlePasswordChange}>
+          <label className="field">
+            <span>Password attuale</span>
+            <input
+              autoComplete="current-password"
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              required
+              type="password"
+              value={currentPassword}
+            />
+          </label>
+          <label className="field">
+            <span>Nuova password</span>
+            <input
+              autoComplete="new-password"
+              minLength={12}
+              onChange={(event) => setNewPassword(event.target.value)}
+              required
+              type="password"
+              value={newPassword}
+            />
+          </label>
+          <label className="field">
+            <span>Conferma nuova password</span>
+            <input
+              autoComplete="new-password"
+              minLength={12}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              required
+              type="password"
+              value={confirmPassword}
+            />
+          </label>
+          <button className="primary-action" disabled={sending !== null} type="submit">
+            <LockKeyhole aria-hidden="true" />
+            {sending === "password" ? "Aggiornamento in corso" : "Aggiorna password"}
+          </button>
+        </form>
+      </details>
+      {message !== null ? <p className="account-settings-message" role="status">{message}</p> : null}
+    </section>
   );
 }
 
