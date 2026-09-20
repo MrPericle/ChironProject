@@ -3605,6 +3605,12 @@ function LoginScreen({
                                 ? "Entra nell'area utente"
                                 : "Crea account utente"}
             </h2>
+            {mode === "forgot" && twoFactorStep === null ? (
+              <p className="muted">
+                L'email e il tuo identificativo di accesso. Se non la ricordi, contatta la
+                segreteria MAKA.
+              </p>
+            ) : null}
           </div>
 
           {twoFactorStep === null &&

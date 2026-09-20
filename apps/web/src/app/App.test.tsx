@@ -845,6 +845,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Password dimenticata?" }));
+    expect(screen.getByText(/l'email e il tuo identificativo di accesso/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "utente@example.com" },
     });
