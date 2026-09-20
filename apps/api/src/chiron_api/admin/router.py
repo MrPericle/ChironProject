@@ -25,6 +25,7 @@ from chiron_api.bookings.service import cancel_active_user_bookings
 from chiron_api.config import Settings, get_settings
 from chiron_api.courses.scheduling import sunday_based_weekday
 from chiron_api.db.models import (
+    AccountActionToken,
     AdminTwoFactor,
     AuditLog,
     Booking,
@@ -220,7 +221,14 @@ def delete_user(
         .where(AuditLog.actor_user_id == user.id)
         .values(actor_user_id=None),
     )
-    for model in (Booking, Subscription, RefreshToken, AdminTwoFactor, UserProfile):
+    for model in (
+        Booking,
+        Subscription,
+        RefreshToken,
+        AdminTwoFactor,
+        AccountActionToken,
+        UserProfile,
+    ):
         db.execute(delete(model).where(model.user_id == user.id))
     db.delete(user)
     db.commit()

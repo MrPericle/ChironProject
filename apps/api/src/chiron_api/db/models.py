@@ -91,6 +91,10 @@ class User(Base):
         default=utc_now,
         onupdate=utc_now,
     )
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     profile: Mapped["UserProfile | None"] = relationship(
@@ -116,6 +120,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         single_parent=True,
+    )
+    account_action_tokens: Mapped[list["AccountActionToken"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -334,6 +343,21 @@ class Subscription(Base):
     @property
     def expires_on(self) -> date:
         return subscription_expiry_date(self.starts_on, self.duration_days)
+
+
+class AccountActionToken(Base):
+    __tablename__ = "account_action_tokens"
+    __table_args__ = (UniqueConstraint("token_hash", name="uq_account_action_tokens_token_hash"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    purpose: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    user: Mapped[User] = relationship(back_populates="account_action_tokens")
 
 
 class AuditLog(Base):

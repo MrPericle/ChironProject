@@ -10,6 +10,7 @@ from chiron_api.auth.router import router as auth_router
 from chiron_api.bookings.router import router as bookings_router
 from chiron_api.config import Settings, get_settings
 from chiron_api.courses.router import router as courses_router
+from chiron_api.email import build_email_sender
 from chiron_api.subscriptions.router import router as subscriptions_router
 
 
@@ -27,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_attempts=settings.auth_rate_limit_attempts,
         window_seconds=settings.auth_rate_limit_window_seconds,
     )
+    app.state.email_sender = build_email_sender(settings)
 
     app.add_middleware(
         CORSMiddleware,

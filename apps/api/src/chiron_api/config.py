@@ -45,6 +45,27 @@ class Settings(BaseSettings):
         alias="BOOKING_HORIZON_DAYS",
     )
     course_upload_dir: str = Field(default="uploads", alias="COURSE_UPLOAD_DIR")
+    email_delivery_mode: str = Field(default="console", alias="EMAIL_DELIVERY_MODE")
+    email_from_address: str = Field(default="noreply@localhost", alias="EMAIL_FROM_ADDRESS")
+    email_from_name: str = Field(default="MAKA", alias="EMAIL_FROM_NAME")
+    frontend_base_url: str = Field(default="http://localhost:5173", alias="FRONTEND_BASE_URL")
+    smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, ge=1, le=65535, alias="SMTP_PORT")
+    smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
+    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_security: str = Field(default="starttls", alias="SMTP_SECURITY")
+    email_verification_expire_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        alias="EMAIL_VERIFICATION_EXPIRE_HOURS",
+    )
+    password_reset_expire_minutes: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        alias="PASSWORD_RESET_EXPIRE_MINUTES",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -64,6 +85,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
+        if self.email_delivery_mode not in {"console", "smtp"}:
+            raise ValueError("EMAIL_DELIVERY_MODE must be either console or smtp")
+        if self.smtp_security not in {"none", "starttls", "ssl"}:
+            raise ValueError("SMTP_SECURITY must be one of none, starttls or ssl")
+
         if self.app_env.lower() != "production":
             return self
 
@@ -90,6 +116,21 @@ class Settings(BaseSettings):
                     "APP_CORS_ORIGINS must contain only HTTPS origins without paths "
                     "in production",
                 )
+
+        frontend_url = urlsplit(self.frontend_base_url)
+        if (
+            frontend_url.scheme != "https"
+            or not frontend_url.hostname
+            or frontend_url.username is not None
+            or frontend_url.password is not None
+            or frontend_url.query
+            or frontend_url.fragment
+        ):
+            raise ValueError("FRONTEND_BASE_URL must be an HTTPS URL in production")
+        if self.email_delivery_mode != "smtp" or not self.smtp_host:
+            raise ValueError("SMTP email delivery must be configured in production")
+        if "@" not in self.email_from_address:
+            raise ValueError("EMAIL_FROM_ADDRESS must be a valid sender address")
 
         return self
 

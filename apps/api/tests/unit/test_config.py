@@ -4,11 +4,16 @@ from pydantic import ValidationError
 from chiron_api.config import Settings
 
 
-def production_settings(**overrides: str) -> Settings:
+def production_settings(**overrides: str | None) -> Settings:
     values = {
         "APP_ENV": "production",
+        "API_DOCS_ENABLED": None,
         "APP_SECRET_KEY": "s" * 64,
         "APP_CORS_ORIGINS": "https://makastudio.it",
+        "EMAIL_DELIVERY_MODE": "smtp",
+        "EMAIL_FROM_ADDRESS": "noreply@makastudio.it",
+        "FRONTEND_BASE_URL": "https://makastudio.it",
+        "SMTP_HOST": "smtp.example.com",
     }
     values.update(overrides)
     return Settings(**values)
@@ -42,6 +47,11 @@ def test_production_settings_reject_insecure_cors_origins(origin: str) -> None:
 def test_production_settings_reject_short_secret() -> None:
     with pytest.raises(ValidationError, match="APP_SECRET_KEY"):
         production_settings(APP_SECRET_KEY="too-short")
+
+
+def test_production_settings_require_smtp_delivery() -> None:
+    with pytest.raises(ValidationError, match="SMTP email delivery"):
+        production_settings(EMAIL_DELIVERY_MODE="console")
 
 
 def test_api_docs_default_to_development_only_and_can_be_enabled_explicitly() -> None:
