@@ -95,6 +95,7 @@ class User(Base):
         DateTime(timezone=True),
         default=utc_now,
     )
+    pending_email: Mapped[str | None] = mapped_column(String(320))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     profile: Mapped["UserProfile | None"] = relationship(
@@ -126,6 +127,10 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
 
 
 class UserProfile(Base):

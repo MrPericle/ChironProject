@@ -25,6 +25,17 @@ class EmailVerificationRequest(BaseModel):
     token: str = Field(min_length=32, max_length=512)
 
 
+class EmailChangeRequest(BaseModel):
+    current_email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=256)
+    new_email: str = Field(min_length=3, max_length=320)
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
 class PasswordResetRequest(BaseModel):
     token: str = Field(min_length=32, max_length=512)
     password: str = Field(min_length=12, max_length=256)
@@ -60,6 +71,7 @@ class UserResponse(BaseModel):
     id: UUID
     email: str
     role: UserRole
+    email_verified: bool
 
     model_config = ConfigDict(from_attributes=True)
 

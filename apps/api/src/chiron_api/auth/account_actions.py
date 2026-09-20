@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from chiron_api.db.models import AccountActionToken, User, utc_now
 
 EMAIL_VERIFICATION_PURPOSE = "email_verification"
+EMAIL_CHANGE_VERIFICATION_PURPOSE = "email_change_verification"
 PASSWORD_RESET_PURPOSE = "password_reset"
 
 

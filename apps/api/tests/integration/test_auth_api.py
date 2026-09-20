@@ -116,8 +116,8 @@ def test_register_login_me_refresh_and_logout_flow() -> None:
         "/auth/login",
         json={"email": "athlete@example.com", "password": "StrongerPass123!"},
     )
-    assert login_before_verification.status_code == 403
-    assert login_before_verification.json() == {"requires_email_verification": True}
+    assert login_before_verification.status_code == 200
+    assert login_before_verification.json()["user"]["email_verified"] is False
 
     raw_token = verification_token(sender.messages[0])
     verify_response = client.post("/auth/email/verify", json={"token": raw_token})
@@ -134,6 +134,7 @@ def test_register_login_me_refresh_and_logout_flow() -> None:
     tokens = login_response.json()
     assert tokens["token_type"] == "bearer"
     assert tokens["user"]["email"] == "athlete@example.com"
+    assert tokens["user"]["email_verified"] is True
 
     me_response = client.get("/auth/me", headers=auth_headers(tokens["access_token"]))
     assert me_response.status_code == 200
@@ -192,6 +193,101 @@ def test_verification_resend_is_generic_and_invalidates_the_previous_link() -> N
     assert client.post("/auth/email/verify", json={"token": first_token}).status_code == 400
     second_token = verification_token(sender.messages[1])
     assert client.post("/auth/email/verify", json={"token": second_token}).status_code == 200
+
+
+def test_email_change_requires_password_and_confirmation() -> None:
+    client, session_factory = make_client()
+    sender = RecordingEmailSender()
+    client.app.state.email_sender = sender
+    create_user(
+        session_factory,
+        email="change@example.com",
+        password="OriginalPass123!",
+    )
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "change@example.com", "password": "OriginalPass123!"},
+    )
+    tokens = login_response.json()
+
+    invalid_request = client.post(
+        "/auth/email/change/request",
+        json={
+            "current_email": "change@example.com",
+            "password": "WrongPass123!",
+            "new_email": "new-address@example.com",
+        },
+    )
+    assert invalid_request.status_code == 401
+
+    change_request = client.post(
+        "/auth/email/change/request",
+        json={
+            "current_email": "change@example.com",
+            "password": "OriginalPass123!",
+            "new_email": "new-address@example.com",
+        },
+    )
+    assert change_request.status_code == 202
+    assert sender.messages[-1].recipient == "new-address@example.com"
+    assert client.post(
+        "/auth/login",
+        json={"email": "change@example.com", "password": "OriginalPass123!"},
+    ).status_code == 200
+
+    raw_token = verification_token(sender.messages[-1])
+    confirm_response = client.post("/auth/email/change/confirm", json={"token": raw_token})
+    assert confirm_response.status_code == 200
+    assert (
+        client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]}).status_code
+        == 401
+    )
+    assert client.post(
+        "/auth/login",
+        json={"email": "change@example.com", "password": "OriginalPass123!"},
+    ).status_code == 401
+    updated_login = client.post(
+        "/auth/login",
+        json={"email": "new-address@example.com", "password": "OriginalPass123!"},
+    )
+    assert updated_login.status_code == 200
+    assert updated_login.json()["user"]["email_verified"] is True
+
+
+def test_authenticated_password_change_revokes_existing_sessions() -> None:
+    client, session_factory = make_client()
+    create_user(
+        session_factory,
+        email="change-password@example.com",
+        password="OriginalPass123!",
+    )
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "change-password@example.com", "password": "OriginalPass123!"},
+    )
+    tokens = login_response.json()
+
+    change_response = client.post(
+        "/auth/password/change",
+        headers=auth_headers(tokens["access_token"]),
+        json={
+            "current_password": "OriginalPass123!",
+            "new_password": "UpdatedPass123!",
+        },
+    )
+    assert change_response.status_code == 200
+    assert (
+        client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]}).status_code
+        == 401
+    )
+    assert client.post(
+        "/auth/login",
+        json={"email": "change-password@example.com", "password": "OriginalPass123!"},
+    ).status_code == 401
+    assert client.post(
+        "/auth/login",
+        json={"email": "change-password@example.com", "password": "UpdatedPass123!"},
+    ).status_code == 200
 
 
 def test_password_reset_is_generic_one_time_and_revokes_existing_sessions() -> None:

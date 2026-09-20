@@ -47,6 +47,8 @@ class AdminUserSubscriptionResponse(BaseModel):
 class AdminUserResponse(BaseModel):
     id: UUID
     email: str
+    email_verified: bool
+    pending_email: str | None
     role: UserRole
     status: UserStatus
     first_name: str | None

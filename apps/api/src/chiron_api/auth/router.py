@@ -9,22 +9,28 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from chiron_api.auth.account_actions import (
+    EMAIL_CHANGE_VERIFICATION_PURPOSE,
     EMAIL_VERIFICATION_PURPOSE,
     PASSWORD_RESET_PURPOSE,
     consume_account_token,
     issue_account_token,
 )
 from chiron_api.auth.dependencies import get_current_user, require_roles
-from chiron_api.auth.email_messages import password_reset_email, verification_email
+from chiron_api.auth.email_messages import (
+    email_change_verification_email,
+    password_reset_email,
+    verification_email,
+)
 from chiron_api.auth.passwords import hash_password, verify_password
 from chiron_api.auth.rate_limit import AuthRateLimiter, auth_rate_limit_key
 from chiron_api.auth.schemas import (
+    EmailChangeRequest,
     EmailRequest,
     EmailVerificationRequest,
-    EmailVerificationRequiredResponse,
     LoginRequest,
     LogoutRequest,
     MessageResponse,
+    PasswordChangeRequest,
     PasswordResetRequest,
     RefreshTokenRequest,
     RegisterRequest,
@@ -141,6 +147,24 @@ def send_password_reset_message(
     )
 
 
+def send_email_change_verification_message(
+    sender: EmailSender,
+    settings: Settings,
+    user: User,
+    recipient: str,
+    raw_token: str,
+) -> None:
+    first_name = user.profile.first_name if user.profile is not None else ""
+    sender.send(
+        email_change_verification_email(
+            recipient=recipient,
+            first_name=first_name,
+            frontend_base_url=settings.frontend_base_url,
+            token=raw_token,
+        ),
+    )
+
+
 def user_from_two_factor_token(
     db: Session,
     token: str,
@@ -236,6 +260,105 @@ def verify_email(
     return MessageResponse(message="Email confermata. Ora puoi accedere.")
 
 
+@router.post(
+    "/email/change/request",
+    response_model=MessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_email_change(
+    payload: EmailChangeRequest,
+    request: Request,
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    limiter: AuthRateLimiter = Depends(get_auth_rate_limiter),
+    sender: EmailSender = Depends(get_email_sender),
+) -> MessageResponse:
+    current_email = normalize_email(payload.current_email)
+    new_email = normalize_email(payload.new_email)
+    limiter_key = rate_limit_key(request, "email-change", current_email)
+    raise_if_rate_limited(limiter, limiter_key)
+
+    user = get_user_by_email(db, current_email)
+    if user is None or user.status != UserStatus.ACTIVE or not verify_password(
+        payload.password,
+        user.password_hash,
+    ):
+        record_auth_failure(limiter, limiter_key)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    limiter.reset(limiter_key)
+
+    if new_email == user.email:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The new email must be different",
+        )
+    existing_user = get_user_by_email(db, new_email)
+    if existing_user is not None and existing_user.id != user.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+    user.pending_email = new_email
+    raw_token = issue_account_token(
+        db,
+        user=user,
+        purpose=EMAIL_CHANGE_VERIFICATION_PURPOSE,
+        expires_in=timedelta(hours=settings.email_verification_expire_hours),
+    )
+    db.add(user)
+    db.commit()
+
+    try:
+        send_email_change_verification_message(sender, settings, user, new_email, raw_token)
+    except (OSError, smtplib.SMTPException) as exc:
+        logger.exception("Unable to deliver email change verification for user %s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The confirmation email could not be sent. Try again.",
+        ) from exc
+
+    return MessageResponse(message="Controlla il nuovo indirizzo email per confermare la modifica.")
+
+
+@router.post("/email/change/confirm", response_model=MessageResponse)
+def confirm_email_change(
+    payload: EmailVerificationRequest,
+    db: Session = Depends(get_db_session),
+) -> MessageResponse:
+    user = consume_account_token(
+        db,
+        raw_token=payload.token,
+        purpose=EMAIL_CHANGE_VERIFICATION_PURPOSE,
+    )
+    if user is None or user.status != UserStatus.ACTIVE or user.pending_email is None:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email change link is invalid or expired",
+        )
+
+    new_email = user.pending_email
+    existing_user = get_user_by_email(db, new_email)
+    if existing_user is not None and existing_user.id != user.id:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+    user.email = new_email
+    user.pending_email = None
+    user.email_verified_at = datetime.now(UTC)
+    revoke_user_refresh_tokens(db, user.id)
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        ) from exc
+    return MessageResponse(
+        message="Nuovo indirizzo email confermato. Accedi di nuovo per continuare.",
+    )
+
+
 @router.post("/email/resend", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
 def resend_verification_email(
     payload: EmailRequest,
@@ -288,7 +411,7 @@ def forgot_password(
     record_auth_failure(limiter, limiter_key)
 
     user = get_user_by_email(db, normalized_email)
-    if user is not None and user.status == UserStatus.ACTIVE and user.email_verified_at is not None:
+    if user is not None and user.status == UserStatus.ACTIVE:
         raw_token = issue_account_token(
             db,
             user=user,
@@ -302,7 +425,7 @@ def forgot_password(
             logger.exception("Unable to send password reset email for user %s", user.id)
 
     return MessageResponse(
-        message="Se esiste un account verificato, riceverai le istruzioni via email.",
+        message="Se esiste un account, riceverai le istruzioni via email.",
     )
 
 
@@ -319,7 +442,6 @@ def reset_password(
     if (
         user is None
         or user.status != UserStatus.ACTIVE
-        or user.email_verified_at is None
     ):
         db.rollback()
         raise HTTPException(
@@ -328,10 +450,35 @@ def reset_password(
         )
 
     user.password_hash = hash_password(payload.password)
+    user.email_verified_at = datetime.now(UTC)
     revoke_user_refresh_tokens(db, user.id)
     db.add(user)
     db.commit()
     return MessageResponse(message="Password aggiornata. Ora puoi accedere.")
+
+
+@router.post("/password/change", response_model=MessageResponse)
+def change_password(
+    payload: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> MessageResponse:
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    if verify_password(payload.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The new password must be different",
+        )
+
+    current_user.password_hash = hash_password(payload.new_password)
+    revoke_user_refresh_tokens(db, current_user.id)
+    db.add(current_user)
+    db.commit()
+    return MessageResponse(message="Password aggiornata. Accedi di nuovo per continuare.")
 
 
 @router.post(
@@ -340,7 +487,6 @@ def reset_password(
         TokenPairResponse
         | TwoFactorRequiredResponse
         | TwoFactorSetupRequiredResponse
-        | EmailVerificationRequiredResponse
     ),
 )
 def login(
@@ -354,7 +500,6 @@ def login(
     TokenPairResponse
     | TwoFactorRequiredResponse
     | TwoFactorSetupRequiredResponse
-    | EmailVerificationRequiredResponse
 ):
     normalized_email = normalize_email(payload.email)
     limiter_key = rate_limit_key(request, "login", normalized_email)
@@ -370,9 +515,6 @@ def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     limiter.reset(limiter_key)
-    if user.email_verified_at is None:
-        response.status_code = status.HTTP_403_FORBIDDEN
-        return EmailVerificationRequiredResponse()
 
     if is_backoffice_role(user.role):
         two_factor = user.admin_2fa

@@ -703,30 +703,33 @@ SMTP dedicata e record SPF, DKIM e DMARC del dominio.
 
 ### `feat: verifica indirizzo email`
 
-Descrizione: i nuovi account devono confermare l'indirizzo prima di ottenere una
-sessione. Gli utenti gia presenti vengono marcati verificati dalla migrazione per
-evitare blocchi al rilascio.
+Descrizione: ogni indirizzo viene considerato non verificato finche il titolare
+non conferma un link monouso. La verifica guida l'utente con un avviso non
+bloccante al primo accesso e dalla sezione Profilo.
 
 Attivita:
 
 - aggiungere `email_verified_at` e token monouso memorizzati solo come hash, con
   scadenza, finalita, data di utilizzo e revoca;
 - cambiare la registrazione: creare l'account non verificato, inviare il link e
-  non emettere access/refresh token prima della conferma;
+  consentire comunque accesso e utilizzo dell'app con un invito alla conferma;
 - aggiungere conferma e reinvio con risposte anti-enumerazione, rate limit e
   invalidazione dei token precedenti;
-- marcare verificati gli account esistenti e quelli bootstrap creati dalla CLI;
-- mantenere l'email non modificabile finche non viene introdotto un flusso
-  dedicato di cambio indirizzo con doppia conferma;
-- creare schermate mobile-first per `Controlla la posta`, conferma, link scaduto
-  e reinvio, con focus e annunci accessibili.
+- marcare gli account esistenti come da verificare senza disattivarli;
+- aggiungere un cambio email protetto dalla password corrente e dalla conferma
+  sul nuovo indirizzo, con revoca delle sessioni dopo il completamento;
+- aggiungere il cambio password autenticato, con revoca delle sessioni; il reset
+  via email conferma anche l'indirizzo raggiunto;
+- creare schermate mobile-first per conferma, link scaduto, reinvio e Profilo,
+  con focus e annunci accessibili.
 
-Definition of done: un nuovo utente non puo accedere prima della verifica, il
-link e monouso e gli account esistenti continuano a funzionare dopo la migrazione.
+Definition of done: il link e monouso, ogni indirizzo esistente viene invitato
+alla conferma senza interrompere l'attivita e il nuovo indirizzo non diventa
+utilizzabile prima della conferma.
 
-Stato: **implementazione completata localmente**; registrazione senza sessione,
-conferma, reinvio, rate limit, token hashati e migrazione compatibile con gli
-utenti esistenti sono coperti da test. Il collaudo con consegna reale e aperto.
+Stato: **implementazione completata localmente**; conferma, reinvio, cambio
+email, cambio password, rate limit, token hashati e migrazione compatibile sono
+coperti da test. Il collaudo con consegna reale e aperto.
 
 ### `feat: recupero credenziale e password`
 

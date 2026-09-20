@@ -1,7 +1,9 @@
-from datetime import UTC, date, datetime
+import logging
+import smtplib
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import and_, case, delete, distinct, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,7 +20,13 @@ from chiron_api.admin.schemas import (
     AdminUserSubscriptionResponse,
     AdminUserUpdate,
 )
+from chiron_api.auth.account_actions import (
+    EMAIL_CHANGE_VERIFICATION_PURPOSE,
+    EMAIL_VERIFICATION_PURPOSE,
+    issue_account_token,
+)
 from chiron_api.auth.dependencies import require_roles
+from chiron_api.auth.email_messages import email_change_verification_email, verification_email
 from chiron_api.auth.passwords import hash_password
 from chiron_api.auth.tokens import revoke_user_refresh_tokens
 from chiron_api.bookings.service import cancel_active_user_bookings
@@ -42,9 +50,11 @@ from chiron_api.db.models import (
     UserStatus,
 )
 from chiron_api.db.session import get_db_session
+from chiron_api.email import EmailSender
 from chiron_api.subscriptions.service import is_subscription_active_on, latest_user_subscription
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
 
 backoffice_user = Depends(require_roles(UserRole.ADMIN, UserRole.STAFF))
 admin_user = Depends(require_roles(UserRole.ADMIN))
@@ -52,6 +62,45 @@ admin_user = Depends(require_roles(UserRole.ADMIN))
 
 def normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def get_email_sender(request: Request) -> EmailSender:
+    return request.app.state.email_sender
+
+
+def send_verification_message(
+    sender: EmailSender,
+    settings: Settings,
+    user: User,
+    raw_token: str,
+) -> None:
+    first_name = user.profile.first_name if user.profile is not None else ""
+    sender.send(
+        verification_email(
+            recipient=user.email,
+            first_name=first_name,
+            frontend_base_url=settings.frontend_base_url,
+            token=raw_token,
+        ),
+    )
+
+
+def send_email_change_verification_message(
+    sender: EmailSender,
+    settings: Settings,
+    user: User,
+    recipient: str,
+    raw_token: str,
+) -> None:
+    first_name = user.profile.first_name if user.profile is not None else ""
+    sender.send(
+        email_change_verification_email(
+            recipient=recipient,
+            first_name=first_name,
+            frontend_base_url=settings.frontend_base_url,
+            token=raw_token,
+        ),
+    )
 
 
 def get_user_or_404(db: Session, user_id: UUID) -> User:
@@ -82,6 +131,8 @@ def user_response(db: Session, user: User) -> AdminUserResponse:
     return AdminUserResponse(
         id=user.id,
         email=user.email,
+        email_verified=user.email_verified,
+        pending_email=user.pending_email,
         role=user.role,
         status=user.status,
         first_name=profile.first_name if profile is not None else None,
@@ -108,11 +159,14 @@ def create_user(
     payload: AdminUserCreate,
     _: User = admin_user,
     db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    sender: EmailSender = Depends(get_email_sender),
 ) -> AdminUserResponse:
     user = User(
         email=normalize_email(payload.email),
         password_hash=hash_password(payload.password),
         role=payload.role,
+        email_verified_at=None,
     )
     user.profile = UserProfile(
         first_name=payload.first_name,
@@ -122,6 +176,13 @@ def create_user(
     )
     db.add(user)
     try:
+        db.flush()
+        raw_token = issue_account_token(
+            db,
+            user=user,
+            purpose=EMAIL_VERIFICATION_PURPOSE,
+            expires_in=timedelta(hours=settings.email_verification_expire_hours),
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -131,6 +192,10 @@ def create_user(
         ) from exc
 
     db.refresh(user)
+    try:
+        send_verification_message(sender, settings, user, raw_token)
+    except (OSError, smtplib.SMTPException):
+        logger.exception("Unable to deliver verification email for user %s", user.id)
     return user_response(db, user)
 
 
@@ -141,13 +206,29 @@ def update_user(
     _: User = admin_user,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    sender: EmailSender = Depends(get_email_sender),
 ) -> AdminUserResponse:
     user = get_user_or_404(db, user_id)
     data = payload.model_dump(exclude_unset=True)
     profile_fields = {"first_name", "last_name", "phone", "birth_date"}
 
+    raw_verification_token: str | None = None
     if "email" in data:
-        user.email = normalize_email(data["email"])
+        next_email = normalize_email(data["email"])
+        if next_email != user.email:
+            existing_user = db.scalar(select(User).where(User.email == next_email))
+            if existing_user is not None and existing_user.id != user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email already registered",
+                )
+            user.pending_email = next_email
+            raw_verification_token = issue_account_token(
+                db,
+                user=user,
+                purpose=EMAIL_CHANGE_VERIFICATION_PURPOSE,
+                expires_in=timedelta(hours=settings.email_verification_expire_hours),
+            )
     if "role" in data:
         next_role = data["role"]
         if user.role != next_role:
@@ -182,6 +263,17 @@ def update_user(
         ) from exc
 
     db.refresh(user)
+    if raw_verification_token is not None and user.pending_email is not None:
+        try:
+            send_email_change_verification_message(
+                sender,
+                settings,
+                user,
+                user.pending_email,
+                raw_verification_token,
+            )
+        except (OSError, smtplib.SMTPException):
+            logger.exception("Unable to deliver verification email for user %s", user.id)
     return user_response(db, user)
 
 

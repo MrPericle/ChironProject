@@ -19,12 +19,12 @@ Le route protette richiedono:
 Authorization: Bearer <access_token>
 ```
 
-La registrazione crea un account non verificato e invia un link monouso. Solo
-dopo `POST /auth/email/verify`, `POST /auth/login` restituisce direttamente
-access e refresh token agli utenti. Per `admin` e `staff` restituisce invece una
-challenge 2FA: `403` richiede il primo setup, `202` richiede il codice TOTP gia
-configurato. I refresh token sono monouso e vengono ruotati da
-`POST /auth/refresh`.
+La registrazione crea un account e invia un link monouso per confermare
+l'indirizzo. La verifica non blocca l'accesso: l'app mostra un avviso e mette a
+disposizione il reinvio dalla sezione Profilo. Per `admin` e `staff`, dopo le
+credenziali, il login restituisce una challenge 2FA: `403` richiede il primo
+setup, `202` richiede il codice TOTP gia configurato. I refresh token sono
+monouso e vengono ruotati da `POST /auth/refresh`.
 
 Errori comuni:
 
@@ -54,8 +54,11 @@ eliminati non possono usare access token gia emessi.
 | `POST /auth/register` | Pubblico | Registra un utente e invia la verifica email |
 | `POST /auth/email/verify` | Pubblico | Conferma un link email monouso |
 | `POST /auth/email/resend` | Pubblico | Richiede un nuovo link di conferma |
+| `POST /auth/email/change/request` | Credenziali correnti | Invia la conferma al nuovo indirizzo |
+| `POST /auth/email/change/confirm` | Pubblico | Rende effettivo un cambio email confermato |
 | `POST /auth/password/forgot` | Pubblico | Richiede il recupero con risposta anti-enumerazione |
 | `POST /auth/password/reset` | Pubblico | Imposta la password da un token monouso |
+| `POST /auth/password/change` | Autenticato | Cambia password e revoca le altre sessioni |
 | `POST /auth/login` | Pubblico | Verifica credenziali e avvia eventuale 2FA |
 | `POST /auth/2fa/setup` | Setup token | Genera il secret TOTP iniziale |
 | `POST /auth/2fa/confirm` | Setup token | Conferma il primo codice TOTP |
@@ -94,6 +97,9 @@ ed elenco prenotati. `GET /admin/stats` alimenta le dashboard per corso e sede.
 
 Le route `/admin/users` e `/admin/subscriptions` sono riservate agli admin.
 Consentono CRUD utenti, nomina/rimozione collaboratori e gestione iscrizioni.
+Gli account creati dal backoffice ricevono il link di conferma; quando l'admin
+modifica un indirizzo, il valore resta in attesa finche il nuovo destinatario non
+lo conferma.
 La disattivazione cancella le prenotazioni future. La cancellazione
 amministrativa rimuove fisicamente utente, profilo, tutte le prenotazioni anche
 storiche, iscrizioni, sessioni, 2FA e token email. La cancellazione di corsi o
