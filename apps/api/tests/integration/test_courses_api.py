@@ -499,6 +499,16 @@ def test_admin_can_upload_course_image(tmp_path) -> None:
     assert response.json()["image_url"].startswith("/uploads/")
     assert len(list(tmp_path.iterdir())) == 1
 
+    replacement_response = client.post(
+        f"/admin/courses/{course_id}/image",
+        files={"file": ("martial.webp", b"fake-webp-content", "image/webp")},
+        headers=headers_for(admin),
+    )
+
+    assert replacement_response.status_code == 200
+    assert replacement_response.json()["image_url"].endswith(".webp")
+    assert len(list(tmp_path.iterdir())) == 1
+
 
 def test_collaborator_can_permanently_delete_course_and_all_related_data(tmp_path) -> None:
     settings = Settings(COURSE_UPLOAD_DIR=str(tmp_path))

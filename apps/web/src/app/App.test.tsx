@@ -1041,6 +1041,13 @@ describe("App", () => {
       "http://localhost:8000/admin/courses/course-martial/image",
       expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     );
+    const imageUploadCall = fetchMock.mock.calls.find(([url]) =>
+      url.toString().endsWith("/admin/courses/course-martial/image"),
+    );
+    const imageUploadBody = imageUploadCall?.[1]?.body;
+    expect(imageUploadBody).toBeInstanceOf(FormData);
+    expect((imageUploadBody as FormData).get("file")).toBeInstanceOf(File);
+    expect((imageUploadBody as FormData).get("image")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Gestisci Calisthenics Foundation" }));
     fireEvent.click(screen.getByRole("button", { name: /modifica Calisthenics/i }));

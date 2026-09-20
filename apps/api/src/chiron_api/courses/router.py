@@ -474,6 +474,9 @@ async def upload_course_image(
     db.add(course)
     db.commit()
     db.refresh(course)
+    for stale_image in upload_dir.glob(f"course-{course.id}-*"):
+        if stale_image != target and stale_image.is_file():
+            stale_image.unlink()
     return course
 
 

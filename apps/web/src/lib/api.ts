@@ -558,7 +558,7 @@ export class ChironApi {
 
   async uploadCourseImage(token: string, courseId: string, image: File): Promise<AdminCourse> {
     const body = new FormData();
-    body.append("image", image);
+    body.append("file", image);
     return this.request<AdminCourse>(`/admin/courses/${courseId}/image`, {
       method: "POST",
       token,
