@@ -947,6 +947,11 @@ function BackofficeScreen({
     });
   }
 
+  function removeUser(userId: string): void {
+    setUsers((current) => current.filter((user) => user.id !== userId));
+    void api.adminStats(session.access_token).then(setStats).catch(() => undefined);
+  }
+
   return (
     <main className="backoffice-shell" id="main-content">
       <div className="backoffice-workspace">
@@ -1085,6 +1090,7 @@ function BackofficeScreen({
                   <UsersManager
                     onNotice={setNotice}
                     onUserChange={upsertUser}
+                    onUserDelete={removeUser}
                     token={session.access_token}
                     users={users}
                   />
@@ -1712,11 +1718,13 @@ function PerformancePanel({
 function UsersManager({
   onNotice,
   onUserChange,
+  onUserDelete,
   token,
   users,
 }: {
   onNotice: (notice: Notice) => void;
   onUserChange: (user: AdminUser) => void;
+  onUserDelete: (userId: string) => void;
   token: string;
   users: AdminUser[];
 }) {
@@ -1793,7 +1801,8 @@ function UsersManager({
   async function handleDelete(user: AdminUser): Promise<void> {
     setDeletingUserId(user.id);
     try {
-      onUserChange(await api.deleteAdminUser(token, user.id));
+      await api.deleteAdminUser(token, user.id);
+      onUserDelete(user.id);
       setConfirmingDeleteUserId(null);
       onNotice({ tone: "success", message: "Utente eliminato." });
     } catch (error) {
@@ -2145,8 +2154,9 @@ function UsersManager({
                   <div>
                     <strong>Eliminare l’account di {user.email}?</strong>
                     <p>
-                      L’accesso verra revocato, l’email anonimizzata e tutte le prenotazioni
-                      attive saranno rilasciate. L’operazione non puo essere annullata.
+                      Account, profilo, iscrizioni e prenotazioni saranno eliminati
+                      definitivamente. Tutti i posti prenotati verranno liberati.
+                      L’operazione non puo essere annullata.
                     </p>
                   </div>
                   <div className="destructive-confirmation-actions">

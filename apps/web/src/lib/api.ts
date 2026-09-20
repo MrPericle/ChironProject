@@ -416,8 +416,8 @@ export class ChironApi {
     });
   }
 
-  async deleteAdminUser(token: string, userId: string): Promise<AdminUser> {
-    return this.request<AdminUser>(`/admin/users/${userId}`, {
+  async deleteAdminUser(token: string, userId: string): Promise<void> {
+    return this.request<void>(`/admin/users/${userId}`, {
       method: "DELETE",
       token,
     });
@@ -600,6 +600,10 @@ export class ChironApi {
 
     if (!response.ok && !options.acceptedStatuses?.includes(response.status)) {
       throw new ApiError(await errorMessage(response), response.status);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
     }
 
     return response.json() as Promise<T>;

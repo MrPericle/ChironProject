@@ -1,8 +1,8 @@
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, case, distinct, func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import and_, case, delete, distinct, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,12 +25,15 @@ from chiron_api.bookings.service import cancel_active_user_bookings
 from chiron_api.config import Settings, get_settings
 from chiron_api.courses.scheduling import sunday_based_weekday
 from chiron_api.db.models import (
+    AdminTwoFactor,
+    AuditLog,
     Booking,
     BookingStatus,
     Course,
     CourseSession,
     CourseStatus,
     Location,
+    RefreshToken,
     Subscription,
     User,
     UserProfile,
@@ -93,7 +96,9 @@ def list_users(
     _: User = admin_user,
     db: Session = Depends(get_db_session),
 ) -> list[AdminUserResponse]:
-    users = db.scalars(select(User).order_by(User.email)).unique().all()
+    users = db.scalars(
+        select(User).where(User.status != UserStatus.DELETED).order_by(User.email),
+    ).unique().all()
     return [user_response(db, user) for user in users]
 
 
@@ -148,11 +153,15 @@ def update_user(
             user.role = next_role
             revoke_user_refresh_tokens(db, user.id)
     if "status" in data:
+        if data["status"] == UserStatus.DELETED:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Use the delete action to permanently remove an account",
+            )
         user.status = data["status"]
-        if user.status in (UserStatus.DISABLED, UserStatus.DELETED):
+        if user.status == UserStatus.DISABLED:
             cancel_active_user_bookings(db, user_id=user.id, settings=settings)
-        if user.status != UserStatus.DELETED:
-            user.deleted_at = None
+        user.deleted_at = None
 
     if profile_fields.intersection(data):
         if user.profile is None:
@@ -175,22 +184,47 @@ def update_user(
     return user_response(db, user)
 
 
-@router.delete("/users/{user_id}", response_model=AdminUserResponse)
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(
     user_id: UUID,
-    _: User = admin_user,
+    current_admin: User = admin_user,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
-) -> AdminUserResponse:
+) -> Response:
     user = get_user_or_404(db, user_id)
-    user.status = UserStatus.DELETED
-    user.deleted_at = datetime.now(UTC)
-    user.email = f"deleted-{user.id}@deleted.local"
+
+    if user.id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You cannot delete your own administrator account",
+        )
+    if user.role == UserRole.ADMIN and user.status == UserStatus.ACTIVE:
+        active_admin_count = db.scalar(
+            select(func.count(User.id)).where(
+                User.role == UserRole.ADMIN,
+                User.status == UserStatus.ACTIVE,
+            ),
+        )
+        if (active_admin_count or 0) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The last active administrator cannot be deleted",
+            )
+
     cancel_active_user_bookings(db, user_id=user.id, settings=settings)
-    db.add(user)
+    db.execute(
+        update(Course).where(Course.instructor_user_id == user.id).values(instructor_user_id=None),
+    )
+    db.execute(
+        update(AuditLog)
+        .where(AuditLog.actor_user_id == user.id)
+        .values(actor_user_id=None),
+    )
+    for model in (Booking, Subscription, RefreshToken, AdminTwoFactor, UserProfile):
+        db.execute(delete(model).where(model.user_id == user.id))
+    db.delete(user)
     db.commit()
-    db.refresh(user)
-    return user_response(db, user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

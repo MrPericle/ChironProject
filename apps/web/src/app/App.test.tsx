@@ -421,7 +421,7 @@ function installFetchMock(
     }
 
     if (url.endsWith("/admin/users/user-1") && method === "DELETE") {
-      return jsonResponse({ ...adminUsersResponse[0], status: "deleted" });
+      return new Response(null, { status: 204 });
     }
 
     if (url.endsWith("/admin/users/user-1/subscriptions") && method === "POST") {
@@ -1275,7 +1275,7 @@ describe("App", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "L’accesso verra revocato, l’email anonimizzata",
+      "Account, profilo, iscrizioni e prenotazioni saranno eliminati definitivamente",
     );
     expect(fetchMock).not.toHaveBeenCalledWith(
       "http://localhost:8000/admin/users/user-1",
@@ -1285,6 +1285,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Conferma eliminazione" }));
 
     await screen.findByText("Utente eliminato.");
+    expect(screen.queryByText("member@example.com")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/users/user-1",
       expect.objectContaining({ method: "DELETE" }),

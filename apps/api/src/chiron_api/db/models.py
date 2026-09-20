@@ -98,8 +98,16 @@ class User(Base):
         cascade="all, delete-orphan",
         single_parent=True,
     )
-    bookings: Mapped[list["Booking"]] = relationship(back_populates="user")
-    subscriptions: Mapped[list["Subscription"]] = relationship(back_populates="user")
+    bookings: Mapped[list["Booking"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    subscriptions: Mapped[list["Subscription"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -179,7 +187,9 @@ class Course(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     location_id: Mapped[UUID] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
-    instructor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    instructor_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+    )
     title: Mapped[str] = mapped_column(String(180), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     discipline: Mapped[str] = mapped_column(

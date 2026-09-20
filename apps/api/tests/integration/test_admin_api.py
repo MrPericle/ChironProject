@@ -120,9 +120,59 @@ def test_admin_can_manage_users_and_subscriptions() -> None:
     assert [user["email"] for user in payload] == ["admin@example.com", "member@example.com"]
     assert payload[1]["subscription"]["duration_days"] == 45
 
+    with session_factory() as session:
+        member = session.scalar(select(User).where(User.email == "member@example.com"))
+        location = Location(name="MAKA Test", address="Via Test 1", city="Roma")
+        course = Course(
+            location=location,
+            instructor=member,
+            title="Corso eliminazione utente",
+            status=CourseStatus.PUBLISHED,
+        )
+        course_session = CourseSession(
+            course=course,
+            weekday=1,
+            starts_at=time(18, 0),
+            ends_at=time(19, 0),
+            capacity=1,
+        )
+        booking = Booking(
+            user=member,
+            course_session=course_session,
+            occurs_on=next_occurrence_date(course_session.weekday),
+            status=BookingStatus.CONFIRMED,
+        )
+        session.add_all([course_session, booking])
+        session.commit()
+        course_id = course.id
+        booking_id = booking.id
+        subscription_id = session.scalar(
+            select(Subscription.id).where(Subscription.user_id == member.id),
+        )
+
     delete_response = client.delete(f"/admin/users/{member_id}", headers=headers_for(admin))
-    assert delete_response.status_code == 200
-    assert delete_response.json()["status"] == "deleted"
+    assert delete_response.status_code == 204
+    assert delete_response.content == b""
+
+    users_response = client.get("/admin/users", headers=headers_for(admin))
+    assert [user["email"] for user in users_response.json()] == ["admin@example.com"]
+
+    with session_factory() as session:
+        assert session.scalar(select(User).where(User.email == "member@example.com")) is None
+        assert session.get(Booking, booking_id) is None
+        assert session.get(Subscription, subscription_id) is None
+        assert session.get(Course, course_id).instructor_user_id is None
+
+
+def test_admin_cannot_delete_own_account() -> None:
+    client, session_factory = make_client()
+    admin = create_user(session_factory, email="admin@example.com", role=UserRole.ADMIN)
+
+    response = client.delete(f"/admin/users/{admin.id}", headers=headers_for(admin))
+
+    assert response.status_code == 409
+    with session_factory() as session:
+        assert session.get(User, admin.id) is not None
 
 
 def test_admin_can_promote_a_user_to_collaborator() -> None:
