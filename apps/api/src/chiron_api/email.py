@@ -8,6 +8,7 @@ from typing import Protocol
 from chiron_api.config import Settings
 
 logger = logging.getLogger(__name__)
+development_email_logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass(frozen=True)
@@ -24,7 +25,7 @@ class EmailSender(Protocol):
 
 class ConsoleEmailSender:
     def send(self, message: TransactionalEmail) -> None:
-        logger.info(
+        development_email_logger.info(
             "Development email to %s: %s\n%s",
             message.recipient,
             message.subject,
