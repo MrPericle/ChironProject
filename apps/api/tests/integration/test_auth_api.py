@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from datetime import date, time, timedelta
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -8,7 +9,9 @@ from sqlalchemy.pool import StaticPool
 
 from chiron_api.auth.passwords import hash_password
 from chiron_api.auth.rate_limit import AuthRateLimiter
+from chiron_api.auth.tokens import issue_token_pair
 from chiron_api.auth.totp import generate_totp_code
+from chiron_api.config import get_settings
 from chiron_api.courses.scheduling import occurrence_dates
 from chiron_api.db.base import Base
 from chiron_api.db.models import (
@@ -22,7 +25,21 @@ from chiron_api.db.models import (
     UserRole,
 )
 from chiron_api.db.session import get_db_session
+from chiron_api.email import TransactionalEmail
 from chiron_api.main import create_app
+
+
+class RecordingEmailSender:
+    def __init__(self) -> None:
+        self.messages: list[TransactionalEmail] = []
+
+    def send(self, message: TransactionalEmail) -> None:
+        self.messages.append(message)
+
+
+def verification_token(message: TransactionalEmail) -> str:
+    url = next(part for part in message.text_body.split() if part.startswith("http"))
+    return parse_qs(urlparse(url).query)["token"][0]
 
 
 def make_client() -> tuple[TestClient, sessionmaker[Session]]:
@@ -80,6 +97,8 @@ def next_occurrence_date(weekday: int) -> date:
 
 def test_register_login_me_refresh_and_logout_flow() -> None:
     client, _ = make_client()
+    sender = RecordingEmailSender()
+    client.app.state.email_sender = sender
 
     register_response = client.post(
         "/auth/register",
@@ -90,12 +109,31 @@ def test_register_login_me_refresh_and_logout_flow() -> None:
             "last_name": "Lovelace",
         },
     )
-    assert register_response.status_code == 201
-    tokens = register_response.json()
+    assert register_response.status_code == 202
+    assert len(sender.messages) == 1
+
+    login_before_verification = client.post(
+        "/auth/login",
+        json={"email": "athlete@example.com", "password": "StrongerPass123!"},
+    )
+    assert login_before_verification.status_code == 403
+    assert login_before_verification.json() == {"requires_email_verification": True}
+
+    raw_token = verification_token(sender.messages[0])
+    verify_response = client.post("/auth/email/verify", json={"token": raw_token})
+    assert verify_response.status_code == 200
+
+    reused_verification = client.post("/auth/email/verify", json={"token": raw_token})
+    assert reused_verification.status_code == 400
+
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "athlete@example.com", "password": "StrongerPass123!"},
+    )
+    assert login_response.status_code == 200
+    tokens = login_response.json()
     assert tokens["token_type"] == "bearer"
     assert tokens["user"]["email"] == "athlete@example.com"
-    assert tokens["access_token"]
-    assert tokens["refresh_token"]
 
     me_response = client.get("/auth/me", headers=auth_headers(tokens["access_token"]))
     assert me_response.status_code == 200
@@ -121,6 +159,39 @@ def test_register_login_me_refresh_and_logout_flow() -> None:
     )
     assert logout_response.status_code == 200
     assert logout_response.json() == {"revoked": True}
+
+
+def test_verification_resend_is_generic_and_invalidates_the_previous_link() -> None:
+    client, _ = make_client()
+    sender = RecordingEmailSender()
+    client.app.state.email_sender = sender
+    client.post(
+        "/auth/register",
+        json={
+            "email": "verify@example.com",
+            "password": "StrongerPass123!",
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+        },
+    )
+    first_token = verification_token(sender.messages[0])
+
+    missing_response = client.post(
+        "/auth/email/resend",
+        json={"email": "missing@example.com"},
+    )
+    resend_response = client.post(
+        "/auth/email/resend",
+        json={"email": "verify@example.com"},
+    )
+
+    assert missing_response.status_code == 202
+    assert resend_response.status_code == 202
+    assert missing_response.json() == resend_response.json()
+    assert len(sender.messages) == 2
+    assert client.post("/auth/email/verify", json={"token": first_token}).status_code == 400
+    second_token = verification_token(sender.messages[1])
+    assert client.post("/auth/email/verify", json={"token": second_token}).status_code == 200
 
 
 def test_login_rejects_invalid_password() -> None:
@@ -291,15 +362,14 @@ def test_two_factor_confirmation_is_rate_limited() -> None:
 
 def test_delete_me_anonymizes_account_and_releases_bookings() -> None:
     client, session_factory = make_client()
-    tokens = client.post(
-        "/auth/register",
-        json={
-            "email": "privacy@example.com",
-            "password": "PrivacyPass123!",
-            "first_name": "Privacy",
-            "last_name": "User",
-        },
-    ).json()
+    user = create_user(
+        session_factory,
+        email="privacy@example.com",
+        password="PrivacyPass123!",
+    )
+    with session_factory() as session:
+        user_record = session.get(User, user.id)
+        tokens = issue_token_pair(session, user_record, get_settings())
 
     with session_factory() as session:
         user = session.scalar(select(User).where(User.email == "privacy@example.com"))

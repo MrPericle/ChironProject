@@ -244,6 +244,7 @@ function installFetchMock(
       const body = JSON.parse(init?.body?.toString() ?? "{}") as { email?: string };
       const isAdmin = body.email === "admin@example.com";
       const isNewCollaborator = body.email === "collaborator@example.com";
+      const isUnverified = body.email === "unverified@example.com";
 
       if (isAdmin) {
         return jsonResponse(
@@ -257,6 +258,10 @@ function installFetchMock(
           { requires_2fa_setup: true, setup_token: "staff-setup-token" },
           { status: 403 },
         );
+      }
+
+      if (isUnverified) {
+        return jsonResponse({ requires_email_verification: true }, { status: 403 });
       }
 
       return jsonResponse({
@@ -298,13 +303,19 @@ function installFetchMock(
 
     if (url.endsWith("/auth/register") && method === "POST") {
       return jsonResponse(
-        {
-          access_token: "register-access-token",
-          refresh_token: "register-refresh-token",
-          token_type: "bearer",
-          user: { id: "user-2", email: "nuovo@example.com", role: "user" },
-        },
-        { status: 201 },
+        { message: "Controlla la posta per confermare il tuo account." },
+        { status: 202 },
+      );
+    }
+
+    if (url.endsWith("/auth/email/verify") && method === "POST") {
+      return jsonResponse({ message: "Email confermata. Ora puoi accedere." });
+    }
+
+    if (url.endsWith("/auth/email/resend") && method === "POST") {
+      return jsonResponse(
+        { message: "Se l'account richiede conferma, riceverai una nuova email." },
+        { status: 202 },
       );
     }
 
@@ -762,7 +773,8 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Crea account" }));
 
-    await screen.findByRole("heading", { level: 1, name: "MAKA" });
+    await screen.findByRole("heading", { name: "Controlla la posta" });
+    expect(screen.getByText(/nuovo@example.com/)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/auth/register",
       expect.objectContaining({
@@ -772,6 +784,46 @@ describe("App", () => {
           last_name: "Rossi",
           password: "password-segreta",
         }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("offers a verification resend after valid credentials for an unverified account", async () => {
+    const fetchMock = installFetchMock();
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "unverified@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "password-segreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Entra nell'area utente" }));
+
+    await screen.findByRole("heading", { name: "Controlla la posta" });
+    fireEvent.click(screen.getByRole("button", { name: "Invia di nuovo" }));
+    await screen.findByText(/riceverai una nuova email/i);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/auth/email/resend",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "unverified@example.com" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("confirms an email from the verification link", async () => {
+    const fetchMock = installFetchMock();
+    window.history.pushState({}, "", "/?auth=verify-email&token=verification-token-value");
+
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Email confermata" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/auth/email/verify",
+      expect.objectContaining({
+        body: JSON.stringify({ token: "verification-token-value" }),
         method: "POST",
       }),
     );

@@ -17,6 +17,18 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class EmailRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+class EmailVerificationRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str = Field(min_length=32)
 
@@ -62,6 +74,10 @@ class TwoFactorRequiredResponse(BaseModel):
 class TwoFactorSetupRequiredResponse(BaseModel):
     requires_2fa_setup: bool = True
     setup_token: str
+
+
+class EmailVerificationRequiredResponse(BaseModel):
+    requires_email_verification: bool = True
 
 
 class TwoFactorSetupResponse(BaseModel):

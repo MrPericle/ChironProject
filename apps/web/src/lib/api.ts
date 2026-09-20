@@ -38,7 +38,19 @@ export type TwoFactorSetup = {
   otpauth_uri: string;
 };
 
-export type LoginResult = TokenPair | TwoFactorChallenge | TwoFactorSetupRequired;
+export type EmailVerificationRequired = {
+  requires_email_verification: true;
+};
+
+export type MessageResponse = {
+  message: string;
+};
+
+export type LoginResult =
+  | TokenPair
+  | TwoFactorChallenge
+  | TwoFactorSetupRequired
+  | EmailVerificationRequired;
 
 export type CatalogSession = {
   id: string;
@@ -309,10 +321,24 @@ export class ChironApi {
     });
   }
 
-  async register(payload: RegisterPayload): Promise<TokenPair> {
-    return this.request<TokenPair>("/auth/register", {
+  async register(payload: RegisterPayload): Promise<MessageResponse> {
+    return this.request<MessageResponse>("/auth/register", {
       method: "POST",
       body: payload,
+    });
+  }
+
+  async verifyEmail(token: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>("/auth/email/verify", {
+      method: "POST",
+      body: { token },
+    });
+  }
+
+  async resendVerificationEmail(email: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>("/auth/email/resend", {
+      method: "POST",
+      body: { email },
     });
   }
 

@@ -1,4 +1,6 @@
-from datetime import UTC, datetime
+import logging
+import smtplib
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -6,12 +8,22 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from chiron_api.auth.account_actions import (
+    EMAIL_VERIFICATION_PURPOSE,
+    consume_account_token,
+    issue_account_token,
+)
 from chiron_api.auth.dependencies import get_current_user, require_roles
+from chiron_api.auth.email_messages import verification_email
 from chiron_api.auth.passwords import hash_password, verify_password
 from chiron_api.auth.rate_limit import AuthRateLimiter, auth_rate_limit_key
 from chiron_api.auth.schemas import (
+    EmailRequest,
+    EmailVerificationRequest,
+    EmailVerificationRequiredResponse,
     LoginRequest,
     LogoutRequest,
+    MessageResponse,
     RefreshTokenRequest,
     RegisterRequest,
     TokenPairResponse,
@@ -41,12 +53,18 @@ from chiron_api.bookings.service import cancel_active_user_bookings
 from chiron_api.config import Settings, get_settings
 from chiron_api.db.models import AdminTwoFactor, User, UserProfile, UserRole, UserStatus
 from chiron_api.db.session import get_db_session
+from chiron_api.email import EmailSender
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def get_auth_rate_limiter(request: Request) -> AuthRateLimiter:
     return request.app.state.auth_rate_limiter
+
+
+def get_email_sender(request: Request) -> EmailSender:
+    return request.app.state.email_sender
 
 
 def rate_limit_key(request: Request, scope: str, identity: str) -> str:
@@ -87,6 +105,23 @@ def get_user_by_email(db: Session, email: str) -> User | None:
     return db.scalar(select(User).where(User.email == normalize_email(email)))
 
 
+def send_verification_message(
+    sender: EmailSender,
+    settings: Settings,
+    user: User,
+    raw_token: str,
+) -> None:
+    first_name = user.profile.first_name if user.profile is not None else ""
+    sender.send(
+        verification_email(
+            recipient=user.email,
+            first_name=first_name,
+            frontend_base_url=settings.frontend_base_url,
+            token=raw_token,
+        ),
+    )
+
+
 def user_from_two_factor_token(
     db: Session,
     token: str,
@@ -119,17 +154,26 @@ def user_from_setup_token(db: Session, setup_token: str, settings: Settings) -> 
     )
 
 
-@router.post("/register", response_model=TokenPairResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
 def register(
     payload: RegisterRequest,
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
-) -> TokenPairResponse:
+    sender: EmailSender = Depends(get_email_sender),
+) -> MessageResponse:
     user = User(email=normalize_email(payload.email), password_hash=hash_password(payload.password))
     user.profile = UserProfile(first_name=payload.first_name, last_name=payload.last_name)
 
     db.add(user)
     try:
+        db.flush()
+        user.email_verified_at = None
+        raw_token = issue_account_token(
+            db,
+            user=user,
+            purpose=EMAIL_VERIFICATION_PURPOSE,
+            expires_in=timedelta(hours=settings.email_verification_expire_hours),
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -139,13 +183,80 @@ def register(
         ) from exc
 
     db.refresh(user)
-    return build_token_response(db, user, settings)
+    try:
+        send_verification_message(sender, settings, user, raw_token)
+    except (OSError, smtplib.SMTPException) as exc:
+        logger.exception("Unable to deliver verification email for user %s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Account created, but the verification email could not be sent. Try again.",
+        ) from exc
+    return MessageResponse(message="Controlla la posta per confermare il tuo account.")
+
+
+@router.post("/email/verify", response_model=MessageResponse)
+def verify_email(
+    payload: EmailVerificationRequest,
+    db: Session = Depends(get_db_session),
+) -> MessageResponse:
+    user = consume_account_token(
+        db,
+        raw_token=payload.token,
+        purpose=EMAIL_VERIFICATION_PURPOSE,
+    )
+    if user is None or user.status != UserStatus.ACTIVE:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification link is invalid or expired",
+        )
+
+    user.email_verified_at = datetime.now(UTC)
+    db.add(user)
+    db.commit()
+    return MessageResponse(message="Email confermata. Ora puoi accedere.")
+
+
+@router.post("/email/resend", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
+def resend_verification_email(
+    payload: EmailRequest,
+    request: Request,
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    limiter: AuthRateLimiter = Depends(get_auth_rate_limiter),
+    sender: EmailSender = Depends(get_email_sender),
+) -> MessageResponse:
+    normalized_email = normalize_email(payload.email)
+    limiter_key = rate_limit_key(request, "email-resend", normalized_email)
+    raise_if_rate_limited(limiter, limiter_key)
+    record_auth_failure(limiter, limiter_key)
+
+    user = get_user_by_email(db, normalized_email)
+    if user is not None and user.status == UserStatus.ACTIVE and user.email_verified_at is None:
+        raw_token = issue_account_token(
+            db,
+            user=user,
+            purpose=EMAIL_VERIFICATION_PURPOSE,
+            expires_in=timedelta(hours=settings.email_verification_expire_hours),
+        )
+        db.commit()
+        try:
+            send_verification_message(sender, settings, user, raw_token)
+        except (OSError, smtplib.SMTPException):
+            logger.exception("Unable to resend verification email for user %s", user.id)
+
+    return MessageResponse(
+        message="Se l'account richiede conferma, riceverai una nuova email.",
+    )
 
 
 @router.post(
     "/login",
     response_model=(
-        TokenPairResponse | TwoFactorRequiredResponse | TwoFactorSetupRequiredResponse
+        TokenPairResponse
+        | TwoFactorRequiredResponse
+        | TwoFactorSetupRequiredResponse
+        | EmailVerificationRequiredResponse
     ),
 )
 def login(
@@ -155,7 +266,12 @@ def login(
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
     limiter: AuthRateLimiter = Depends(get_auth_rate_limiter),
-) -> TokenPairResponse | TwoFactorRequiredResponse | TwoFactorSetupRequiredResponse:
+) -> (
+    TokenPairResponse
+    | TwoFactorRequiredResponse
+    | TwoFactorSetupRequiredResponse
+    | EmailVerificationRequiredResponse
+):
     normalized_email = normalize_email(payload.email)
     limiter_key = rate_limit_key(request, "login", normalized_email)
     raise_if_rate_limited(limiter, limiter_key)
@@ -170,6 +286,9 @@ def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     limiter.reset(limiter_key)
+    if user.email_verified_at is None:
+        response.status_code = status.HTTP_403_FORBIDDEN
+        return EmailVerificationRequiredResponse()
 
     if is_backoffice_role(user.role):
         two_factor = user.admin_2fa

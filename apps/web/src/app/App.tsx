@@ -81,6 +81,7 @@ type AuthMode = "login" | "register";
 type TwoFactorStep =
   | { kind: "verify"; token: string }
   | { kind: "setup"; token: string; secret: string; otpauthUri: string };
+type AuthStep = TwoFactorStep | { kind: "email"; email: string };
 
 type MobileView = "courses" | "calendar" | "bookings" | "profile";
 type AdminTab = "dashboard" | "calendar" | "users" | "courses" | "locations";
@@ -512,7 +513,7 @@ export function App() {
   const currentBookings = activeBookings(bookings, courses);
   const activeBookingCount = currentBookings.length;
 
-  async function handleLogin(email: string, password: string): Promise<TwoFactorStep | null> {
+  async function handleLogin(email: string, password: string): Promise<AuthStep | null> {
     setNotice(null);
     setLoadState("loading");
 
@@ -531,6 +532,10 @@ export function App() {
           secret: setup.secret,
           otpauthUri: setup.otpauth_uri,
         };
+      }
+      if ("requires_email_verification" in result) {
+        setLoadState("idle");
+        return { kind: "email", email };
       }
       const nextSession = result;
       saveSession(nextSession);
@@ -570,24 +575,24 @@ export function App() {
     firstName: string;
     lastName: string;
     password: string;
-  }): Promise<void> {
+  }): Promise<boolean> {
     setNotice(null);
     setLoadState("loading");
 
     try {
-      const nextSession = await api.register({
+      await api.register({
         email: payload.email,
         first_name: payload.firstName,
         last_name: payload.lastName,
         password: payload.password,
       });
-      saveSession(nextSession);
-      setWorkspaceMode("backoffice");
-      setSession(nextSession);
-      setUser(nextSession.user);
+      setLoadState("idle");
+      setNotice({ tone: "success", message: "Controlla la posta per confermare il tuo account." });
+      return true;
     } catch (error) {
       setLoadState("idle");
       setNotice({ tone: "error", message: describeError(error) });
+      return false;
     }
   }
 
@@ -3426,13 +3431,13 @@ function LoginScreen({
   onVerifyTwoFactor,
 }: {
   notice: Notice | null;
-  onLogin: (email: string, password: string) => Promise<TwoFactorStep | null>;
+  onLogin: (email: string, password: string) => Promise<AuthStep | null>;
   onRegister: (payload: {
     email: string;
     firstName: string;
     lastName: string;
     password: string;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   onVerifyTwoFactor: (step: TwoFactorStep, totpCode: string) => Promise<boolean>;
 }) {
   const [mode, setMode] = useState<AuthMode>("login");
@@ -3441,20 +3446,69 @@ function LoginScreen({
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
-  const [twoFactorStep, setTwoFactorStep] = useState<TwoFactorStep | null>(null);
+  const [twoFactorStep, setTwoFactorStep] = useState<AuthStep | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [emailMessage, setEmailMessage] = useState<string | null>(null);
+  const [verificationToken] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("auth") === "verify-email" ? params.get("token") : null;
+  });
+  const [verificationState, setVerificationState] = useState<
+    "checking" | "success" | "error" | null
+  >(verificationToken === null ? null : "checking");
+
+  useEffect(() => {
+    if (verificationToken === null) {
+      return;
+    }
+    let ignore = false;
+    window.history.replaceState({}, "", window.location.pathname);
+    api
+      .verifyEmail(verificationToken)
+      .then(() => {
+        if (!ignore) {
+          setVerificationState("success");
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setVerificationState("error");
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [verificationToken]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSubmitting(true);
-    if (twoFactorStep !== null) {
+    if (twoFactorStep?.kind === "setup" || twoFactorStep?.kind === "verify") {
       await onVerifyTwoFactor(twoFactorStep, totpCode);
     } else if (mode === "login") {
       setTwoFactorStep(await onLogin(email, password));
     } else {
-      await onRegister({ email, firstName, lastName, password });
+      const registered = await onRegister({ email, firstName, lastName, password });
+      if (registered) {
+        setTwoFactorStep({ kind: "email", email });
+      }
     }
     setSubmitting(false);
+  }
+
+  async function handleResendVerification(): Promise<void> {
+    if (twoFactorStep?.kind !== "email") {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await api.resendVerificationEmail(twoFactorStep.email);
+      setEmailMessage(result.message);
+    } catch (error) {
+      setEmailMessage(describeError(error));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -3483,6 +3537,8 @@ function LoginScreen({
                 ? "Proteggi il tuo accesso"
                 : twoFactorStep?.kind === "verify"
                   ? "Verifica backoffice"
+                  : twoFactorStep?.kind === "email" || verificationState !== null
+                    ? "Verifica email"
                   : mode === "login"
                     ? "Bentornato"
                     : "Nuovo iscritto"}
@@ -3492,13 +3548,21 @@ function LoginScreen({
                 ? "Configura il 2FA"
                 : twoFactorStep?.kind === "verify"
                   ? "Conferma accesso"
-                : mode === "login"
+                  : twoFactorStep?.kind === "email"
+                    ? "Controlla la posta"
+                    : verificationState === "checking"
+                      ? "Verifica in corso"
+                      : verificationState === "success"
+                        ? "Email confermata"
+                        : verificationState === "error"
+                          ? "Link non valido"
+                  : mode === "login"
                   ? "Entra nell'area utente"
                   : "Crea account utente"}
             </h2>
           </div>
 
-          {twoFactorStep === null ? (
+          {twoFactorStep === null && verificationState === null ? (
           <div className="auth-switch" role="tablist" aria-label="Accesso area utente">
             <button
               aria-selected={mode === "login"}
@@ -3528,7 +3592,55 @@ function LoginScreen({
             </div>
           ) : null}
 
-          {mode === "register" && twoFactorStep === null ? (
+          {verificationState !== null ? (
+            <div className="two-factor-setup" role="status" aria-live="polite">
+              {verificationState === "checking" ? <p>Stiamo verificando il link.</p> : null}
+              {verificationState === "success" ? (
+                <>
+                  <CheckCircle2 aria-hidden="true" />
+                  <p>Il tuo indirizzo email e confermato. Ora puoi accedere.</p>
+                  <button
+                    className="secondary-action"
+                    onClick={() => setVerificationState(null)}
+                    type="button"
+                  >
+                    Vai al login
+                  </button>
+                </>
+              ) : null}
+              {verificationState === "error" ? (
+                <>
+                  <XCircle aria-hidden="true" />
+                  <p>Il link e scaduto o e gia stato utilizzato.</p>
+                  <button
+                    className="secondary-action"
+                    onClick={() => setVerificationState(null)}
+                    type="button"
+                  >
+                    Torna al login
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          {twoFactorStep?.kind === "email" ? (
+            <div className="two-factor-setup" role="status" aria-live="polite">
+              <CheckCircle2 aria-hidden="true" />
+              <p>Abbiamo inviato il link di conferma a {twoFactorStep.email}.</p>
+              {emailMessage !== null ? <p>{emailMessage}</p> : null}
+              <button
+                className="secondary-action"
+                disabled={submitting}
+                onClick={handleResendVerification}
+                type="button"
+              >
+                Invia di nuovo
+              </button>
+            </div>
+          ) : null}
+
+          {mode === "register" && twoFactorStep === null && verificationState === null ? (
             <div className="name-grid">
               <label className="field">
                 <span>Nome</span>
@@ -3556,7 +3668,7 @@ function LoginScreen({
             </div>
           ) : null}
 
-          {twoFactorStep === null ? <label className="field">
+          {twoFactorStep === null && verificationState === null ? <label className="field">
             <span>Email</span>
             <input
               autoComplete="email"
@@ -3569,7 +3681,7 @@ function LoginScreen({
             />
           </label> : null}
 
-          {twoFactorStep === null ? <label className="field">
+          {twoFactorStep === null && verificationState === null ? <label className="field">
             <span>Password</span>
             <input
               autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -3613,7 +3725,7 @@ function LoginScreen({
             </div>
           ) : null}
 
-          {twoFactorStep !== null ? (
+          {twoFactorStep?.kind === "setup" || twoFactorStep?.kind === "verify" ? (
             <label className="field">
               <span>Codice 2FA</span>
               <input
@@ -3631,6 +3743,7 @@ function LoginScreen({
             </label>
           ) : null}
 
+          {twoFactorStep?.kind !== "email" && verificationState === null ? (
           <button className="primary-action" disabled={submitting} type="submit">
             <span>
               {submitting
@@ -3645,12 +3758,14 @@ function LoginScreen({
             </span>
             <ArrowRight aria-hidden="true" />
           </button>
+          ) : null}
           {twoFactorStep !== null ? (
             <button
               className="secondary-action"
               onClick={() => {
                 setTwoFactorStep(null);
                 setTotpCode("");
+                setEmailMessage(null);
               }}
               type="button"
             >
