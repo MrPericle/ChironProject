@@ -390,6 +390,18 @@ APP_TIMEZONE=Europe/Rome
 BOOKING_HORIZON_DAYS=28
 COURSE_UPLOAD_DIR=/app/uploads
 
+EMAIL_DELIVERY_MODE=smtp
+EMAIL_FROM_ADDRESS=noreply@example.it
+EMAIL_FROM_NAME=MAKA
+FRONTEND_BASE_URL=https://example.it
+SMTP_HOST=smtp.provider.example
+SMTP_PORT=587
+SMTP_USERNAME=SOSTITUIRE_CON_UTENTE_SMTP
+SMTP_PASSWORD=SOSTITUIRE_CON_PASSWORD_SMTP
+SMTP_SECURITY=starttls
+EMAIL_VERIFICATION_EXPIRE_HOURS=24
+PASSWORD_RESET_EXPIRE_MINUTES=30
+
 POSTGRES_DB=chiron
 POSTGRES_USER=chiron
 POSTGRES_PASSWORD=SOSTITUIRE_CON_PASSWORD_CASUALE
@@ -404,6 +416,32 @@ impostarla sul container Nginx gia' costruito.
 
 Conservare una copia cifrata dei segreti nel password manager del cliente. Non
 inserirli in ticket, chat, screenshot o commit Git.
+
+### Configurazione email transazionale
+
+Prima di distribuire una versione che richiede la verifica email:
+
+1. Il proprietario sceglie un servizio SMTP transazionale e ne mantiene account,
+   fatturazione e 2FA. Il tecnico riceve solo una credenziale SMTP dedicata.
+2. Nel pannello DNS di `makastudio.it` si aggiungono esattamente i record SPF e
+   DKIM indicati dal provider. Si aggiunge inoltre DMARC, iniziando con una
+   policy di monitoraggio se il dominio invia gia altra posta.
+3. Si verifica il mittente, per esempio `noreply@makastudio.it`, nel pannello del
+   provider. Non usare un indirizzo personale come mittente applicativo.
+4. Si valorizzano le variabili `EMAIL_*`, `FRONTEND_BASE_URL` e `SMTP_*` in
+   `/srv/maka/app/.env.production`, mantenendo permessi `600`.
+5. Prima del deploy si esegue la validazione senza stampare i segreti:
+
+   ```bash
+   docker compose --env-file .env.production -f docker-compose.prod.yml config --quiet
+   ```
+
+6. Dopo migrazione e avvio si registra un indirizzo di prova reale, si apre il
+   link di verifica e si completa un reset password. Controllare anche spam,
+   resa mobile e log API, senza incollare link o token in chat.
+
+La porta e la sicurezza dipendono dal provider: normalmente `587` con
+`starttls`, oppure `465` con `ssl`. `console` e ammesso soltanto in sviluppo.
 
 ## 11. Primo deploy
 
@@ -457,6 +495,7 @@ Il tecnico e il cliente devono verificare insieme:
 - endpoint `/health` raggiungibile e documentazione API disattivata in
   produzione;
 - registrazione, login, logout, rinnovo sessione e recupero dagli errori;
+- verifica email, reinvio, recupero password e revoca della vecchia sessione;
 - login amministratore con password e secondo fattore nel corretto ordine;
 - creazione di sede, corso ricorrente, capienza, orari e immagine;
 - presenza delle discipline Sala, Arti marziali, Pole e Altro, aggiunta di una

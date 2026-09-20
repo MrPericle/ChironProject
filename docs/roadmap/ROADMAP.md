@@ -609,7 +609,8 @@ fuori scope.
 
 ## Milestone 11 - Affidabilita account e recupero accesso
 
-Stato: **pianificata, implementazione non iniziata**.
+Stato: **implementazione completata localmente; collaudo email reale e deploy
+non ancora eseguiti**.
 
 Obiettivo: correggere i difetti emersi dopo il rilascio e introdurre verifica
 email e recupero accesso senza compromettere gli account gia presenti in
@@ -647,6 +648,9 @@ Attivita:
 Definition of done: un admin modifica un corso, carica o sostituisce la foto e
 vede subito la nuova immagine su backoffice e catalogo, anche dopo un restart.
 
+Stato: **completato**; contratto multipart corretto, sostituzione e rimozione
+del file precedente coperte da test API e frontend.
+
 ### `fix: elimina definitivamente utenti e dati collegati`
 
 Descrizione: sostituire la soft-delete con cancellazione fisica amministrativa.
@@ -671,6 +675,9 @@ Definition of done: dopo la conferma l'utente non compare piu nel backoffice,
 non puo autenticarsi, non ha dati collegati nel database e tutti i posti delle
 sue prenotazioni risultano disponibili.
 
+Stato: **completato**; cancellazione fisica atomica, cascata dei dati collegati,
+vincoli amministrativi e aggiornamento immediato della UI coperti da test.
+
 ### `feat: aggiungi infrastruttura email transazionale`
 
 Descrizione: introdurre un servizio email sostituibile, configurazione via
@@ -689,6 +696,11 @@ Attivita:
 Definition of done: staging invia un messaggio reale dal dominio MAKA e gli
 errori di consegna producono un esito gestibile senza creare account incoerenti.
 
+Stato: **codice completato, configurazione esterna pendente**; sono disponibili
+backend console locale e SMTP sostituibile, validazione production, template
+testo/HTML e variabili documentate. Restano scelta del provider, credenziale
+SMTP dedicata e record SPF, DKIM e DMARC del dominio.
+
 ### `feat: verifica indirizzo email`
 
 Descrizione: i nuovi account devono confermare l'indirizzo prima di ottenere una
@@ -704,12 +716,17 @@ Attivita:
 - aggiungere conferma e reinvio con risposte anti-enumerazione, rate limit e
   invalidazione dei token precedenti;
 - marcare verificati gli account esistenti e quelli bootstrap creati dalla CLI;
-- richiedere una nuova verifica quando l'email viene modificata;
+- mantenere l'email non modificabile finche non viene introdotto un flusso
+  dedicato di cambio indirizzo con doppia conferma;
 - creare schermate mobile-first per `Controlla la posta`, conferma, link scaduto
   e reinvio, con focus e annunci accessibili.
 
 Definition of done: un nuovo utente non puo accedere prima della verifica, il
 link e monouso e gli account esistenti continuano a funzionare dopo la migrazione.
+
+Stato: **implementazione completata localmente**; registrazione senza sessione,
+conferma, reinvio, rate limit, token hashati e migrazione compatibile con gli
+utenti esistenti sono coperti da test. Il collaudo con consegna reale e aperto.
 
 ### `feat: recupero credenziale e password`
 
@@ -734,6 +751,10 @@ Definition of done: un utente con email verificata reimposta la password da un
 link monouso; le vecchie sessioni vengono revocate e nessuna risposta consente
 di enumerare gli account.
 
+Stato: **implementazione completata localmente**; l'email resta l'unico
+identificativo di accesso. Richiesta generica, token monouso, nuova password,
+revoca refresh token e UI mobile-first sono coperte da test API e React.
+
 ### `test: collauda lifecycle account in staging`
 
 Descrizione: coprire migrazione e flussi critici prima del deploy production.
@@ -751,6 +772,10 @@ Attivita:
 Definition of done: CI verde, migrazione provata su copia dei dati, email staging
 consegnate, nessun difetto bloccante e deploy production approvato insieme.
 
+Stato: **da eseguire** dopo la configurazione SMTP. La suite locale e la
+migrazione di sviluppo sono verdi; backup, prova su copia production, smoke
+test email reale, verifica E2E e approvazione restano gate obbligatori.
+
 ## Note TDD per aree critiche
 
 - Booking: prima testare capienza, duplicati, cancellazione, corso pieno e accesso non autorizzato.
@@ -761,7 +786,7 @@ consegnate, nessun difetto bloccante e deploy production approvato insieme.
 
 ## Prossimo passo consigliato
 
-Confermare la decisione sull'identificativo di accesso e il provider email,
-quindi avviare la Milestone 11 dal bugfix multipart dell'immagine e dalla
-cancellazione fisica utenti. Ogni incremento deve essere un micro-commit
-autonomo, passare dalla CI e arrivare in staging prima della produzione.
+Scegliere il provider SMTP con il cliente, configurare mittente e DNS, quindi
+eseguire backup e collaudo della Milestone 11 in un ambiente controllato. Non
+aggiornare la produzione finche verifica e recupero non consegnano email reali
+e la checklist staging non e stata approvata.

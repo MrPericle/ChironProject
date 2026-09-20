@@ -19,10 +19,12 @@ Le route protette richiedono:
 Authorization: Bearer <access_token>
 ```
 
-`POST /auth/login` restituisce direttamente access e refresh token agli utenti.
-Per `admin` e `staff` restituisce invece una challenge 2FA: `403` richiede il
-primo setup, `202` richiede il codice TOTP gia configurato. I refresh token sono
-monouso e vengono ruotati da `POST /auth/refresh`.
+La registrazione crea un account non verificato e invia un link monouso. Solo
+dopo `POST /auth/email/verify`, `POST /auth/login` restituisce direttamente
+access e refresh token agli utenti. Per `admin` e `staff` restituisce invece una
+challenge 2FA: `403` richiede il primo setup, `202` richiede il codice TOTP gia
+configurato. I refresh token sono monouso e vengono ruotati da
+`POST /auth/refresh`.
 
 Errori comuni:
 
@@ -49,7 +51,11 @@ eliminati non possono usare access token gia emessi.
 
 | Metodo e route | Accesso | Funzione |
 | --- | --- | --- |
-| `POST /auth/register` | Pubblico | Registra un utente e apre la sessione |
+| `POST /auth/register` | Pubblico | Registra un utente e invia la verifica email |
+| `POST /auth/email/verify` | Pubblico | Conferma un link email monouso |
+| `POST /auth/email/resend` | Pubblico | Richiede un nuovo link di conferma |
+| `POST /auth/password/forgot` | Pubblico | Richiede il recupero con risposta anti-enumerazione |
+| `POST /auth/password/reset` | Pubblico | Imposta la password da un token monouso |
 | `POST /auth/login` | Pubblico | Verifica credenziali e avvia eventuale 2FA |
 | `POST /auth/2fa/setup` | Setup token | Genera il secret TOTP iniziale |
 | `POST /auth/2fa/confirm` | Setup token | Conferma il primo codice TOTP |
@@ -88,9 +94,10 @@ ed elenco prenotati. `GET /admin/stats` alimenta le dashboard per corso e sede.
 
 Le route `/admin/users` e `/admin/subscriptions` sono riservate agli admin.
 Consentono CRUD utenti, nomina/rimozione collaboratori e gestione iscrizioni.
-La disattivazione o eliminazione di un utente cancella le sue prenotazioni
-future; la cancellazione di corsi o sedi elimina a cascata sessioni e
-prenotazioni collegate.
+La disattivazione cancella le prenotazioni future. La cancellazione
+amministrativa rimuove fisicamente utente, profilo, tutte le prenotazioni anche
+storiche, iscrizioni, sessioni, 2FA e token email. La cancellazione di corsi o
+sedi elimina a cascata sessioni e prenotazioni collegate.
 
 ## Esempio rapido
 

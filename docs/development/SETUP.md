@@ -78,6 +78,21 @@ QR code e codice TOTP.
 
 Non esistono credenziali admin predefinite nel repository.
 
+### Email in locale
+
+Con `EMAIL_DELIVERY_MODE=console` nessuna email reale viene inviata. I messaggi
+di verifica e recupero, compreso il link da aprire nel browser, sono visibili
+nei log API:
+
+```bash
+docker compose logs --since=5m api
+```
+
+Questo backend e riservato allo sviluppo. In production la configurazione viene
+rifiutata se non usa `EMAIL_DELIVERY_MODE=smtp`, un mittente valido e un host
+SMTP. L'email e anche l'identificativo di accesso: non esiste uno username
+separato da recuperare.
+
 ## Comandi quotidiani
 
 ```bash
@@ -148,6 +163,8 @@ Le variabili documentate sono in `.env.example`. Le piu comuni in locale sono:
 - `VITE_API_BASE_URL`, da allineare alla porta API;
 - `API_DOCS_ENABLED`, per Swagger, ReDoc e OpenAPI;
 - `BOOKING_HORIZON_DAYS`, per la finestra prenotabile.
+- `EMAIL_DELIVERY_MODE`, `FRONTEND_BASE_URL` e le variabili `SMTP_*`, per
+  verifica email e recupero password.
 
 Le variabili production e i secret non devono essere inseriti in `.env` locale
 o committati. Il deploy usa `.env.production` soltanto sul VPS.
