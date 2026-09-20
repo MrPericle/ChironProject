@@ -10,11 +10,12 @@ from sqlalchemy.orm import Session
 
 from chiron_api.auth.account_actions import (
     EMAIL_VERIFICATION_PURPOSE,
+    PASSWORD_RESET_PURPOSE,
     consume_account_token,
     issue_account_token,
 )
 from chiron_api.auth.dependencies import get_current_user, require_roles
-from chiron_api.auth.email_messages import verification_email
+from chiron_api.auth.email_messages import password_reset_email, verification_email
 from chiron_api.auth.passwords import hash_password, verify_password
 from chiron_api.auth.rate_limit import AuthRateLimiter, auth_rate_limit_key
 from chiron_api.auth.schemas import (
@@ -24,6 +25,7 @@ from chiron_api.auth.schemas import (
     LoginRequest,
     LogoutRequest,
     MessageResponse,
+    PasswordResetRequest,
     RefreshTokenRequest,
     RegisterRequest,
     TokenPairResponse,
@@ -114,6 +116,23 @@ def send_verification_message(
     first_name = user.profile.first_name if user.profile is not None else ""
     sender.send(
         verification_email(
+            recipient=user.email,
+            first_name=first_name,
+            frontend_base_url=settings.frontend_base_url,
+            token=raw_token,
+        ),
+    )
+
+
+def send_password_reset_message(
+    sender: EmailSender,
+    settings: Settings,
+    user: User,
+    raw_token: str,
+) -> None:
+    first_name = user.profile.first_name if user.profile is not None else ""
+    sender.send(
+        password_reset_email(
             recipient=user.email,
             first_name=first_name,
             frontend_base_url=settings.frontend_base_url,
@@ -248,6 +267,71 @@ def resend_verification_email(
     return MessageResponse(
         message="Se l'account richiede conferma, riceverai una nuova email.",
     )
+
+
+@router.post(
+    "/password/forgot",
+    response_model=MessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def forgot_password(
+    payload: EmailRequest,
+    request: Request,
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    limiter: AuthRateLimiter = Depends(get_auth_rate_limiter),
+    sender: EmailSender = Depends(get_email_sender),
+) -> MessageResponse:
+    normalized_email = normalize_email(payload.email)
+    limiter_key = rate_limit_key(request, "password-forgot", normalized_email)
+    raise_if_rate_limited(limiter, limiter_key)
+    record_auth_failure(limiter, limiter_key)
+
+    user = get_user_by_email(db, normalized_email)
+    if user is not None and user.status == UserStatus.ACTIVE and user.email_verified_at is not None:
+        raw_token = issue_account_token(
+            db,
+            user=user,
+            purpose=PASSWORD_RESET_PURPOSE,
+            expires_in=timedelta(minutes=settings.password_reset_expire_minutes),
+        )
+        db.commit()
+        try:
+            send_password_reset_message(sender, settings, user, raw_token)
+        except (OSError, smtplib.SMTPException):
+            logger.exception("Unable to send password reset email for user %s", user.id)
+
+    return MessageResponse(
+        message="Se esiste un account verificato, riceverai le istruzioni via email.",
+    )
+
+
+@router.post("/password/reset", response_model=MessageResponse)
+def reset_password(
+    payload: PasswordResetRequest,
+    db: Session = Depends(get_db_session),
+) -> MessageResponse:
+    user = consume_account_token(
+        db,
+        raw_token=payload.token,
+        purpose=PASSWORD_RESET_PURPOSE,
+    )
+    if (
+        user is None
+        or user.status != UserStatus.ACTIVE
+        or user.email_verified_at is None
+    ):
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password reset link is invalid or expired",
+        )
+
+    user.password_hash = hash_password(payload.password)
+    revoke_user_refresh_tokens(db, user.id)
+    db.add(user)
+    db.commit()
+    return MessageResponse(message="Password aggiornata. Ora puoi accedere.")
 
 
 @router.post(

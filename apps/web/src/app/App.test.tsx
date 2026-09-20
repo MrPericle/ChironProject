@@ -319,6 +319,17 @@ function installFetchMock(
       );
     }
 
+    if (url.endsWith("/auth/password/forgot") && method === "POST") {
+      return jsonResponse(
+        { message: "Se esiste un account verificato, riceverai le istruzioni via email." },
+        { status: 202 },
+      );
+    }
+
+    if (url.endsWith("/auth/password/reset") && method === "POST") {
+      return jsonResponse({ message: "Password aggiornata. Ora puoi accedere." });
+    }
+
     if (url.endsWith("/auth/refresh") && method === "POST") {
       return jsonResponse({
         access_token: "renewed-access-token",
@@ -824,6 +835,54 @@ describe("App", () => {
       "http://localhost:8000/auth/email/verify",
       expect.objectContaining({
         body: JSON.stringify({ token: "verification-token-value" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("requests password recovery without revealing whether the account exists", async () => {
+    const fetchMock = installFetchMock();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Password dimenticata?" }));
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "utente@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Invia istruzioni" }));
+
+    await screen.findByText(/riceverai le istruzioni via email/i);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/auth/password/forgot",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "utente@example.com" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("sets a new password from a recovery link", async () => {
+    const fetchMock = installFetchMock();
+    window.history.pushState({}, "", "/?auth=reset-password&token=password-reset-token-value");
+
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Scegli una nuova password" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "NuovaPassword123!" },
+    });
+    fireEvent.change(screen.getByLabelText("Conferma password"), {
+      target: { value: "NuovaPassword123!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiorna password" }));
+
+    await screen.findByText("Password aggiornata. Ora puoi accedere.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/auth/password/reset",
+      expect.objectContaining({
+        body: JSON.stringify({
+          token: "password-reset-token-value",
+          password: "NuovaPassword123!",
+        }),
         method: "POST",
       }),
     );

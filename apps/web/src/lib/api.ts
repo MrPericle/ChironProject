@@ -342,6 +342,20 @@ export class ChironApi {
     });
   }
 
+  async forgotPassword(email: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>("/auth/password/forgot", {
+      method: "POST",
+      body: { email },
+    });
+  }
+
+  async resetPassword(token: string, password: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>("/auth/password/reset", {
+      method: "POST",
+      body: { token, password },
+    });
+  }
+
   async refresh(refreshToken: string): Promise<TokenPair> {
     return this.request<TokenPair>("/auth/refresh", {
       method: "POST",

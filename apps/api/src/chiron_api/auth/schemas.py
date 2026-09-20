@@ -25,6 +25,11 @@ class EmailVerificationRequest(BaseModel):
     token: str = Field(min_length=32, max_length=512)
 
 
+class PasswordResetRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    password: str = Field(min_length=12, max_length=256)
+
+
 class MessageResponse(BaseModel):
     message: str
 

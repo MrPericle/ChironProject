@@ -194,6 +194,59 @@ def test_verification_resend_is_generic_and_invalidates_the_previous_link() -> N
     assert client.post("/auth/email/verify", json={"token": second_token}).status_code == 200
 
 
+def test_password_reset_is_generic_one_time_and_revokes_existing_sessions() -> None:
+    client, session_factory = make_client()
+    sender = RecordingEmailSender()
+    client.app.state.email_sender = sender
+    create_user(
+        session_factory,
+        email="reset@example.com",
+        password="OriginalPass123!",
+    )
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "reset@example.com", "password": "OriginalPass123!"},
+    )
+    refresh_token = login_response.json()["refresh_token"]
+
+    missing_response = client.post(
+        "/auth/password/forgot",
+        json={"email": "missing@example.com"},
+    )
+    forgot_response = client.post(
+        "/auth/password/forgot",
+        json={"email": "reset@example.com"},
+    )
+
+    assert missing_response.status_code == 202
+    assert forgot_response.status_code == 202
+    assert missing_response.json() == forgot_response.json()
+    assert len(sender.messages) == 1
+
+    raw_token = verification_token(sender.messages[0])
+    reset_response = client.post(
+        "/auth/password/reset",
+        json={"token": raw_token, "password": "UpdatedPass123!"},
+    )
+    assert reset_response.status_code == 200
+    assert client.post(
+        "/auth/password/reset",
+        json={"token": raw_token, "password": "AnotherPass123!"},
+    ).status_code == 400
+    assert client.post(
+        "/auth/refresh",
+        json={"refresh_token": refresh_token},
+    ).status_code == 401
+    assert client.post(
+        "/auth/login",
+        json={"email": "reset@example.com", "password": "OriginalPass123!"},
+    ).status_code == 401
+    assert client.post(
+        "/auth/login",
+        json={"email": "reset@example.com", "password": "UpdatedPass123!"},
+    ).status_code == 200
+
+
 def test_login_rejects_invalid_password() -> None:
     client, session_factory = make_client()
     create_user(session_factory, email="user@example.com", password="CorrectPass123!")

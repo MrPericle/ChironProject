@@ -77,7 +77,7 @@ type Notice = {
   message: string;
 };
 
-type AuthMode = "login" | "register";
+type AuthMode = "login" | "register" | "forgot" | "reset";
 type TwoFactorStep =
   | { kind: "verify"; token: string }
   | { kind: "setup"; token: string; secret: string; otpauthUri: string };
@@ -3440,15 +3440,21 @@ function LoginScreen({
   }) => Promise<boolean>;
   onVerifyTwoFactor: (step: TwoFactorStep, totpCode: string) => Promise<boolean>;
 }) {
-  const [mode, setMode] = useState<AuthMode>("login");
+  const [mode, setMode] = useState<AuthMode>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("auth") === "reset-password" ? "reset" : "login";
+  });
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [twoFactorStep, setTwoFactorStep] = useState<AuthStep | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
+  const [recoverySent, setRecoverySent] = useState(false);
+  const [resetComplete, setResetComplete] = useState(false);
   const [verificationToken] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("auth") === "verify-email" ? params.get("token") : null;
@@ -3456,6 +3462,10 @@ function LoginScreen({
   const [verificationState, setVerificationState] = useState<
     "checking" | "success" | "error" | null
   >(verificationToken === null ? null : "checking");
+  const [resetToken] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("auth") === "reset-password" ? params.get("token") : null;
+  });
 
   useEffect(() => {
     if (verificationToken === null) {
@@ -3480,17 +3490,46 @@ function LoginScreen({
     };
   }, [verificationToken]);
 
+  useEffect(() => {
+    if (resetToken !== null) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [resetToken]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSubmitting(true);
+    if (mode === "forgot" || mode === "reset") {
+      setEmailMessage(null);
+    }
     if (twoFactorStep?.kind === "setup" || twoFactorStep?.kind === "verify") {
       await onVerifyTwoFactor(twoFactorStep, totpCode);
     } else if (mode === "login") {
       setTwoFactorStep(await onLogin(email, password));
-    } else {
+    } else if (mode === "register") {
       const registered = await onRegister({ email, firstName, lastName, password });
       if (registered) {
         setTwoFactorStep({ kind: "email", email });
+      }
+    } else if (mode === "forgot") {
+      try {
+        const result = await api.forgotPassword(email);
+        setEmailMessage(result.message);
+        setRecoverySent(true);
+      } catch (error) {
+        setEmailMessage(describeError(error));
+      }
+    } else if (password !== confirmPassword) {
+      setEmailMessage("Le password non coincidono.");
+    } else if (resetToken === null) {
+      setEmailMessage("Il link di recupero non e valido.");
+    } else {
+      try {
+        const result = await api.resetPassword(resetToken, password);
+        setEmailMessage(result.message);
+        setResetComplete(true);
+      } catch (error) {
+        setEmailMessage(describeError(error));
       }
     }
     setSubmitting(false);
@@ -3539,9 +3578,11 @@ function LoginScreen({
                   ? "Verifica backoffice"
                   : twoFactorStep?.kind === "email" || verificationState !== null
                     ? "Verifica email"
-                  : mode === "login"
-                    ? "Bentornato"
-                    : "Nuovo iscritto"}
+                    : mode === "forgot" || mode === "reset"
+                      ? "Recupera accesso"
+                      : mode === "login"
+                        ? "Bentornato"
+                        : "Nuovo iscritto"}
             </p>
             <h2>
               {twoFactorStep?.kind === "setup"
@@ -3556,13 +3597,19 @@ function LoginScreen({
                         ? "Email confermata"
                         : verificationState === "error"
                           ? "Link non valido"
-                  : mode === "login"
-                  ? "Entra nell'area utente"
-                  : "Crea account utente"}
+                          : mode === "forgot"
+                            ? "Recupera la password"
+                            : mode === "reset"
+                              ? "Scegli una nuova password"
+                              : mode === "login"
+                                ? "Entra nell'area utente"
+                                : "Crea account utente"}
             </h2>
           </div>
 
-          {twoFactorStep === null && verificationState === null ? (
+          {twoFactorStep === null &&
+          verificationState === null &&
+          (mode === "login" || mode === "register") ? (
           <div className="auth-switch" role="tablist" aria-label="Accesso area utente">
             <button
               aria-selected={mode === "login"}
@@ -3589,6 +3636,15 @@ function LoginScreen({
             <div className={`notice notice-${notice.tone}`} role="alert">
               <XCircle aria-hidden="true" />
               <span>{notice.message}</span>
+            </div>
+          ) : null}
+
+          {emailMessage !== null &&
+          ((mode === "forgot" && !recoverySent) ||
+            (mode === "reset" && !resetComplete)) ? (
+            <div className="notice notice-error" role="alert">
+              <XCircle aria-hidden="true" />
+              <span>{emailMessage}</span>
             </div>
           ) : null}
 
@@ -3640,6 +3696,20 @@ function LoginScreen({
             </div>
           ) : null}
 
+          {mode === "forgot" && recoverySent ? (
+            <div className="two-factor-setup" role="status" aria-live="polite">
+              <CheckCircle2 aria-hidden="true" />
+              <p>{emailMessage}</p>
+            </div>
+          ) : null}
+
+          {mode === "reset" && resetComplete ? (
+            <div className="two-factor-setup" role="status" aria-live="polite">
+              <CheckCircle2 aria-hidden="true" />
+              <p>{emailMessage}</p>
+            </div>
+          ) : null}
+
           {mode === "register" && twoFactorStep === null && verificationState === null ? (
             <div className="name-grid">
               <label className="field">
@@ -3668,31 +3738,56 @@ function LoginScreen({
             </div>
           ) : null}
 
-          {twoFactorStep === null && verificationState === null ? <label className="field">
-            <span>Email</span>
-            <input
-              autoComplete="email"
-              inputMode="email"
-              name="email"
-              onChange={(event) => setEmail(event.target.value)}
-              required
-              type="email"
-              value={email}
-            />
-          </label> : null}
+          {twoFactorStep === null &&
+          verificationState === null &&
+          mode !== "reset" &&
+          !recoverySent ? (
+            <label className="field">
+              <span>Email</span>
+              <input
+                autoComplete="email"
+                inputMode="email"
+                name="email"
+                onChange={(event) => setEmail(event.target.value)}
+                required
+                type="email"
+                value={email}
+              />
+            </label>
+          ) : null}
 
-          {twoFactorStep === null && verificationState === null ? <label className="field">
-            <span>Password</span>
-            <input
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              minLength={mode === "register" ? 12 : undefined}
-              name="password"
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              type="password"
-              value={password}
-            />
-          </label> : null}
+          {twoFactorStep === null &&
+          verificationState === null &&
+          mode !== "forgot" &&
+          !resetComplete ? (
+            <label className="field">
+              <span>Password</span>
+              <input
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                minLength={mode === "register" || mode === "reset" ? 12 : undefined}
+                name="password"
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                type="password"
+                value={password}
+              />
+            </label>
+          ) : null}
+
+          {mode === "reset" && !resetComplete ? (
+            <label className="field">
+              <span>Conferma password</span>
+              <input
+                autoComplete="new-password"
+                minLength={12}
+                name="confirmPassword"
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+                type="password"
+                value={confirmPassword}
+              />
+            </label>
+          ) : null}
 
           {twoFactorStep?.kind === "setup" ? (
             <div className="two-factor-setup">
@@ -3743,21 +3838,56 @@ function LoginScreen({
             </label>
           ) : null}
 
-          {twoFactorStep?.kind !== "email" && verificationState === null ? (
-          <button className="primary-action" disabled={submitting} type="submit">
-            <span>
-              {submitting
-                ? "Operazione in corso"
-                : twoFactorStep?.kind === "setup"
-                  ? "Attiva e accedi"
+          {twoFactorStep?.kind !== "email" &&
+          verificationState === null &&
+          !recoverySent &&
+          !resetComplete ? (
+            <button className="primary-action" disabled={submitting} type="submit">
+              <span>
+                {submitting
+                  ? "Operazione in corso"
+                  : twoFactorStep?.kind === "setup"
+                    ? "Attiva e accedi"
                   : twoFactorStep?.kind === "verify"
                     ? "Conferma codice"
-                : mode === "login"
-                  ? "Entra nell'area utente"
-                  : "Crea account"}
-            </span>
-            <ArrowRight aria-hidden="true" />
-          </button>
+                    : mode === "forgot"
+                      ? "Invia istruzioni"
+                      : mode === "reset"
+                        ? "Aggiorna password"
+                        : mode === "login"
+                          ? "Entra nell'area utente"
+                          : "Crea account"}
+              </span>
+              <ArrowRight aria-hidden="true" />
+            </button>
+          ) : null}
+          {mode === "login" && twoFactorStep === null && verificationState === null ? (
+            <button
+              className="secondary-action"
+              onClick={() => {
+                setMode("forgot");
+                setEmailMessage(null);
+              }}
+              type="button"
+            >
+              Password dimenticata?
+            </button>
+          ) : null}
+          {(mode === "forgot" || mode === "reset") && twoFactorStep === null ? (
+            <button
+              className="secondary-action"
+              onClick={() => {
+                setMode("login");
+                setRecoverySent(false);
+                setResetComplete(false);
+                setEmailMessage(null);
+                setPassword("");
+                setConfirmPassword("");
+              }}
+              type="button"
+            >
+              Torna al login
+            </button>
           ) : null}
           {twoFactorStep !== null ? (
             <button
