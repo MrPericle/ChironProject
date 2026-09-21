@@ -422,6 +422,10 @@ h3 {
   color: #18181b;
 }
 
+.mobile-action-label {
+  display: none;
+}
+
 .mobile-alert-button {
   display: none;
 }
@@ -1040,6 +1044,138 @@ h3 {
   font-weight: 800;
 }
 
+.session-picker-mobile {
+  display: none;
+}
+
+.session-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(11, 11, 13, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18181b;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.session-option.is-selected {
+  border-color: #b5121b;
+  background: #fdebec;
+  box-shadow: inset 3px 0 #ef252c;
+}
+
+.session-month-picker,
+.session-time-list {
+  display: grid;
+  gap: 7px;
+}
+
+.session-time-options {
+  display: grid;
+  gap: 8px;
+}
+
+.session-month-picker > span,
+.session-subheading {
+  color: #5a5a60;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.session-month-picker select {
+  min-height: 48px;
+  width: 100%;
+  border: 1px solid rgba(11, 11, 13, 0.2);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18181b;
+  font-size: 1rem;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.session-date-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 0 4px;
+  scrollbar-width: thin;
+  touch-action: pan-x;
+}
+
+.session-date-option {
+  display: grid;
+  min-height: 48px;
+  min-width: 60px;
+  flex: 0 0 60px;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  padding: 4px 2px;
+  border: 1px solid rgba(11, 11, 13, 0.16);
+  border-radius: 7px;
+  background: #ffffff;
+  color: #5a5a60;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+  touch-action: manipulation;
+}
+
+.session-date-option.is-selected {
+  border-color: #b5121b;
+  background: #b5121b;
+  color: #f7f6f3;
+}
+
+.session-date-option span {
+  font-size: 0.62rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.session-date-option strong {
+  font-size: 1rem;
+}
+
+.session-option-main {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.session-option-main strong,
+.session-option-main span {
+  overflow-wrap: normal;
+}
+
+.session-option-main strong {
+  font-size: 0.92rem;
+}
+
+.session-option-main span {
+  color: #5a5a60;
+  font-size: 0.86rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-option-status {
+  max-width: 92px;
+  color: #1f6b4c;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 .session-booking-dock {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
@@ -1193,6 +1329,15 @@ h3 {
   overflow-x: auto;
   padding: 0 0 4px;
   scrollbar-width: thin;
+}
+
+.date-picker-shell {
+  display: contents;
+}
+
+.date-picker-toolbar,
+.date-picker-nav {
+  display: none;
 }
 
 .date-picker button {
@@ -2153,9 +2298,9 @@ h3 {
   .workspace,
   .backoffice-workspace {
     width: min(100%, 480px);
-    min-height: 100vh;
-    padding: 14px 14px 94px;
-    gap: 16px;
+    min-height: 100svh;
+    padding: 10px 14px calc(84px + env(safe-area-inset-bottom));
+    gap: 14px;
     background: #101012;
     box-shadow: 0 0 0 1px rgba(239, 37, 44, 0.2);
   }
@@ -2168,8 +2313,8 @@ h3 {
     grid-template-columns: 1fr auto;
     align-items: center;
     gap: 14px;
-    margin: -14px -14px 0;
-    padding: 18px 14px 14px;
+    margin: -10px -14px 0;
+    padding: 10px 14px;
     border-bottom: 1px solid rgba(255, 141, 147, 0.1);
     background: rgba(11, 11, 13, 0.94);
     backdrop-filter: blur(14px);
@@ -2184,8 +2329,29 @@ h3 {
   .app-header h1,
   .backoffice-header h1 {
     max-width: 220px;
-    font-size: 1.42rem;
+    font-size: 1.18rem;
     line-height: 1.05;
+  }
+
+  .app-header .brand-heading,
+  .backoffice-header .brand-heading {
+    gap: 8px;
+  }
+
+  .app-header .brand-mark,
+  .backoffice-header .brand-mark {
+    width: 40px;
+    height: 40px;
+  }
+
+  .app-header .brand-tagline,
+  .backoffice-header .brand-tagline {
+    display: none;
+  }
+
+  .app-header .eyebrow,
+  .backoffice-header .eyebrow {
+    margin-bottom: 1px;
   }
 
   .header-actions {
@@ -2195,6 +2361,19 @@ h3 {
 
   .header-actions-workspace .user-chip {
     display: none;
+  }
+
+  .app-header > .header-actions > .user-chip {
+    display: none;
+  }
+
+  .app-header > .header-actions > .icon-button {
+    width: auto;
+    padding: 0 12px;
+  }
+
+  .app-header .mobile-action-label {
+    display: inline;
   }
 
   .workspace-switch {
@@ -2495,6 +2674,7 @@ h3 {
   .mobile-view-bookings .user-calendar,
   .mobile-view-bookings .booking-focus,
   .mobile-view-bookings .catalog-panel,
+  .mobile-view-bookings .account-settings-panel,
   .mobile-view-bookings .subscription-panel,
   .mobile-view-profile .booking-focus,
   .mobile-view-profile .user-calendar,
@@ -2536,6 +2716,45 @@ h3 {
     margin-right: 0;
     padding-right: 0;
     overflow-x: auto;
+  }
+
+  .date-picker-shell {
+    display: grid;
+    gap: 8px;
+  }
+
+  .date-picker-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: #b8b8bd;
+    font-size: 0.82rem;
+    font-weight: 900;
+  }
+
+  .date-picker-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .date-picker-nav {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    place-items: center;
+    border: 1px solid rgba(239, 37, 44, 0.18);
+    border-radius: 8px;
+    background: #111113;
+    color: #f7f6f3;
+    padding: 0;
+    touch-action: manipulation;
+  }
+
+  .date-picker-nav svg {
+    width: 18px;
+    height: 18px;
   }
 
   .date-picker button {
@@ -2895,6 +3114,20 @@ h3 {
     background: #18181b;
   }
 
+  .course-card > .course-visual {
+    order: 1;
+    height: 112px;
+    min-height: 112px;
+  }
+
+  .course-card-header {
+    order: 2;
+  }
+
+  .session-booking-control {
+    order: 3;
+  }
+
   .course-visual {
     height: 146px;
     min-height: 146px;
@@ -2949,6 +3182,83 @@ h3 {
     border-color: rgba(239, 37, 44, 0.24);
     background: #0d0d0f;
     color: #f7f6f3;
+  }
+
+  .session-picker-native {
+    display: none;
+  }
+
+  .session-picker-mobile {
+    display: grid;
+    gap: 8px;
+    color: #b8b8bd;
+  }
+
+  .session-picker-mobile > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.82rem;
+  }
+
+  .session-picker-mobile > span svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .session-month-picker > span,
+  .session-subheading {
+    color: #a8a8ad;
+  }
+
+  .session-month-picker select {
+    border-color: rgba(239, 37, 44, 0.24);
+    background: #0d0d0f;
+    color: #f7f6f3;
+  }
+
+  .session-date-strip {
+    gap: 5px;
+  }
+
+  .session-date-option {
+    border-color: rgba(239, 37, 44, 0.16);
+    background: #111113;
+    color: #a8a8ad;
+  }
+
+  .session-date-option.is-selected {
+    border-color: #ef252c;
+    background: #ef252c;
+    color: #0b0b0d;
+  }
+
+  .session-option {
+    border-color: rgba(239, 37, 44, 0.16);
+    background: #111113;
+    color: #f7f6f3;
+  }
+
+  .session-option.is-selected {
+    border-color: #ef252c;
+    background: #29292e;
+    box-shadow: inset 3px 0 #ef252c;
+  }
+
+  .session-option-main span {
+    color: #a8a8ad;
+  }
+
+  .session-option-status {
+    color: #7bd4aa;
+  }
+
+  .session-time-options.is-scrollable {
+    max-height: 280px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+    scrollbar-width: thin;
   }
 
   .session-booking-dock {

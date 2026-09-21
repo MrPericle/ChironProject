@@ -835,6 +835,11 @@ describe("App", () => {
         method: "POST",
       }),
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Prenotazioni" }));
+    expect(screen.queryByText("Email da verificare")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Profilo" }));
+    expect(await screen.findByText("Email da verificare")).toBeInTheDocument();
   });
 
   it("confirms an email from the verification link", async () => {
@@ -940,7 +945,7 @@ describe("App", () => {
     render(<App />);
     await login();
 
-    const catalog = screen.getByRole("region", { name: "Prenota una sessione" });
+    const catalog = screen.getByRole("region", { name: "Prenota una lezione" });
 
     expect(screen.getAllByText("mattia@example.com").length).toBeGreaterThan(0);
     expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
@@ -948,6 +953,96 @@ describe("App", () => {
     expect(screen.getByText("Scade il 31/08/2026")).toBeInTheDocument();
     const overview = screen.getByRole("region", { name: "Riepilogo personale" });
     expect(within(overview).getByText("Prenotazioni")).toBeInTheDocument();
+  });
+
+  it("organizes many course dates by month, day and time on mobile", async () => {
+    installFetchMock();
+
+    render(<App />);
+    await login();
+
+    const course = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    const picker = within(course).getByRole("group", {
+      name: "Scegli la lezione Calisthenics Foundation",
+    });
+    const monthSelect = within(picker).getByRole("combobox", {
+      name: "Mese delle lezioni Calisthenics Foundation",
+    });
+
+    expect(monthSelect).toHaveValue("2026-08");
+    expect(
+      within(picker).getByRole("group", { name: "Date disponibili per agosto 2026" }),
+    ).toBeInTheDocument();
+    expect(
+      within(picker).getByRole("group", { name: "Orari del 31/08/2026" }),
+    ).toBeInTheDocument();
+
+    fireEvent.change(monthSelect, { target: { value: "2026-09" } });
+
+    expect(
+      within(picker).getByRole("group", { name: "Date disponibili per settembre 2026" }),
+    ).toBeInTheDocument();
+    expect(within(picker).getByRole("group", { name: "Orari del 07/09/2026" })).toBeInTheDocument();
+  });
+
+  it("does not render hundreds of course dates in one mobile list", async () => {
+    const manySessions = Array.from({ length: 120 }, (_, index) => {
+      const date = new Date(2026, 7, index + 1, 12);
+      const occursOn = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+      return {
+        id: `session-many-${index}`,
+        occurs_on: occursOn,
+        weekday: date.getDay(),
+        starts_at: "18:00:00",
+        ends_at: "19:00:00",
+        capacity: 10,
+        available_spots: 4,
+      };
+    });
+    installFetchMock(subscriptionResponse, [], [{ ...catalogResponse[0], sessions: manySessions }]);
+
+    render(<App />);
+    await login();
+
+    const course = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    const picker = within(course).getByRole("group", {
+      name: "Scegli la lezione Calisthenics Foundation",
+    });
+    const dateGroup = within(picker).getByRole("group", {
+      name: "Date disponibili per agosto 2026",
+    });
+
+    expect(within(dateGroup).getAllByRole("button")).toHaveLength(31);
+    expect(within(picker).getByRole("combobox")).toHaveValue("2026-08");
+    expect(within(picker).getByRole("combobox").querySelectorAll("option")).toHaveLength(4);
+  });
+
+  it("uses a contained vertical list when a day has many times", async () => {
+    const tenSessions = Array.from({ length: 10 }, (_, index) => {
+      const startsAt = `${String(8 + index).padStart(2, "0")}:00:00`;
+      return {
+        id: `session-times-${index}`,
+        occurs_on: "2026-08-31",
+        weekday: 1,
+        starts_at: startsAt,
+        ends_at: `${String(9 + index).padStart(2, "0")}:00:00`,
+        capacity: 10,
+        available_spots: 4,
+      };
+    });
+    installFetchMock(subscriptionResponse, [], [{ ...catalogResponse[0], sessions: tenSessions }]);
+
+    render(<App />);
+    await login();
+
+    const course = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    const picker = within(course).getByRole("group", {
+      name: "Scegli la lezione Calisthenics Foundation",
+    });
+    const timeGroup = within(picker).getByRole("group", { name: "Orari del 31/08/2026" });
+
+    expect(timeGroup.querySelector(".session-time-options")).toHaveClass("is-scrollable");
+    expect(within(timeGroup).getAllByRole("button")).toHaveLength(10);
   });
 
   it("loads the backoffice dashboard for admins", async () => {
@@ -1011,7 +1106,7 @@ describe("App", () => {
     await screen.findByRole("heading", { level: 2, name: "Corsi migliori" });
     fireEvent.click(screen.getByRole("button", { name: "Vai all'area personale" }));
 
-    const catalog = await screen.findByRole("region", { name: "Prenota una sessione" });
+    const catalog = await screen.findByRole("region", { name: "Prenota una lezione" });
     expect(screen.getByText("Area utente")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Vai al backoffice" })).toBeInTheDocument();
     fireEvent.click(within(catalog).getByRole("button", { name: "Prenota" }));
@@ -1206,7 +1301,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "Data singola" }));
     fireEvent.change(screen.getByLabelText("Data della lezione"), {
-      target: { value: "2026-09-20" },
+      target: { value: "2026-09-22" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi lezione" }));
 
@@ -1214,7 +1309,7 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/courses/course-calisthenics/sessions",
       expect.objectContaining({
-        body: expect.stringContaining('"occurs_on":"2026-09-20"'),
+        body: expect.stringContaining('"occurs_on":"2026-09-22"'),
         method: "POST",
       }),
     );
@@ -1427,7 +1522,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Sede"), { target: { value: "location-roma" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "Solo posti disponibili" }));
 
-    const catalog = screen.getByRole("region", { name: "Prenota una sessione" });
+    const catalog = screen.getByRole("region", { name: "Prenota una lezione" });
     expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
     expect(within(catalog).queryByText("Pole Flow")).not.toBeInTheDocument();
   });
@@ -1438,7 +1533,7 @@ describe("App", () => {
     render(<App />);
     await login();
 
-    const catalog = screen.getByRole("region", { name: "Prenota una sessione" });
+    const catalog = screen.getByRole("region", { name: "Prenota una lezione" });
     const search = within(catalog).getByRole("searchbox", { name: "Cerca corsi" });
     fireEvent.change(search, { target: { value: "pole milano" } });
 
@@ -1537,7 +1632,7 @@ describe("App", () => {
     fireEvent.change(within(courseCard).getByLabelText("Lezione Calisthenics Foundation"), {
       target: { value: "session-calisthenics:2026-09-07" },
     });
-    expect(within(courseCard).getByText("7 posti liberi")).toBeInTheDocument();
+    expect(within(courseCard).getAllByText("7 posti liberi").length).toBeGreaterThan(0);
     fireEvent.click(within(courseCard).getByRole("button", { name: "Prenota" }));
 
     await screen.findByText("Prenotazione confermata.");
@@ -1556,7 +1651,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /cancella Calisthenics Foundation/i }));
     await screen.findByText("Prenotazione cancellata.");
-    expect(within(courseCard).getByText("7 posti liberi")).toBeInTheDocument();
+    expect(within(courseCard).getAllByText("7 posti liberi").length).toBeGreaterThan(0);
     expect(within(courseCard).getByRole("button", { name: "Prenota" })).toBeEnabled();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/bookings/booking-new",

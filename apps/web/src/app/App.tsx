@@ -6,7 +6,9 @@ import {
   CalendarCheck,
   CalendarPlus,
   CheckCircle2,
+  ChevronLeft,
   ChevronDown,
+  ChevronRight,
   Clock3,
   Dumbbell,
   Home,
@@ -32,7 +34,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AdminCourse,
@@ -162,6 +164,17 @@ function localIsoDate(date = new Date()): string {
 
 function dateFromIso(value: string): Date {
   return new Date(`${value}T12:00:00`);
+}
+
+function monthKey(value: string): string {
+  return value.slice(0, 7);
+}
+
+function formatMonth(value: string): string {
+  return new Intl.DateTimeFormat("it-IT", {
+    month: "long",
+    year: "numeric",
+  }).format(dateFromIso(`${value}-01`));
 }
 
 function upcomingDates(days = 14): string[] {
@@ -434,18 +447,6 @@ export function App() {
       window.removeEventListener("focus", refreshOnFocus);
     };
   }, [session, workspaceMode]);
-
-  useEffect(() => {
-    if (loadState !== "ready" || user?.email_verified !== false) {
-      return;
-    }
-    setNotice((current) =>
-      current ?? {
-        tone: "info",
-        message: "Verifica il tuo indirizzo email: trovi il link nella sezione Profilo.",
-      },
-    );
-  }, [loadState, user?.email_verified, user?.id]);
 
   useEffect(() => {
     if (session === null) {
@@ -803,7 +804,7 @@ export function App() {
                 <SectionHeading
                   icon={<Dumbbell aria-hidden="true" />}
                   eyebrow="Catalogo"
-                  title="Prenota una sessione"
+                  title="Prenota una lezione"
                 />
                 <CatalogFilters
                   filters={filters}
@@ -822,12 +823,14 @@ export function App() {
 
               <aside className="side-stack" aria-label="Area personale">
                 <SubscriptionPanel subscription={subscription} />
-                <AccountSettingsPanel
-                  onPasswordChanged={handlePasswordChanged}
-                  onResendVerification={handleResendVerification}
-                  token={session.access_token}
-                  user={user ?? session.user}
-                />
+                {mobileView !== "bookings" ? (
+                  <AccountSettingsPanel
+                    onPasswordChanged={handlePasswordChanged}
+                    onResendVerification={handleResendVerification}
+                    token={session.access_token}
+                    user={user ?? session.user}
+                  />
+                ) : null}
                 <BookingsPanel
                   bookings={currentBookings}
                   courses={courses}
@@ -1262,7 +1265,7 @@ function BookingFocus({
       aria-labelledby="booking-focus-title"
     >
       <div className="booking-focus-copy">
-        <p className="eyebrow">Prenotazione rapida</p>
+        <p className="eyebrow">Prossima lezione</p>
         <h2 id="booking-focus-title">{course.title}</h2>
         <p>
           {weekdays[session.weekday]} {formatDate(session.occurs_on)} · {formatTime(session.starts_at)} -{" "}
@@ -1310,29 +1313,61 @@ function DatePicker({
   selectedDate: string;
   onChange: (date: string) => void;
 }) {
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  function moveDates(direction: number): void {
+    pickerRef.current?.scrollBy({
+      behavior: "smooth",
+      left: direction * 220,
+    });
+  }
+
   return (
-    <div className="date-picker" role="group" aria-label="Data del calendario">
-      {dates.map((date) => {
-        const parsedDate = dateFromIso(date);
-        const weekday = weekdays[parsedDate.getDay()];
-        const month = new Intl.DateTimeFormat("it-IT", { month: "short" })
-          .format(parsedDate)
-          .replace(".", "");
-        return (
+    <div className="date-picker-shell">
+      <div className="date-picker-toolbar">
+        <span>Seleziona una data</span>
+        <div className="date-picker-actions">
           <button
-            aria-label={`${weekday} ${formatDate(date)}`}
-            aria-pressed={selectedDate === date}
-            className={selectedDate === date ? "is-selected" : ""}
-            key={date}
-            onClick={() => onChange(date)}
+            aria-label="Date precedenti"
+            className="date-picker-nav"
+            onClick={() => moveDates(-1)}
             type="button"
           >
-            <span>{weekday.slice(0, 3)}</span>
-            <strong>{parsedDate.getDate()}</strong>
-            <small>{month}</small>
+            <ChevronLeft aria-hidden="true" />
           </button>
-        );
-      })}
+          <button
+            aria-label="Date successive"
+            className="date-picker-nav"
+            onClick={() => moveDates(1)}
+            type="button"
+          >
+            <ChevronRight aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <div ref={pickerRef} className="date-picker" role="group" aria-label="Data del calendario">
+        {dates.map((date) => {
+          const parsedDate = dateFromIso(date);
+          const weekday = weekdays[parsedDate.getDay()];
+          const month = new Intl.DateTimeFormat("it-IT", { month: "short" })
+            .format(parsedDate)
+            .replace(".", "");
+          return (
+            <button
+              aria-label={`${weekday} ${formatDate(date)}`}
+              aria-pressed={selectedDate === date}
+              className={selectedDate === date ? "is-selected" : ""}
+              key={date}
+              onClick={() => onChange(date)}
+              type="button"
+            >
+              <span>{weekday.slice(0, 3)}</span>
+              <strong>{parsedDate.getDate()}</strong>
+              <small>{month}</small>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -4034,6 +4069,7 @@ function AppHeader({
         </div>
         <button className="icon-button" type="button" onClick={onLogout} aria-label="Esci">
           <LogOut aria-hidden="true" />
+          <span className="mobile-action-label">Esci</span>
         </button>
       </div>
     </header>
@@ -4321,6 +4357,18 @@ function CourseBookingCard({
     return null;
   }
 
+  const sessionMonthKeys = [...new Set(sessions.map((session) => monthKey(session.occurs_on)))];
+  const selectedMonthKey = monthKey(selectedSession.occurs_on);
+  const sessionsInSelectedMonth = sessions.filter(
+    (session) => monthKey(session.occurs_on) === selectedMonthKey,
+  );
+  const datesInSelectedMonth = [...new Set(
+    sessionsInSelectedMonth.map((session) => session.occurs_on),
+  )];
+  const sessionsOnSelectedDate = sessionsInSelectedMonth.filter(
+    (session) => session.occurs_on === selectedSession.occurs_on,
+  );
+
   const selectedDate = dateFromIso(selectedSession.occurs_on);
   const month = new Intl.DateTimeFormat("it-IT", { month: "short" })
     .format(selectedDate)
@@ -4358,7 +4406,7 @@ function CourseBookingCard({
       </div>
 
       <div className="session-booking-control">
-        <label className="session-picker">
+        <label className="session-picker session-picker-native">
           <span>
             <CalendarDays aria-hidden="true" />
             Scegli la lezione
@@ -4384,6 +4432,108 @@ function CourseBookingCard({
             })}
           </select>
         </label>
+
+        <div
+          aria-label={`Scegli la lezione ${course.title}`}
+          className="session-picker session-picker-mobile"
+          role="group"
+        >
+          <span>
+            <CalendarDays aria-hidden="true" />
+            Scegli data e orario
+          </span>
+          <label className="session-month-picker">
+            <span>Mese</span>
+            <select
+              aria-label={`Mese delle lezioni ${course.title}`}
+              onChange={(event) => {
+                const nextSession = sessions.find(
+                  (session) => monthKey(session.occurs_on) === event.target.value,
+                );
+                if (nextSession !== undefined) {
+                  setSelectedSessionKey(occurrenceKey(nextSession));
+                }
+              }}
+              value={selectedMonthKey}
+            >
+              {sessionMonthKeys.map((availableMonth) => (
+                <option key={availableMonth} value={availableMonth}>
+                  {formatMonth(availableMonth)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div
+            aria-label={`Date disponibili per ${formatMonth(selectedMonthKey)}`}
+            className="session-date-strip"
+            role="group"
+          >
+            {datesInSelectedMonth.map((date) => {
+              const dateValue = dateFromIso(date);
+              const isSelected = date === selectedSession.occurs_on;
+              const firstSessionOnDate = sessionsInSelectedMonth.find(
+                (session) => session.occurs_on === date,
+              );
+              return (
+                <button
+                  aria-label={`${weekdays[dateValue.getDay()]} ${formatDate(date)}`}
+                  aria-pressed={isSelected}
+                  className={isSelected ? "session-date-option is-selected" : "session-date-option"}
+                  key={date}
+                  onClick={() => {
+                    if (firstSessionOnDate !== undefined) {
+                      setSelectedSessionKey(occurrenceKey(firstSessionOnDate));
+                    }
+                  }}
+                  type="button"
+                >
+                  <span>{weekdays[dateValue.getDay()].slice(0, 3)}</span>
+                  <strong>{dateValue.getDate()}</strong>
+                </button>
+              );
+            })}
+          </div>
+          <div
+            aria-label={`Orari del ${formatDate(selectedSession.occurs_on)}`}
+            className="session-time-list"
+            role="group"
+          >
+            <span className="session-subheading">Orario</span>
+            <div
+              className={
+                sessionsOnSelectedDate.length > 4
+                  ? "session-time-options is-scrollable"
+                  : "session-time-options"
+              }
+            >
+              {sessionsOnSelectedDate.map((session) => {
+                const sessionBooking = bookingForOccurrence(bookings, session);
+                const isSelected = occurrenceKey(session) === selectedSessionKey;
+                const availability =
+                  sessionBooking !== undefined
+                    ? bookedActionLabel(sessionBooking)
+                    : session.available_spots > 0
+                      ? `${session.available_spots} posti liberi`
+                      : "Lista d’attesa";
+                return (
+                  <button
+                    aria-pressed={isSelected}
+                    className={isSelected ? "session-option is-selected" : "session-option"}
+                    key={occurrenceKey(session)}
+                    onClick={() => setSelectedSessionKey(occurrenceKey(session))}
+                    type="button"
+                  >
+                    <span className="session-option-main">
+                      <strong>{formatTime(session.starts_at)} - {formatTime(session.ends_at)}</strong>
+                      <span>{availability}</span>
+                    </span>
+                    {isSelected ? <span className="session-option-status">Selezionato</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
 
         <div className="session-booking-dock" aria-live="polite">
           <time className="session-date-tile" dateTime={selectedSession.occurs_on}>
