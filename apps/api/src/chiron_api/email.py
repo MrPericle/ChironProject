@@ -3,7 +3,9 @@ import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formataddr
+from json import dumps
 from typing import Protocol
+from urllib.request import Request, urlopen
 
 from chiron_api.config import Settings
 
@@ -56,7 +58,39 @@ class SmtpEmailSender:
             client.send_message(email_message)
 
 
+class ResendEmailSender:
+    endpoint = "https://api.resend.com/emails"
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def send(self, message: TransactionalEmail) -> None:
+        payload = {
+            "from": formataddr(
+                (self.settings.email_from_name, self.settings.email_from_address),
+            ),
+            "to": [message.recipient],
+            "subject": message.subject,
+            "text": message.text_body,
+            "html": message.html_body,
+        }
+        request = Request(
+            self.endpoint,
+            data=dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.settings.resend_api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "MAKA/1.0",
+            },
+            method="POST",
+        )
+        with urlopen(request, timeout=15):
+            pass
+
+
 def build_email_sender(settings: Settings) -> EmailSender:
     if settings.email_delivery_mode == "smtp":
         return SmtpEmailSender(settings)
+    if settings.email_delivery_mode == "resend":
+        return ResendEmailSender(settings)
     return ConsoleEmailSender()

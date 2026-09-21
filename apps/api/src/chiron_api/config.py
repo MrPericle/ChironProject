@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
     smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
     smtp_security: str = Field(default="starttls", alias="SMTP_SECURITY")
+    resend_api_key: str | None = Field(default=None, alias="RESEND_API_KEY")
     email_verification_expire_hours: int = Field(
         default=24,
         ge=1,
@@ -85,8 +86,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
-        if self.email_delivery_mode not in {"console", "smtp"}:
-            raise ValueError("EMAIL_DELIVERY_MODE must be either console or smtp")
+        if self.email_delivery_mode not in {"console", "smtp", "resend"}:
+            raise ValueError("EMAIL_DELIVERY_MODE must be one of console, smtp or resend")
         if self.smtp_security not in {"none", "starttls", "ssl"}:
             raise ValueError("SMTP_SECURITY must be one of none, starttls or ssl")
 
@@ -127,8 +128,12 @@ class Settings(BaseSettings):
             or frontend_url.fragment
         ):
             raise ValueError("FRONTEND_BASE_URL must be an HTTPS URL in production")
-        if self.email_delivery_mode != "smtp" or not self.smtp_host:
-            raise ValueError("SMTP email delivery must be configured in production")
+        if self.email_delivery_mode == "smtp" and not self.smtp_host:
+            raise ValueError("SMTP email delivery requires SMTP_HOST in production")
+        if self.email_delivery_mode == "resend" and not self.resend_api_key:
+            raise ValueError("Resend email delivery requires RESEND_API_KEY in production")
+        if self.email_delivery_mode == "console":
+            raise ValueError("Production email delivery must use smtp or resend")
         if "@" not in self.email_from_address:
             raise ValueError("EMAIL_FROM_ADDRESS must be a valid sender address")
 

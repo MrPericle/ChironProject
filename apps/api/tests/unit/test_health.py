@@ -19,10 +19,10 @@ def test_openapi_routes_are_disabled_by_default_in_production(tmp_path) -> None:
         API_DOCS_ENABLED=None,
         APP_SECRET_KEY="s" * 64,
         APP_CORS_ORIGINS="https://makastudio.it",
-        EMAIL_DELIVERY_MODE="smtp",
+        EMAIL_DELIVERY_MODE="resend",
         EMAIL_FROM_ADDRESS="noreply@makastudio.it",
         FRONTEND_BASE_URL="https://makastudio.it",
-        SMTP_HOST="smtp.example.com",
+        RESEND_API_KEY="re_test_key",
         COURSE_UPLOAD_DIR=str(tmp_path),
     )
     client = TestClient(create_app(settings))
@@ -38,10 +38,10 @@ def test_openapi_routes_can_be_enabled_explicitly_in_staging(tmp_path) -> None:
         API_DOCS_ENABLED=True,
         APP_SECRET_KEY="s" * 64,
         APP_CORS_ORIGINS="https://staging.makastudio.it",
-        EMAIL_DELIVERY_MODE="smtp",
+        EMAIL_DELIVERY_MODE="resend",
         EMAIL_FROM_ADDRESS="noreply@makastudio.it",
         FRONTEND_BASE_URL="https://staging.makastudio.it",
-        SMTP_HOST="smtp.example.com",
+        RESEND_API_KEY="re_test_key",
         COURSE_UPLOAD_DIR=str(tmp_path),
     )
     client = TestClient(create_app(settings))

@@ -390,15 +390,11 @@ APP_TIMEZONE=Europe/Rome
 BOOKING_HORIZON_DAYS=28
 COURSE_UPLOAD_DIR=/app/uploads
 
-EMAIL_DELIVERY_MODE=smtp
+EMAIL_DELIVERY_MODE=resend
 EMAIL_FROM_ADDRESS=noreply@example.it
 EMAIL_FROM_NAME=MAKA
 FRONTEND_BASE_URL=https://example.it
-SMTP_HOST=smtp.provider.example
-SMTP_PORT=587
-SMTP_USERNAME=SOSTITUIRE_CON_UTENTE_SMTP
-SMTP_PASSWORD=SOSTITUIRE_CON_PASSWORD_SMTP
-SMTP_SECURITY=starttls
+RESEND_API_KEY=re_SOSTITUIRE_CON_CHIAVE_DI_SOLO_INVIO
 EMAIL_VERIFICATION_EXPIRE_HOURS=24
 PASSWORD_RESET_EXPIRE_MINUTES=30
 
@@ -421,15 +417,18 @@ inserirli in ticket, chat, screenshot o commit Git.
 
 Prima di distribuire una versione che richiede la verifica email:
 
-1. Il proprietario sceglie un servizio SMTP transazionale e ne mantiene account,
-   fatturazione e 2FA. Il tecnico riceve solo una credenziale SMTP dedicata.
+1. Il proprietario mantiene l'account Resend, la relativa 2FA e la fatturazione.
+   Per un Droplet DigitalOcean usare `EMAIL_DELIVERY_MODE=resend`: DigitalOcean
+   blocca le porte SMTP in uscita. Creare una chiave Resend con permesso
+   `Sending access`, limitata al dominio MAKA.
 2. Nel pannello DNS di `makastudio.it` si aggiungono esattamente i record SPF e
    DKIM indicati dal provider. Si aggiunge inoltre DMARC, iniziando con una
    policy di monitoraggio se il dominio invia gia altra posta.
 3. Si verifica il mittente, per esempio `noreply@makastudio.it`, nel pannello del
    provider. Non usare un indirizzo personale come mittente applicativo.
-4. Si valorizzano le variabili `EMAIL_*`, `FRONTEND_BASE_URL` e `SMTP_*` in
-   `/srv/maka/app/.env.production`, mantenendo permessi `600`.
+4. Si valorizzano le variabili `EMAIL_*`, `FRONTEND_BASE_URL` e
+   `RESEND_API_KEY` in `/srv/maka/app/.env.production`, mantenendo permessi
+   `600`. La chiave non va mai inserita in Git, chat o screenshot.
 5. Prima del deploy si esegue la validazione senza stampare i segreti:
 
    ```bash
@@ -440,8 +439,9 @@ Prima di distribuire una versione che richiede la verifica email:
    link di verifica e si completa un reset password. Controllare anche spam,
    resa mobile e log API, senza incollare link o token in chat.
 
-La porta e la sicurezza dipendono dal provider: normalmente `587` con
-`starttls`, oppure `465` con `ssl`. `console` e ammesso soltanto in sviluppo.
+`console` e ammesso soltanto in sviluppo. SMTP resta disponibile solo per
+ambienti che consentono queste connessioni; non e' compatibile con i Droplet
+DigitalOcean.
 
 ## 11. Primo deploy
 
