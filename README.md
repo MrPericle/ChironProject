@@ -31,6 +31,10 @@ docker compose run --rm api alembic upgrade head
 docker compose up -d api web
 ```
 
+Il servizio API applica automaticamente le migration all'avvio; il comando
+`alembic upgrade head` resta disponibile per aggiornare manualmente un database
+locale già esistente.
+
 Servizi attesi:
 
 - API: `http://localhost:8000`

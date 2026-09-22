@@ -54,6 +54,9 @@ docker compose version
    docker compose ps
    ```
 
+   L'API applica automaticamente le migration all'avvio, quindi le nuove tabelle
+   vengono create anche quando si ricrea solo il servizio API.
+
 Servizi disponibili:
 
 - frontend: `http://localhost:5173`;

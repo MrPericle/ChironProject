@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     Time,
@@ -62,6 +63,12 @@ class BookingStatus(StrEnum):
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
     WAITLISTED = "waitlisted"
+
+
+class WorkoutPlanStatus(StrEnum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
 
 
 def enum_values(enum_type: type[StrEnum]) -> list[str]:
@@ -123,6 +130,20 @@ class User(Base):
         single_parent=True,
     )
     account_action_tokens: Mapped[list["AccountActionToken"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    workout_plans_created: Mapped[list["WorkoutPlan"]] = relationship(
+        back_populates="created_by",
+        foreign_keys="WorkoutPlan.created_by_id",
+    )
+    workout_logs: Mapped[list["WorkoutLog"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    workout_plan_assignments: Mapped[list["WorkoutPlanAssignment"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -363,6 +384,163 @@ class AccountActionToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     user: Mapped[User] = relationship(back_populates="account_action_tokens")
+
+
+class WorkoutPlan(Base):
+    __tablename__ = "workout_plans"
+    __table_args__ = (Index("ix_workout_plans_status_updated_at", "status", "updated_at"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[WorkoutPlanStatus] = mapped_column(
+        Enum(WorkoutPlanStatus, name="workout_plan_status", values_callable=enum_values),
+        default=WorkoutPlanStatus.DRAFT,
+        nullable=False,
+    )
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+    created_by: Mapped[User | None] = relationship(
+        back_populates="workout_plans_created",
+        foreign_keys=[created_by_id],
+    )
+    days: Mapped[list["WorkoutDay"]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="WorkoutDay.position",
+    )
+    logs: Mapped[list["WorkoutLog"]] = relationship(back_populates="plan")
+    assignments: Mapped[list["WorkoutPlanAssignment"]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class WorkoutDay(Base):
+    __tablename__ = "workout_days"
+    __table_args__ = (Index("ix_workout_days_plan_position", "plan_id", "position"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    plan_id: Mapped[UUID] = mapped_column(ForeignKey("workout_plans.id", ondelete="CASCADE"))
+    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(180))
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    plan: Mapped[WorkoutPlan] = relationship(back_populates="days")
+    exercises: Mapped[list["WorkoutExercise"]] = relationship(
+        back_populates="day",
+        cascade="all, delete-orphan",
+        order_by="WorkoutExercise.position",
+    )
+    logs: Mapped[list["WorkoutLog"]] = relationship(back_populates="day")
+
+
+class WorkoutExercise(Base):
+    __tablename__ = "workout_exercises"
+    __table_args__ = (
+        CheckConstraint("sets_planned > 0", name="sets_planned_positive"),
+        CheckConstraint(
+            "rest_seconds IS NULL OR rest_seconds >= 0", name="rest_seconds_non_negative"
+        ),
+        Index("ix_workout_exercises_day_position", "day_id", "position"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    day_id: Mapped[UUID] = mapped_column(ForeignKey("workout_days.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    sets_planned: Mapped[int] = mapped_column(Integer, nullable=False)
+    reps_planned: Mapped[str] = mapped_column(String(40), nullable=False)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(String(500))
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    day: Mapped[WorkoutDay] = relationship(back_populates="exercises")
+    log_entries: Mapped[list["WorkoutLogEntry"]] = relationship(back_populates="exercise")
+
+
+class WorkoutPlanAssignment(Base):
+    __tablename__ = "workout_plan_assignments"
+    __table_args__ = (
+        UniqueConstraint("plan_id", "user_id", name="uq_workout_plan_assignments_plan_user"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    plan_id: Mapped[UUID] = mapped_column(ForeignKey("workout_plans.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    plan: Mapped[WorkoutPlan] = relationship(back_populates="assignments")
+    user: Mapped[User] = relationship(back_populates="workout_plan_assignments")
+
+
+class WorkoutLog(Base):
+    __tablename__ = "workout_logs"
+    __table_args__ = (
+        Index("ix_workout_logs_user_date", "user_id", "workout_date"),
+        Index("ix_workout_logs_plan_day", "plan_id", "day_id"),
+        CheckConstraint("rating IS NULL OR (rating >= 1 AND rating <= 5)", name="rating_range"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    plan_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("workout_plans.id", ondelete="SET NULL")
+    )
+    day_id: Mapped[UUID | None] = mapped_column(ForeignKey("workout_days.id", ondelete="SET NULL"))
+    workout_date: Mapped[date] = mapped_column(Date, nullable=False)
+    general_note: Mapped[str | None] = mapped_column(String(2000))
+    rating: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+    user: Mapped[User] = relationship(back_populates="workout_logs")
+    plan: Mapped[WorkoutPlan | None] = relationship(back_populates="logs")
+    day: Mapped[WorkoutDay | None] = relationship(back_populates="logs")
+    entries: Mapped[list["WorkoutLogEntry"]] = relationship(
+        back_populates="log",
+        cascade="all, delete-orphan",
+        order_by="(WorkoutLogEntry.exercise_id, WorkoutLogEntry.set_number)",
+    )
+
+
+class WorkoutLogEntry(Base):
+    __tablename__ = "workout_log_entries"
+    __table_args__ = (
+        CheckConstraint("set_number > 0", name="set_number_positive"),
+        CheckConstraint("repetitions > 0", name="repetitions_positive"),
+        CheckConstraint("load_kg >= 0 AND load_kg <= 1000", name="load_kg_range"),
+        Index("ix_workout_log_entries_log_id", "log_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    log_id: Mapped[UUID] = mapped_column(ForeignKey("workout_logs.id", ondelete="CASCADE"))
+    exercise_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("workout_exercises.id", ondelete="SET NULL"),
+    )
+    exercise_name_snapshot: Mapped[str] = mapped_column(String(180), nullable=False)
+    set_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    repetitions: Mapped[int] = mapped_column(Integer, nullable=False)
+    load_kg: Mapped[float] = mapped_column(Numeric(7, 2), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))
+
+    log: Mapped[WorkoutLog] = relationship(back_populates="entries")
+    exercise: Mapped[WorkoutExercise | None] = relationship(back_populates="log_entries")
 
 
 class AuditLog(Base):

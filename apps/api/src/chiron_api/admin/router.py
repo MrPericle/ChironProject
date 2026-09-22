@@ -441,13 +441,10 @@ def list_calendar_availability(
                 Course.status != CourseStatus.ARCHIVED,
                 or_(
                     CourseSession.occurs_on == occurs_on,
-                    and_(
-                        CourseSession.occurs_on.is_(None),
-                        CourseSession.weekday == weekday,
-                    ),
+                    and_(CourseSession.occurs_on.is_(None), CourseSession.weekday == weekday),
                 ),
             )
-            .order_by(CourseSession.starts_at, CourseSession.id)
+            .order_by(CourseSession.starts_at, CourseSession.id),
         ).all()
     )
     if not course_sessions:
@@ -463,7 +460,7 @@ def list_calendar_availability(
                 Booking.occurs_on == occurs_on,
                 Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.WAITLISTED]),
             )
-            .group_by(Booking.course_session_id, Booking.status)
+            .group_by(Booking.course_session_id, Booking.status),
         ).all()
     }
 
@@ -472,14 +469,8 @@ def list_calendar_availability(
             course_session_id=course_session.id,
             occurs_on=occurs_on,
             capacity=course_session.capacity,
-            confirmed_count=booking_counts.get(
-                (course_session.id, BookingStatus.CONFIRMED),
-                0,
-            ),
-            waitlisted_count=booking_counts.get(
-                (course_session.id, BookingStatus.WAITLISTED),
-                0,
-            ),
+            confirmed_count=booking_counts.get((course_session.id, BookingStatus.CONFIRMED), 0),
+            waitlisted_count=booking_counts.get((course_session.id, BookingStatus.WAITLISTED), 0),
             available_spots=max(
                 course_session.capacity
                 - booking_counts.get((course_session.id, BookingStatus.CONFIRMED), 0),

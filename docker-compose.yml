@@ -21,7 +21,7 @@ services:
     build:
       context: ./apps/api
       target: development
-    command: uvicorn chiron_api.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && uvicorn chiron_api.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_NAME: ${APP_NAME:-Chiron Project API}

@@ -268,6 +268,114 @@ export type AdminDashboard = {
   stats: AdminStats;
 };
 
+export type WorkoutPlanStatus = "draft" | "published" | "archived";
+
+export type WorkoutExercise = {
+  id: string;
+  name: string;
+  sets_planned: number;
+  reps_planned: string;
+  rest_seconds: number | null;
+  notes: string | null;
+  position: number;
+};
+
+export type WorkoutDay = {
+  id: string;
+  label: string;
+  title: string | null;
+  position: number;
+  exercises: WorkoutExercise[];
+};
+
+export type WorkoutLatestResult = {
+  exercise_id: string;
+  repetitions: number;
+  load_kg: number;
+  workout_date: string;
+};
+
+export type WorkoutPlan = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: WorkoutPlanStatus;
+  created_by_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  days: WorkoutDay[];
+  latest_results?: WorkoutLatestResult[];
+};
+
+export type WorkoutPlanSummary = Omit<WorkoutPlan, "days" | "latest_results"> & {
+  day_count: number;
+};
+
+export type WorkoutPlanAssignment = {
+  user_id: string;
+  user_email: string;
+  first_name: string | null;
+  last_name: string | null;
+  assigned_at: string;
+};
+
+export type WorkoutExercisePayload = Omit<WorkoutExercise, "id" | "position"> & {
+  id?: string;
+  position?: number;
+};
+
+export type WorkoutDayPayload = Omit<WorkoutDay, "id" | "position" | "exercises"> & {
+  id?: string;
+  position?: number;
+  exercises: WorkoutExercisePayload[];
+};
+
+export type WorkoutPlanPayload = {
+  title: string;
+  description: string | null;
+  status: WorkoutPlanStatus;
+  days: WorkoutDayPayload[];
+};
+
+export type WorkoutLogEntry = {
+  id: string;
+  exercise_id: string | null;
+  exercise_name_snapshot: string;
+  set_number: number;
+  repetitions: number;
+  load_kg: number;
+  note: string | null;
+};
+
+export type WorkoutLog = {
+  id: string;
+  user_id: string;
+  plan_id: string | null;
+  day_id: string | null;
+  workout_date: string;
+  general_note: string | null;
+  rating: number | null;
+  created_at: string;
+  updated_at: string;
+  entries: WorkoutLogEntry[];
+};
+
+export type WorkoutLogPayload = {
+  plan_id: string;
+  day_id: string;
+  workout_date: string;
+  general_note: string | null;
+  rating: number | null;
+  entries: Array<{
+    exercise_id: string;
+    exercise_name_snapshot: string;
+    set_number: number;
+    repetitions: number;
+    load_kg: number;
+    note: string | null;
+  }>;
+};
+
 export type CourseDeleteResult = {
   id: string;
   deleted: true;
@@ -277,7 +385,7 @@ type RequestOptions = {
   acceptedStatuses?: number[];
   token?: string;
   body?: unknown;
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 };
 
 export class ApiError extends Error {
@@ -627,6 +735,129 @@ export class ChironApi {
       `/admin/calendar/availability?occurs_on=${encodeURIComponent(occursOn)}`,
       { token },
     );
+  }
+
+  async workoutPlans(token: string): Promise<WorkoutPlan[]> {
+    return this.request<WorkoutPlan[]>("/workouts/plans", { token });
+  }
+
+  async workoutLogs(token: string, offset = 0): Promise<WorkoutLog[]> {
+    return this.request<WorkoutLog[]>(`/workouts/logs?limit=50&offset=${offset}`, { token });
+  }
+
+  async createWorkoutLog(token: string, payload: WorkoutLogPayload): Promise<WorkoutLog> {
+    return this.request<WorkoutLog>("/workouts/logs", {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  }
+
+  async updateWorkoutLog(
+    token: string,
+    logId: string,
+    payload: WorkoutLogPayload,
+  ): Promise<WorkoutLog> {
+    return this.request<WorkoutLog>(`/workouts/logs/${logId}`, {
+      method: "PUT",
+      token,
+      body: payload,
+    });
+  }
+
+  async deleteWorkoutLog(token: string, logId: string): Promise<void> {
+    return this.request<void>(`/workouts/logs/${logId}`, {
+      method: "DELETE",
+      token,
+    });
+  }
+
+  async adminWorkoutPlans(token: string): Promise<WorkoutPlanSummary[]> {
+    return this.request<WorkoutPlanSummary[]>("/admin/workout-plans", { token });
+  }
+
+  async adminWorkoutPlan(token: string, planId: string): Promise<WorkoutPlan> {
+    return this.request<WorkoutPlan>(`/admin/workout-plans/${planId}`, { token });
+  }
+
+  async adminWorkoutPlanAssignments(
+    token: string,
+    planId: string,
+  ): Promise<WorkoutPlanAssignment[]> {
+    return this.request<WorkoutPlanAssignment[]>(
+      `/admin/workout-plans/${planId}/assignments`,
+      { token },
+    );
+  }
+
+  async assignAdminWorkoutPlan(
+    token: string,
+    planId: string,
+    userId: string,
+  ): Promise<WorkoutPlanAssignment> {
+    return this.request<WorkoutPlanAssignment>(
+      `/admin/workout-plans/${planId}/assignments`,
+      { method: "POST", token, body: { user_id: userId } },
+    );
+  }
+
+  async unassignAdminWorkoutPlan(
+    token: string,
+    planId: string,
+    userId: string,
+  ): Promise<void> {
+    return this.request<void>(
+      `/admin/workout-plans/${planId}/assignments/${userId}`,
+      { method: "DELETE", token },
+    );
+  }
+
+  async createAdminWorkoutPlan(token: string, payload: WorkoutPlanPayload): Promise<WorkoutPlan> {
+    return this.request<WorkoutPlan>("/admin/workout-plans", {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  }
+
+  async updateAdminWorkoutPlan(
+    token: string,
+    planId: string,
+    payload: Partial<WorkoutPlanPayload>,
+  ): Promise<WorkoutPlan> {
+    return this.request<WorkoutPlan>(`/admin/workout-plans/${planId}`, {
+      method: "PATCH",
+      token,
+      body: payload,
+    });
+  }
+
+  async duplicateAdminWorkoutPlan(token: string, planId: string): Promise<WorkoutPlan> {
+    return this.request<WorkoutPlan>(`/admin/workout-plans/${planId}/duplicate`, {
+      method: "POST",
+      token,
+    });
+  }
+
+  async publishAdminWorkoutPlan(token: string, planId: string): Promise<WorkoutPlan> {
+    return this.request<WorkoutPlan>(`/admin/workout-plans/${planId}/publish`, {
+      method: "POST",
+      token,
+    });
+  }
+
+  async unpublishAdminWorkoutPlan(token: string, planId: string): Promise<WorkoutPlan> {
+    return this.request<WorkoutPlan>(`/admin/workout-plans/${planId}/unpublish`, {
+      method: "POST",
+      token,
+    });
+  }
+
+  async archiveAdminWorkoutPlan(token: string, planId: string): Promise<WorkoutPlan> {
+    return this.request<WorkoutPlan>(`/admin/workout-plans/${planId}/archive`, {
+      method: "POST",
+      token,
+    });
   }
 
   async uploadCourseImage(token: string, courseId: string, image: File): Promise<AdminCourse> {

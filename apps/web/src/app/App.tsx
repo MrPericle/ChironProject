@@ -1,17 +1,23 @@
 import {
   Activity,
   Archive,
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   CalendarDays,
   CalendarCheck,
   CalendarPlus,
   CheckCircle2,
-  ChevronLeft,
+  ClipboardList,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   Dumbbell,
+  Eye,
+  EyeOff,
   Home,
+  History,
   ImagePlus,
   ListChecks,
   LockKeyhole,
@@ -38,8 +44,8 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 
 import {
   AdminCourse,
-  AdminCourseSessionAvailability,
   AdminCourseSessionAttendee,
+  AdminCourseSessionAvailability,
   AdminStats,
   AdminUser,
   ApiError,
@@ -57,6 +63,14 @@ import {
   SubscriptionInfo,
   TokenPair,
   User,
+  WorkoutDayPayload,
+  WorkoutExercisePayload,
+  WorkoutLog,
+  WorkoutLogPayload,
+  WorkoutPlan,
+  WorkoutPlanPayload,
+  WorkoutPlanStatus,
+  WorkoutPlanSummary,
 } from "../lib/api";
 import { accessTokenRefreshDelay } from "../lib/session";
 
@@ -86,8 +100,8 @@ type TwoFactorStep =
   | { kind: "setup"; token: string; secret: string; otpauthUri: string };
 type AuthStep = TwoFactorStep | { kind: "email"; email: string };
 
-type MobileView = "courses" | "calendar" | "bookings" | "profile";
-type AdminTab = "dashboard" | "calendar" | "users" | "courses" | "locations";
+type MobileView = "courses" | "training" | "bookings" | "profile";
+type AdminTab = "dashboard" | "workouts" | "calendar" | "users" | "courses";
 type ScheduleMode = "weekly" | "single";
 type WorkspaceMode = "backoffice" | "personal";
 
@@ -162,6 +176,115 @@ function localIsoDate(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+function upcomingDates(days = 28): string[] {
+  const today = new Date();
+  return Array.from({ length: days }, (_, offset) => {
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+    return localIsoDate(date);
+  });
+}
+
+type StepperHistoryOptions = {
+  enabled: boolean;
+  flowId: string;
+  onClose: () => void;
+  onStepChange: (step: number) => void;
+  step: number;
+};
+
+function useStepperHistory({
+  enabled,
+  flowId,
+  onClose,
+  onStepChange,
+  step,
+}: StepperHistoryOptions): void {
+  const initialized = useRef(false);
+  const previousStep = useRef(step);
+  const historyDepth = useRef(0);
+  const closedFromPopState = useRef(false);
+  const entryBeforeFlow = useRef<unknown>(undefined);
+  const cleanupTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (cleanupTimer.current !== null) {
+      window.clearTimeout(cleanupTimer.current);
+      cleanupTimer.current = null;
+    }
+    if (!enabled || initialized.current) {
+      return;
+    }
+    entryBeforeFlow.current = window.history.state;
+    window.history.pushState(
+      { ...(window.history.state ?? {}), makaStepper: { flowId, step } },
+      "",
+      window.location.href,
+    );
+    previousStep.current = step;
+    historyDepth.current = 1;
+    closedFromPopState.current = false;
+    initialized.current = true;
+  }, [enabled, flowId, step]);
+
+  useEffect(() => {
+    if (!enabled || !initialized.current || previousStep.current === step) {
+      return;
+    }
+    if (
+      step < previousStep.current &&
+      historyDepth.current > 1 &&
+      window.history.state?.makaStepper?.flowId === flowId
+    ) {
+      window.history.back();
+      return;
+    }
+    window.history.pushState(
+      { ...(window.history.state ?? {}), makaStepper: { flowId, step } },
+      "",
+      window.location.href,
+    );
+    historyDepth.current += 1;
+    previousStep.current = step;
+  }, [enabled, flowId, step]);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    const handlePopState = (event: PopStateEvent): void => {
+      const next = event.state?.makaStepper;
+      if (next?.flowId === flowId && typeof next.step === "number") {
+        historyDepth.current = Math.max(0, historyDepth.current - 1);
+        previousStep.current = next.step;
+        onStepChange(next.step);
+        return;
+      }
+      closedFromPopState.current = true;
+      historyDepth.current = 0;
+      onClose();
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [enabled, flowId, onClose, onStepChange]);
+
+  useEffect(() => {
+    return () => {
+      cleanupTimer.current = window.setTimeout(() => {
+        if (
+          initialized.current &&
+          window.history.state?.makaStepper?.flowId === flowId &&
+          entryBeforeFlow.current !== undefined &&
+          !closedFromPopState.current
+        ) {
+          window.history.go(-historyDepth.current);
+        }
+        initialized.current = false;
+        cleanupTimer.current = null;
+      }, 0);
+    };
+  }, [enabled, flowId]);
+}
+
 function dateFromIso(value: string): Date {
   return new Date(`${value}T12:00:00`);
 }
@@ -175,14 +298,6 @@ function formatMonth(value: string): string {
     month: "long",
     year: "numeric",
   }).format(dateFromIso(`${value}-01`));
-}
-
-function upcomingDates(days = 14): string[] {
-  const today = new Date();
-  return Array.from({ length: days }, (_, offset) => {
-    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
-    return localIsoDate(date);
-  });
 }
 
 function occurrenceKey(session: Pick<CatalogSession, "id" | "occurs_on">): string {
@@ -373,6 +488,16 @@ export function App() {
   const [courses, setCourses] = useState<CatalogCourse[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
+  const [workoutPlans, setWorkoutPlans] = useState<WorkoutPlan[]>([]);
+  const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([]);
+  const [workoutPlansLoadState, setWorkoutPlansLoadState] = useState<LoadState>(
+    session === null ? "idle" : "loading",
+  );
+  const [workoutLogsLoadState, setWorkoutLogsLoadState] = useState<LoadState>(
+    session === null ? "idle" : "loading",
+  );
+  const [workoutPlansError, setWorkoutPlansError] = useState<string | null>(null);
+  const [workoutLogsError, setWorkoutLogsError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>({
     query: "",
     locationId: "all",
@@ -384,6 +509,7 @@ export function App() {
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const [pendingBookingId, setPendingBookingId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<MobileView>("courses");
+  const [requestedWorkoutLogId, setRequestedWorkoutLogId] = useState<string | null>(null);
   const [bookingClockTick, setBookingClockTick] = useState(0);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("backoffice");
 
@@ -395,6 +521,8 @@ export function App() {
       session.user.role === "user" ||
       (session.user.role === "staff" && workspaceMode === "personal");
     if (!isPersonalWorkspace) {
+      setWorkoutPlansLoadState("idle");
+      setWorkoutLogsLoadState("idle");
       setLoadState("ready");
       return;
     }
@@ -405,37 +533,85 @@ export function App() {
       if (showLoading) {
         setLoadState("loading");
       }
-      api.dashboard(session.access_token).then((dashboard) => {
-        if (ignore) {
-          return;
-        }
-        setUser(dashboard.user);
-        setCourses(dashboard.courses);
-        setBookings(dashboard.bookings);
-        setSubscription(dashboard.subscription);
-        setLoadState("ready");
-      })
-      .catch((error: unknown) => {
-        if (ignore) {
-          return;
-        }
-        if (error instanceof ApiError && error.status === 401) {
-          localStorage.removeItem(sessionStorageKey);
-          setSession(null);
-          setUser(null);
-          setCourses([]);
-          setBookings([]);
-          setSubscription(null);
-          setLoadState("idle");
-          setNotice({
-            tone: "error",
-            message: "Profilo o permessi aggiornati. Accedi di nuovo per continuare.",
+      setWorkoutPlansLoadState("loading");
+      setWorkoutLogsLoadState("loading");
+      setWorkoutPlansError(null);
+      setWorkoutLogsError(null);
+
+      const loadResource = <T,>(
+        request: Promise<T>,
+        onSuccess: (value: T) => void,
+        setResourceState: (state: LoadState) => void,
+        setResourceError: (message: string | null) => void,
+      ): void => {
+        request
+          .then((value) => {
+            if (ignore) {
+              return;
+            }
+            onSuccess(value);
+            setResourceError(null);
+            setResourceState("ready");
+          })
+          .catch((error: unknown) => {
+            if (ignore) {
+              return;
+            }
+            setResourceError(describeError(error));
+            setResourceState("error");
           });
-          return;
-        }
-        setNotice({ tone: "error", message: describeError(error) });
-        setLoadState("error");
-      });
+      };
+
+      loadResource(
+        api.workoutPlans(session.access_token),
+        setWorkoutPlans,
+        setWorkoutPlansLoadState,
+        setWorkoutPlansError,
+      );
+      loadResource(
+        api.workoutLogs(session.access_token),
+        setWorkoutLogs,
+        setWorkoutLogsLoadState,
+        setWorkoutLogsError,
+      );
+
+      api
+        .dashboard(session.access_token)
+        .then((dashboard) => {
+          if (ignore) {
+            return;
+          }
+          setUser(dashboard.user);
+          setCourses(dashboard.courses);
+          setBookings(dashboard.bookings);
+          setSubscription(dashboard.subscription);
+          setLoadState("ready");
+        })
+        .catch((error: unknown) => {
+          if (ignore) {
+            return;
+          }
+          if (error instanceof ApiError && error.status === 401) {
+            localStorage.removeItem(sessionStorageKey);
+            setSession(null);
+            setUser(null);
+            setCourses([]);
+            setBookings([]);
+            setSubscription(null);
+            setWorkoutPlans([]);
+            setWorkoutLogs([]);
+            setWorkoutPlansLoadState("idle");
+            setWorkoutLogsLoadState("idle");
+            setLoadState("idle");
+            setNotice({
+              tone: "error",
+              message: "Profilo o permessi aggiornati. Accedi di nuovo per continuare.",
+            });
+            return;
+          }
+          setNotice({ tone: "error", message: describeError(error) });
+          setLoadState("error");
+        });
     };
 
     loadDashboard(true);
@@ -476,6 +652,8 @@ export function App() {
           setCourses([]);
           setBookings([]);
           setSubscription(null);
+          setWorkoutPlans([]);
+          setWorkoutLogs([]);
           setLoadState("idle");
           setNotice({
             tone: "error",
@@ -706,6 +884,9 @@ export function App() {
     setCourses([]);
     setBookings([]);
     setSubscription(null);
+    setWorkoutPlans([]);
+    setWorkoutLogs([]);
+    setRequestedWorkoutLogId(null);
     setNotice(null);
     setLoadState("idle");
     setWorkspaceMode("backoffice");
@@ -780,11 +961,6 @@ export function App() {
 
         {loadState === "ready" ? (
           <>
-            <OverviewPanel
-              bookingsCount={activeBookingCount}
-              coursesCount={courses.length}
-              subscription={subscription}
-            />
             <BookingFocus
               bookings={currentBookings}
               courses={visibleCourses}
@@ -792,12 +968,22 @@ export function App() {
               subscription={subscription}
               onCreateBooking={handleCreateBooking}
             />
-            <WeeklyCalendar
-              bookings={currentBookings}
-              courses={courses}
-              pendingSessionId={pendingSessionId}
+            <OverviewPanel
+              bookingsCount={activeBookingCount}
+              coursesCount={courses.length}
               subscription={subscription}
-              onCreateBooking={handleCreateBooking}
+            />
+            <WorkoutWorkspace
+              editLogId={requestedWorkoutLogId}
+              logs={workoutLogs}
+              onLogsChange={setWorkoutLogs}
+              onEditLogHandled={() => setRequestedWorkoutLogId(null)}
+              onNotice={setNotice}
+              onRetryPlans={() => setSession({ ...session })}
+              plans={workoutPlans}
+              plansError={workoutPlansError}
+              plansLoadState={workoutPlansLoadState}
+              token={session.access_token}
             />
             <div className="dashboard-grid">
               <section className="panel catalog-panel" aria-labelledby="catalog-title">
@@ -831,6 +1017,20 @@ export function App() {
                     user={user ?? session.user}
                   />
                 ) : null}
+                <WorkoutHistoryPanel
+                  logs={workoutLogs}
+                  logsError={workoutLogsError}
+                  logsLoadState={workoutLogsLoadState}
+                  onEditLog={(log) => {
+                    setRequestedWorkoutLogId(log.id);
+                    setMobileView("training");
+                  }}
+                  onLogsChange={setWorkoutLogs}
+                  onNotice={setNotice}
+                  onRetryLogs={() => setSession({ ...session })}
+                  plans={workoutPlans}
+                  token={session.access_token}
+                />
                 <BookingsPanel
                   bookings={currentBookings}
                   courses={courses}
@@ -862,6 +1062,10 @@ function BackofficeScreen({
   const [courses, setCourses] = useState<AdminCourse[]>([]);
   const [disciplines, setDisciplines] = useState<CourseDisciplineOption[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [workoutPlans, setWorkoutPlans] = useState<WorkoutPlanSummary[]>([]);
+  const [workoutPlansLoadState, setWorkoutPlansLoadState] = useState<LoadState>("loading");
+  const [workoutPlansError, setWorkoutPlansError] = useState<string | null>(null);
+  const [workoutPlansRetry, setWorkoutPlansRetry] = useState(0);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -871,6 +1075,8 @@ function BackofficeScreen({
   useEffect(() => {
     let ignore = false;
     setLoadState("loading");
+    setWorkoutPlansLoadState(user.role === "admin" || user.role === "staff" ? "loading" : "idle");
+    setWorkoutPlansError(null);
 
     api
       .adminDashboard(session.access_token, user.role)
@@ -883,6 +1089,26 @@ function BackofficeScreen({
         setDisciplines(dashboard.disciplines);
         setUsers(dashboard.users);
         setStats(dashboard.stats);
+        if (user.role === "admin" || user.role === "staff") {
+          api
+            .adminWorkoutPlans(session.access_token)
+            .then((plans) => {
+              if (ignore) {
+                return;
+              }
+              setWorkoutPlans(plans);
+              setWorkoutPlansLoadState("ready");
+            })
+            .catch((error: unknown) => {
+              if (ignore) {
+                return;
+              }
+              setWorkoutPlansError(describeError(error));
+              setWorkoutPlansLoadState("error");
+            });
+        } else {
+          setWorkoutPlansLoadState("idle");
+        }
         setLoadState("ready");
       })
       .catch((error: unknown) => {
@@ -896,7 +1122,7 @@ function BackofficeScreen({
     return () => {
       ignore = true;
     };
-  }, [session.access_token, user.role]);
+  }, [session.access_token, user.role, workoutPlansRetry]);
 
   useEffect(() => {
     if (!isAdmin && activeTab === "users") {
@@ -1052,6 +1278,16 @@ function BackofficeScreen({
               <span className="admin-tab-label-mobile" aria-hidden="true">Home</span>
             </button>
             <button
+              aria-label="Allenamento"
+              aria-current={activeTab === "workouts" ? "page" : undefined}
+              onClick={() => setActiveTab("workouts")}
+              type="button"
+            >
+              <ClipboardList aria-hidden="true" />
+              <span className="admin-tab-label-full">Allenamento</span>
+              <span className="admin-tab-label-mobile" aria-hidden="true">Schede</span>
+            </button>
+            <button
               aria-label="Calendario"
               aria-current={activeTab === "calendar" ? "page" : undefined}
               onClick={() => setActiveTab("calendar")}
@@ -1074,24 +1310,14 @@ function BackofficeScreen({
               </button>
             ) : null}
             <button
-              aria-label="Corsi"
+              aria-label="Corsi e sedi"
               aria-current={activeTab === "courses" ? "page" : undefined}
               onClick={() => setActiveTab("courses")}
               type="button"
             >
               <Dumbbell aria-hidden="true" />
-              <span className="admin-tab-label-full">Corsi</span>
-              <span className="admin-tab-label-mobile" aria-hidden="true">Corsi</span>
-            </button>
-            <button
-              aria-label="Sedi"
-              aria-current={activeTab === "locations" ? "page" : undefined}
-              onClick={() => setActiveTab("locations")}
-              type="button"
-            >
-              <MapPin aria-hidden="true" />
-              <span className="admin-tab-label-full">Sedi</span>
-              <span className="admin-tab-label-mobile" aria-hidden="true">Sedi</span>
+              <span className="admin-tab-label-full">Corsi e sedi</span>
+              <span className="admin-tab-label-mobile" aria-hidden="true">Struttura</span>
             </button>
           </nav>
 
@@ -1143,15 +1369,25 @@ function BackofficeScreen({
                         user={user}
                       />
                     }
+                    onNavigate={setActiveTab}
                     publishedCourses={publishedCourses}
                     stats={stats}
                   />
                 ) : null}
                 {activeTab === "calendar" ? (
-                  <AdminCalendarPanel
-                    courses={courses}
-                    locations={locations}
+                  <AdminCalendarPanel courses={courses} locations={locations} token={session.access_token} />
+                ) : null}
+                {activeTab === "workouts" ? (
+                  <WorkoutPlansManager
+                    isAdmin={isAdmin}
+                    onNotice={setNotice}
+                    onPlansChange={setWorkoutPlans}
+                    onRetryPlans={() => setWorkoutPlansRetry((current) => current + 1)}
+                    plans={workoutPlans}
+                    plansError={workoutPlansError}
+                    plansLoadState={workoutPlansLoadState}
                     token={session.access_token}
+                    users={users}
                   />
                 ) : null}
                 {isAdmin && activeTab === "users" ? (
@@ -1164,26 +1400,26 @@ function BackofficeScreen({
                   />
                 ) : null}
                 {activeTab === "courses" ? (
-                  <CoursesManager
-                    courses={courses}
-                    disciplines={disciplines}
-                    isAdmin={isAdmin}
-                    locations={activeLocations}
-                    onCourseChange={upsertCourse}
-                    onCourseDelete={removeCourse}
-                    onDisciplineCreate={addDiscipline}
-                    onNotice={setNotice}
-                    token={session.access_token}
-                  />
-                ) : null}
-                {activeTab === "locations" ? (
-                  <LocationsManager
-                    locations={locations}
-                    onLocationCascade={applyLocationCascade}
-                    onNotice={setNotice}
-                    onLocationChange={upsertLocation}
-                    token={session.access_token}
-                  />
+                  <div className="admin-organization-stack" aria-label="Corsi e sedi">
+                    <CoursesManager
+                      courses={courses}
+                      disciplines={disciplines}
+                      isAdmin={isAdmin}
+                      locations={activeLocations}
+                      onCourseChange={upsertCourse}
+                      onCourseDelete={removeCourse}
+                      onDisciplineCreate={addDiscipline}
+                      onNotice={setNotice}
+                      token={session.access_token}
+                    />
+                    <LocationsManager
+                      locations={locations}
+                      onLocationCascade={applyLocationCascade}
+                      onNotice={setNotice}
+                      onLocationChange={upsertLocation}
+                      token={session.access_token}
+                    />
+                  </div>
                 ) : null}
               </>
             ) : null}
@@ -1304,6 +1540,954 @@ function BookingFocus({
   );
 }
 
+type WorkoutSetDraft = { repetitions: string; loadKg: string };
+type WorkoutDraftValues = Record<string, WorkoutSetDraft[]>;
+
+function emptyWorkoutPlanPayload(): WorkoutPlanPayload {
+  return { title: "", description: null, status: "draft", days: [] };
+}
+
+function planPayloadFromPlan(plan: WorkoutPlan): WorkoutPlanPayload {
+  return {
+    title: plan.title,
+    description: plan.description,
+    status: plan.status,
+    days: plan.days.map((day) => ({
+      id: day.id,
+      label: day.label,
+      title: day.title,
+      position: day.position,
+      exercises: day.exercises.map((exercise) => ({
+        id: exercise.id,
+        name: exercise.name,
+        sets_planned: exercise.sets_planned,
+        reps_planned: exercise.reps_planned,
+        rest_seconds: exercise.rest_seconds,
+        notes: exercise.notes,
+        position: exercise.position,
+      })),
+    })),
+  };
+}
+
+function WorkoutWorkspace({
+  editLogId,
+  logs,
+  onLogsChange,
+  onEditLogHandled,
+  onNotice,
+  onRetryPlans,
+  plans,
+  plansError,
+  plansLoadState,
+  token,
+}: {
+  editLogId: string | null;
+  logs: WorkoutLog[];
+  onLogsChange: (logs: WorkoutLog[]) => void;
+  onEditLogHandled: () => void;
+  onNotice: (notice: Notice) => void;
+  onRetryPlans: () => void;
+  plans: WorkoutPlan[];
+  plansError: string | null;
+  plansLoadState: LoadState;
+  token: string;
+}) {
+  const [planId, setPlanId] = useState(plans[0]?.id ?? "");
+  const [dayId, setDayId] = useState(plans[0]?.days[0]?.id ?? "");
+  const [date, setDate] = useState(localIsoDate());
+  const [note, setNote] = useState("");
+  const [rating, setRating] = useState("");
+  const [values, setValues] = useState<WorkoutDraftValues>({});
+  const [draftState, setDraftState] = useState("Bozza salvata");
+  const [editing, setEditing] = useState<WorkoutLog | null>(null);
+  const [isLoggingOpen, setIsLoggingOpen] = useState(false);
+  const [activeExerciseId, setActiveExerciseId] = useState(plans[0]?.days[0]?.exercises[0]?.id ?? "");
+  const plan = plans.find((item) => item.id === planId) ?? plans[0];
+  const day = plan?.days.find((item) => item.id === dayId) ?? plan?.days[0];
+
+  useEffect(() => {
+    if (plan === undefined) return;
+    if (planId !== plan.id) setPlanId(plan.id);
+    if (day === undefined || !plan.days.some((item) => item.id === dayId)) setDayId(plan.days[0]?.id ?? "");
+  }, [day, dayId, plan, planId]);
+
+  useEffect(() => {
+    if (day === undefined || !day.exercises.some((exercise) => exercise.id === activeExerciseId)) {
+      setActiveExerciseId(day?.exercises[0]?.id ?? "");
+    }
+  }, [activeExerciseId, day]);
+
+  useEffect(() => {
+    if (editLogId === null) return;
+    const log = logs.find((item) => item.id === editLogId);
+    const logPlan = log === undefined ? undefined : plans.find((item) => item.id === log.plan_id);
+    const logDay = logPlan?.days.find((item) => item.id === log?.day_id);
+    if (log === undefined || logPlan === undefined || logDay === undefined) {
+      onNotice({ tone: "info", message: "Questa sessione appartiene a una scheda non più disponibile." });
+      onEditLogHandled();
+      return;
+    }
+    setPlanId(logPlan.id);
+    setDayId(logDay.id);
+    setEditing(log);
+    setIsLoggingOpen(true);
+    onEditLogHandled();
+  }, [editLogId, logs, onEditLogHandled, onNotice, plans]);
+
+  useEffect(() => {
+    if (plan === undefined || day === undefined) return;
+    if (editing !== null && editing.plan_id === plan.id && editing.day_id === day.id) {
+      const next: WorkoutDraftValues = {};
+      for (const exercise of day.exercises) {
+        const entries = editing.entries.filter((entry) => entry.exercise_id === exercise.id).sort((a, b) => a.set_number - b.set_number);
+        next[exercise.id] = Array.from({ length: exercise.sets_planned }, (_, index) => ({
+          repetitions: entries[index] ? String(entries[index].repetitions) : "",
+          loadKg: entries[index] ? String(entries[index].load_kg) : "",
+        }));
+      }
+      setValues(next); setDate(editing.workout_date); setNote(editing.general_note ?? ""); setRating(editing.rating ? String(editing.rating) : "");
+      return;
+    }
+    const key = `maka.workout-draft.${plan.id}.${day.id}.${date}`;
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored !== null) {
+        const parsed = JSON.parse(stored) as { values?: WorkoutDraftValues; note?: string; rating?: string };
+        setValues(parsed.values ?? {}); setNote(parsed.note ?? ""); setRating(parsed.rating ?? ""); setDraftState("Bozza salvata"); return;
+      }
+    } catch { setDraftState("Bozza non salvata"); }
+    setNote("");
+    setRating("");
+    const latest = new Map((plan.latest_results ?? []).map((item) => [item.exercise_id, item]));
+    setValues(Object.fromEntries(day.exercises.map((exercise) => {
+      const result = latest.get(exercise.id);
+      return [exercise.id, Array.from({ length: exercise.sets_planned }, () => ({ repetitions: result ? String(result.repetitions) : "", loadKg: result ? String(result.load_kg) : "" }))];
+    })));
+  }, [date, day, editing, plan]);
+
+  useEffect(() => {
+    if (plan === undefined || day === undefined || editing !== null) return;
+    setDraftState("Salvataggio bozza…");
+    const timer = window.setTimeout(() => {
+      try {
+        localStorage.setItem(`maka.workout-draft.${plan.id}.${day.id}.${date}`, JSON.stringify({ values, note, rating }));
+        setDraftState("Bozza salvata");
+      } catch { setDraftState("Bozza non salvata"); }
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [date, day, editing, note, plan, rating, values]);
+
+  if (plansLoadState === "loading") {
+    return <ResourceStatePanel loading title="Scheda di allenamento" message="Sto caricando la tua scheda." />;
+  }
+  if (plansLoadState === "error") {
+    return (
+      <ResourceStatePanel
+        actionLabel="Riprova caricamento scheda"
+        message={plansError ?? "La scheda non è disponibile in questo momento."}
+        onRetry={onRetryPlans}
+        title="Impossibile caricare la scheda"
+      />
+    );
+  }
+  if (plans.length === 0 || plan === undefined || day === undefined) {
+    return <section className="panel training-panel training-empty" aria-labelledby="training-title"><SectionTitle icon={<Dumbbell aria-hidden="true" />} title="Allenamento" id="training-title" /><ClipboardList aria-hidden="true" /><h3>Nessuna scheda assegnata</h3><p className="muted">Quando il coach ti assegnerà una scheda pubblicata, la troverai qui.</p></section>;
+  }
+
+  function changeSet(exerciseId: string, index: number, field: keyof WorkoutSetDraft, value: string): void {
+    setValues((current) => ({ ...current, [exerciseId]: (current[exerciseId] ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item) }));
+  }
+
+  async function save(): Promise<void> {
+    const entries = day.exercises.flatMap((exercise) => (values[exercise.id] ?? []).flatMap((item, index) => {
+      if (!item.repetitions && !item.loadKg) return [];
+      const repetitions = Number(item.repetitions); const loadKg = Number(item.loadKg);
+      if (!Number.isInteger(repetitions) || repetitions < 1 || !Number.isFinite(loadKg) || loadKg < 0) return [];
+      return [{ exercise_id: exercise.id, exercise_name_snapshot: exercise.name, set_number: index + 1, repetitions, load_kg: Number(loadKg.toFixed(2)), note: null }];
+    }));
+    if (entries.length === 0) { onNotice({ tone: "error", message: "Inserisci almeno una serie valida." }); return; }
+    const payload: WorkoutLogPayload = { plan_id: plan.id, day_id: day.id, workout_date: date, general_note: note.trim() || null, rating: rating ? Number(rating) : null, entries };
+    try {
+      const saved = editing ? await api.updateWorkoutLog(token, editing.id, payload) : await api.createWorkoutLog(token, payload);
+      onLogsChange(editing ? logs.map((item) => item.id === saved.id ? saved : item) : [saved, ...logs]);
+      setEditing(null); setIsLoggingOpen(false); onNotice({ tone: "success", message: editing ? "Allenamento aggiornato." : "Allenamento salvato." });
+    } catch (error) { onNotice({ tone: "error", message: describeError(error) }); }
+  }
+
+  return <><section className="panel training-panel" aria-labelledby="training-title">
+    <div className="training-heading"><SectionTitle icon={<Dumbbell aria-hidden="true" />} title="Allenamento" id="training-title" /><span className="training-view-mode">Consulta scheda</span>{isLoggingOpen ? <span className="draft-status" role="status">{draftState}</span> : null}</div>
+    <label className="field training-plan-picker"><span>Scheda</span><select value={plan.id} onChange={(event) => { setEditing(null); setIsLoggingOpen(false); setPlanId(event.target.value); }}><option value={plan.id}>{plan.title}</option>{plans.filter((item) => item.id !== plan.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+    <div className="training-day-tabs" role="tablist" aria-label="Giorni della scheda">{plan.days.map((item) => <button id={`training-day-tab-${item.id}`} key={item.id} type="button" role="tab" aria-controls={`training-day-panel-${item.id}`} aria-selected={day.id === item.id} onClick={() => { setEditing(null); setIsLoggingOpen(false); setDayId(item.id); }}><strong>{item.label}</strong><span>{item.title ?? "Allenamento"}</span></button>)}</div>
+    <div className="training-exercise-stepper" aria-label="Avanzamento esercizi"><button type="button" aria-label="Esercizio precedente" disabled={day.exercises.findIndex((exercise) => exercise.id === activeExerciseId) <= 0} onClick={() => { const index = day.exercises.findIndex((exercise) => exercise.id === activeExerciseId); setActiveExerciseId(day.exercises[index - 1]?.id ?? activeExerciseId); }}><ChevronLeft aria-hidden="true" /></button><span><strong>Esercizio {Math.max(day.exercises.findIndex((exercise) => exercise.id === activeExerciseId) + 1, 1)} di {day.exercises.length}</strong><small>Scorri un esercizio alla volta</small></span><button type="button" aria-label="Esercizio successivo" disabled={day.exercises.findIndex((exercise) => exercise.id === activeExerciseId) >= day.exercises.length - 1} onClick={() => { const index = day.exercises.findIndex((exercise) => exercise.id === activeExerciseId); setActiveExerciseId(day.exercises[index + 1]?.id ?? activeExerciseId); }}><ChevronRight aria-hidden="true" /></button></div>
+    <div id={`training-day-panel-${day.id}`} className="training-exercise-list" role="tabpanel" aria-labelledby={`training-day-tab-${day.id}`} tabIndex={0}>{day.exercises.map((exercise) => { const last = plan.latest_results?.find((item) => item.exercise_id === exercise.id); const isActive = exercise.id === activeExerciseId; return <article className={`training-exercise-card${isActive ? "" : " is-mobile-hidden"}`} key={exercise.id}><div className="training-exercise-heading"><div><h3>{exercise.name}</h3><p>{exercise.sets_planned} serie · {exercise.reps_planned} ripetizioni{exercise.rest_seconds ? ` · ${exercise.rest_seconds}s recupero` : ""}</p></div>{last ? <span className="last-result">Ultima volta: {last.load_kg} kg × {last.repetitions}</span> : null}</div>{isLoggingOpen ? <div className="training-set-grid">{(values[exercise.id] ?? []).map((item, index) => <div className="training-set-row" key={`${exercise.id}-${index}`}><span>Serie {index + 1}</span><label><span>Ripetizioni</span><input aria-label={`${exercise.name}, serie ${index + 1}, ripetizioni`} inputMode="numeric" min="1" placeholder={exercise.reps_planned} type="number" value={item.repetitions} onChange={(event) => changeSet(exercise.id, index, "repetitions", event.target.value)} /></label><label><span>Kg</span><input aria-label={`${exercise.name}, serie ${index + 1}, carico in kg`} inputMode="decimal" min="0" placeholder="0" step="0.25" type="number" value={item.loadKg} onChange={(event) => changeSet(exercise.id, index, "loadKg", event.target.value)} /></label></div>)}</div> : null}{exercise.notes ? <p className="training-exercise-note">{exercise.notes}</p> : null}</article>; })}</div>
+    <button aria-controls="training-log-panel" aria-expanded={isLoggingOpen} className="secondary-action training-log-toggle" onClick={() => setIsLoggingOpen((current) => !current)} type="button">{isLoggingOpen ? "Chiudi registrazione" : editing ? "Modifica registrazione" : "Registra allenamento (opzionale)"}</button>
+    {isLoggingOpen ? <div className="training-log-panel" id="training-log-panel"><p className="training-log-helper">Compila solo se vuoi registrare questa sessione. La nota è facoltativa.</p><div className="training-summary-fields"><label className="field"><span>Data allenamento</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label><label className="field"><span>Valutazione</span><select value={rating} onChange={(event) => setRating(event.target.value)}><option value="">Non indicata</option>{[1, 2, 3, 4, 5].map((item) => <option key={item} value={item}>{item}/5</option>)}</select></label><label className="field training-note-field"><span>Nota (facoltativa)</span><textarea maxLength={2000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Energia, difficoltà, sensazioni…" /></label></div><div className="training-save-bar"><button className="primary-action" type="button" onClick={() => void save()}><Save aria-hidden="true" />{editing ? "Aggiorna allenamento" : "Salva allenamento"}</button></div>{editing ? <button className="secondary-action training-cancel-edit" type="button" onClick={() => { setEditing(null); setIsLoggingOpen(false); }}>Annulla modifica</button> : null}</div> : null}
+  </section></>;
+}
+
+function WorkoutHistoryPanel({
+  logs,
+  logsError,
+  logsLoadState,
+  onEditLog,
+  onLogsChange,
+  onNotice,
+  onRetryLogs,
+  plans,
+  token,
+}: {
+  logs: WorkoutLog[];
+  logsError: string | null;
+  logsLoadState: LoadState;
+  onEditLog: (log: WorkoutLog) => void;
+  onLogsChange: (logs: WorkoutLog[]) => void;
+  onNotice: (notice: Notice) => void;
+  onRetryLogs: () => void;
+  plans: WorkoutPlan[];
+  token: string;
+}) {
+  const [expandedLog, setExpandedLog] = useState<string | null>(null);
+
+  async function removeLog(log: WorkoutLog): Promise<void> {
+    if (!window.confirm("Eliminare questa sessione dallo storico?")) return;
+    try {
+      await api.deleteWorkoutLog(token, log.id);
+      onLogsChange(logs.filter((item) => item.id !== log.id));
+      onNotice({ tone: "success", message: "Sessione eliminata." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  if (logsLoadState === "loading") {
+    return <ResourceStatePanel compact loading title="Storico allenamenti" message="Sto caricando lo storico." />;
+  }
+  if (logsLoadState === "error") {
+    return (
+      <ResourceStatePanel
+        actionLabel="Riprova caricamento storico"
+        compact
+        message={logsError ?? "Lo storico non è disponibile in questo momento."}
+        onRetry={onRetryLogs}
+        title="Impossibile caricare lo storico"
+      />
+    );
+  }
+
+  return <div className="panel profile-workout-history"><WorkoutHistory logs={logs} expandedLog={expandedLog} onDeleteLog={(log) => void removeLog(log)} onEditLog={onEditLog} onExpandedLogChange={setExpandedLog} plans={plans} /></div>;
+}
+
+function ResourceStatePanel({
+  actionLabel,
+  compact = false,
+  loading = false,
+  message,
+  onRetry,
+  title,
+}: {
+  actionLabel?: string;
+  compact?: boolean;
+  loading?: boolean;
+  message: string;
+  onRetry?: () => void;
+  title: string;
+}) {
+  return (
+    <section className={`panel resource-state-panel${compact ? " resource-state-panel-compact" : ""}`}>
+      {loading ? <span className="loader" aria-hidden="true" /> : <XCircle aria-hidden="true" />}
+      <h2>{title}</h2>
+      <p className="muted">{message}</p>
+      {onRetry !== undefined ? (
+        <button className="primary-action" onClick={onRetry} type="button">
+          <RotateCcw aria-hidden="true" />
+          {actionLabel ?? "Riprova"}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function WorkoutHistory({
+  expandedLog,
+  logs,
+  onDeleteLog,
+  onEditLog,
+  onExpandedLogChange,
+  plans,
+}: {
+  expandedLog: string | null;
+  logs: WorkoutLog[];
+  onDeleteLog: (log: WorkoutLog) => void;
+  onEditLog: (log: WorkoutLog) => void;
+  onExpandedLogChange: (logId: string | null) => void;
+  plans: WorkoutPlan[];
+}) {
+  const [selectedPlanId, setSelectedPlanId] = useState("all");
+  const [selectedDayId, setSelectedDayId] = useState("all");
+  const filterMenuRef = useRef<HTMLDetailsElement>(null);
+  const [visibleCount, setVisibleCount] = useState(6);
+  const dayOptions = useMemo(() => {
+    const sourcePlans = selectedPlanId === "all" ? plans : plans.filter((plan) => plan.id === selectedPlanId);
+    const options = new Map<string, string>();
+    sourcePlans.forEach((plan) => plan.days.forEach((day) => options.set(day.id, `${day.label}${day.title ? ` · ${day.title}` : ""}`)));
+    return Array.from(options, ([id, label]) => ({ id, label }));
+  }, [plans, selectedPlanId]);
+  const filteredLogs = logs.filter((log) => (
+    (selectedPlanId === "all" || log.plan_id === selectedPlanId)
+      && (selectedDayId === "all" || log.day_id === selectedDayId)
+  ));
+  const visibleLogs = filteredLogs.slice(0, visibleCount);
+  const activeFilterCount = Number(selectedPlanId !== "all") + Number(selectedDayId !== "all");
+  useEffect(() => {
+    if (selectedDayId !== "all" && !dayOptions.some((day) => day.id === selectedDayId)) {
+      setSelectedDayId("all");
+    }
+  }, [dayOptions, selectedDayId]);
+
+  function resetFilters(): void {
+    setSelectedPlanId("all");
+    setSelectedDayId("all");
+    setVisibleCount(6);
+    onExpandedLogChange(null);
+  }
+
+  function updatePlanFilter(planId: string): void {
+    setSelectedPlanId(planId);
+    setSelectedDayId("all");
+    setVisibleCount(6);
+    onExpandedLogChange(null);
+  }
+
+  function updateDayFilter(dayId: string): void {
+    setSelectedDayId(dayId);
+    setVisibleCount(6);
+    onExpandedLogChange(null);
+  }
+
+  function hideFilters(): void {
+    filterMenuRef.current?.removeAttribute("open");
+  }
+
+  return <section className="training-history training-history-v2" aria-labelledby="training-history-v2-title">
+    <details className="training-history-disclosure" open>
+      <summary className="training-history-heading"><div className="section-title"><span><History aria-hidden="true" /></span><h2 id="training-history-v2-title">Storico allenamenti</h2></div><span className="training-history-count">{filteredLogs.length} session{filteredLogs.length === 1 ? "e" : "i"}</span><ChevronDown aria-hidden="true" /></summary>
+    {logs.length > 0 ? <details ref={filterMenuRef} className="training-history-filter-menu"><summary><SlidersHorizontal aria-hidden="true" /><span>Filtri storico</span>{activeFilterCount > 0 ? <strong>{activeFilterCount}</strong> : null}</summary><div className="training-history-filter-panel"><label className="field"><span>Scheda</span><select value={selectedPlanId} onChange={(event) => updatePlanFilter(event.target.value)}><option value="all">Tutte le schede</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.title}</option>)}</select></label><label className="field"><span>Giorno della scheda</span><select disabled={dayOptions.length === 0} value={selectedDayId} onChange={(event) => updateDayFilter(event.target.value)}><option value="all">Tutti i giorni</option>{dayOptions.map((day) => <option key={day.id} value={day.id}>{day.label}</option>)}</select></label><div className="training-history-filter-actions">{activeFilterCount > 0 ? <button className="secondary-action" type="button" onClick={resetFilters}>Azzera filtri</button> : null}<button className="secondary-action" type="button" onClick={hideFilters}>Nascondi filtri</button></div></div></details> : null}
+    <div className="training-history-list-heading"><h3>Sessioni registrate</h3><p className="muted">Apri una sessione per vedere esercizi, note e azioni.</p></div>
+    {visibleLogs.length === 0 ? <div className="training-history-empty"><p className="muted">{logs.length === 0 ? "Le sessioni salvate appariranno qui." : "Nessuna sessione corrisponde ai filtri selezionati."}</p>{activeFilterCount > 0 ? <button className="secondary-action" type="button" onClick={resetFilters}>Azzera filtri</button> : null}</div> : <div className="training-history-list">{visibleLogs.map((log) => { const plan = plans.find((item) => item.id === log.plan_id); const day = plan?.days.find((item) => item.id === log.day_id); return <article className="training-history-item" key={log.id}><button className="training-history-toggle" type="button" aria-expanded={expandedLog === log.id} onClick={() => onExpandedLogChange(expandedLog === log.id ? null : log.id)}><span className="training-history-date"><strong>{formatDate(log.workout_date)}</strong><small>{plan?.title ?? "Scheda archiviata"}{day ? ` · ${day.label}${day.title ? ` ${day.title}` : ""}` : ""}</small></span><span className="training-history-meta">{log.entries.length} serie{log.rating ? ` · ${log.rating}/5` : ""}</span><ChevronDown aria-hidden="true" /></button>{expandedLog === log.id ? <div className="training-history-detail"><p>{log.general_note || "Nessuna nota."}</p><ul>{log.entries.map((entry) => <li key={entry.id}><strong>{entry.exercise_name_snapshot}</strong>: {entry.load_kg} kg × {entry.repetitions}</li>)}</ul><div className="training-history-actions"><button className="secondary-action" type="button" onClick={() => onEditLog(log)}>Modifica sessione</button><button className="secondary-action danger-action" type="button" onClick={() => onDeleteLog(log)}>Elimina</button></div></div> : null}</article>; })}</div>}
+    {visibleCount < filteredLogs.length ? <button className="secondary-action training-history-more" type="button" onClick={() => setVisibleCount((current) => current + 6)}>Mostra altre sessioni ({filteredLogs.length - visibleCount})</button> : null}
+    </details>
+  </section>;
+}
+
+function workoutStatusLabel(status: WorkoutPlanStatus): string {
+  return status === "published" ? "Pubblicata" : status === "archived" ? "Archiviata" : "Bozza";
+}
+
+function workoutSummaryFromPlan(plan: WorkoutPlan): WorkoutPlanSummary {
+  return {
+    id: plan.id,
+    title: plan.title,
+    description: plan.description,
+    status: plan.status,
+    created_at: plan.created_at,
+    updated_at: plan.updated_at,
+    day_count: plan.days.length,
+  };
+}
+
+function WorkoutPlansManager({
+  isAdmin,
+  onNotice,
+  onPlansChange,
+  onRetryPlans,
+  plans,
+  plansError,
+  plansLoadState,
+  token,
+  users,
+}: {
+  isAdmin: boolean;
+  onNotice: (notice: Notice) => void;
+  onPlansChange: (plans: WorkoutPlanSummary[]) => void;
+  onRetryPlans: () => void;
+  plans: WorkoutPlanSummary[];
+  plansError: string | null;
+  plansLoadState: LoadState;
+  token: string;
+  users: AdminUser[];
+}) {
+  const [draft, setDraft] = useState<(WorkoutPlanPayload & { id?: string }) | null>(null);
+  const [assignedUserIds, setAssignedUserIds] = useState<string[]>([]);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<{ planId: string; canPublish: boolean } | null>(null);
+
+  function revealEditor(): void {
+    window.requestAnimationFrame(() => {
+      const editor = document.querySelector<HTMLElement>(".workout-editor-panel-v2");
+      if (editor === null) return;
+      editor.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      editor.querySelector<HTMLInputElement>("#workout-title")?.focus();
+    });
+  }
+
+  function startNewPlan(): void {
+    setSaveFeedback(null);
+    setDraft(emptyWorkoutPlanPayload());
+    setAssignedUserIds([]);
+    revealEditor();
+  }
+
+  async function openPlan(planId: string): Promise<void> {
+    setSaveFeedback(null);
+    setLoadingId(planId);
+    try {
+      const [plan, assignments] = await Promise.all([
+        api.adminWorkoutPlan(token, planId),
+        isAdmin ? api.adminWorkoutPlanAssignments(token, planId) : Promise.resolve([]),
+      ]);
+      setDraft({ ...planPayloadFromPlan(plan), id: planId });
+      setAssignedUserIds(assignments.map((assignment) => assignment.user_id));
+      revealEditor();
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
+  function updateDraft(next: Partial<WorkoutPlanPayload>): void {
+    setDraft((current) => current === null ? current : { ...current, ...next });
+  }
+
+  function updateDay(dayIndex: number, next: Partial<WorkoutDayPayload>): void {
+    setDraft((current) => current === null ? current : {
+      ...current,
+      days: current.days.map((day, index) => index === dayIndex ? { ...day, ...next } : day),
+    });
+  }
+
+  function updateExercise(dayIndex: number, exerciseIndex: number, next: Partial<WorkoutExercisePayload>): void {
+    setDraft((current) => current === null ? current : {
+      ...current,
+      days: current.days.map((day, index) => index !== dayIndex ? day : {
+        ...day,
+        exercises: day.exercises.map((exercise, itemIndex) => itemIndex === exerciseIndex ? { ...exercise, ...next } : exercise),
+      }),
+    });
+  }
+
+  function moveItem(dayIndex: number, exerciseIndex: number | null, direction: -1 | 1): void {
+    setDraft((current) => {
+      if (current === null) return current;
+      const days = [...current.days];
+      if (exerciseIndex === null) {
+        const nextIndex = dayIndex + direction;
+        if (nextIndex < 0 || nextIndex >= days.length) return current;
+        [days[dayIndex], days[nextIndex]] = [days[nextIndex], days[dayIndex]];
+        return { ...current, days };
+      }
+      const exercises = [...days[dayIndex].exercises];
+      const nextIndex = exerciseIndex + direction;
+      if (nextIndex < 0 || nextIndex >= exercises.length) return current;
+      [exercises[exerciseIndex], exercises[nextIndex]] = [exercises[nextIndex], exercises[exerciseIndex]];
+      days[dayIndex] = { ...days[dayIndex], exercises };
+      return { ...current, days };
+    });
+  }
+
+  function removeDay(dayIndex: number): void {
+    if (!window.confirm("Rimuovere questo giorno dalla scheda? Gli esercizi resteranno archiviati.")) return;
+    setDraft((current) => current === null ? current : { ...current, days: current.days.filter((_, index) => index !== dayIndex) });
+  }
+
+  function removeExercise(dayIndex: number, exerciseIndex: number): void {
+    if (!window.confirm("Rimuovere questo esercizio dalla scheda? Lo storico resterà intatto.")) return;
+    updateDay(dayIndex, { exercises: draft?.days[dayIndex].exercises.filter((_, index) => index !== exerciseIndex) ?? [] });
+  }
+
+  function addDay(): void {
+    setDraft((current) => current === null ? current : {
+      ...current,
+      days: [...current.days, { label: `Giorno ${String.fromCharCode(65 + current.days.length)}`, title: null, exercises: [] }],
+    });
+  }
+
+  function addExercise(dayIndex: number): void {
+    setDraft((current) => current === null ? current : {
+      ...current,
+      days: current.days.map((day, index) => index !== dayIndex ? day : {
+        ...day,
+        exercises: [...day.exercises, { name: "", sets_planned: 3, reps_planned: "8-10", rest_seconds: null, notes: null }],
+      }),
+    });
+  }
+
+  async function savePlan(): Promise<void> {
+    if (saving) return;
+    if (
+      draft === null ||
+      draft.title.trim() === "" ||
+      draft.days.length === 0 ||
+      draft.days.some((day) => day.exercises.length === 0 || day.exercises.some((exercise) => exercise.name.trim() === ""))
+    ) {
+      onNotice({ tone: "error", message: "Inserisci il titolo e il nome di ogni esercizio." });
+      return;
+    }
+    const payload: WorkoutPlanPayload = {
+      title: draft.title,
+      description: draft.description,
+      status: draft.status,
+      days: draft.days.map((day, position) => ({ ...day, position, exercises: day.exercises.map((exercise, exercisePosition) => ({ ...exercise, position: exercisePosition })) })),
+    };
+    setSaving(true);
+    try {
+      const saved = draft.id === undefined
+        ? await api.createAdminWorkoutPlan(token, payload)
+        : await api.updateAdminWorkoutPlan(token, draft.id, payload);
+      if (isAdmin) {
+        const existingAssignments = draft.id
+          ? await api.adminWorkoutPlanAssignments(token, saved.id)
+          : [];
+        const existingIds = new Set(existingAssignments.map((assignment) => assignment.user_id));
+        const selectedIds = new Set(assignedUserIds);
+        await Promise.all(
+          [...selectedIds]
+            .filter((userId) => !existingIds.has(userId))
+            .map((userId) => api.assignAdminWorkoutPlan(token, saved.id, userId)),
+        );
+        await Promise.all(
+          [...existingIds]
+            .filter((userId) => !selectedIds.has(userId))
+            .map((userId) => api.unassignAdminWorkoutPlan(token, saved.id, userId)),
+        );
+      }
+      setDraft({ ...planPayloadFromPlan(saved), id: saved.id });
+      onPlansChange(plans.some((plan) => plan.id === saved.id) ? plans.map((plan) => plan.id === saved.id ? workoutSummaryFromPlan(saved) : plan) : [workoutSummaryFromPlan(saved), ...plans]);
+      setSaveFeedback({ planId: saved.id, canPublish: saved.status === "draft" });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function changeStatus(plan: WorkoutPlanSummary, action: "publish" | "unpublish" | "archive"): Promise<void> {
+    if (action === "archive" && !window.confirm("Archiviare la scheda? Lo storico degli utenti resterà disponibile.")) return;
+    try {
+      const saved = action === "publish"
+        ? await api.publishAdminWorkoutPlan(token, plan.id)
+        : action === "unpublish"
+          ? await api.unpublishAdminWorkoutPlan(token, plan.id)
+          : await api.archiveAdminWorkoutPlan(token, plan.id);
+      onPlansChange(plans.map((item) => item.id === saved.id ? workoutSummaryFromPlan(saved) : item));
+      if (draft?.id === saved.id) setDraft({ ...planPayloadFromPlan(saved), id: saved.id });
+      onNotice({ tone: "success", message: `Scheda ${action === "archive" ? "archiviata" : action === "publish" ? "pubblicata" : "riportata in bozza"}.` });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function duplicatePlan(planId: string): Promise<void> {
+    try {
+      const duplicate = await api.duplicateAdminWorkoutPlan(token, planId);
+      onPlansChange([workoutSummaryFromPlan(duplicate), ...plans]);
+      setSaveFeedback(null);
+      setDraft({ ...planPayloadFromPlan(duplicate), id: duplicate.id });
+      setAssignedUserIds([]);
+      revealEditor();
+      onNotice({ tone: "success", message: "Scheda duplicata come bozza." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    }
+  }
+
+  async function publishSavedPlan(): Promise<void> {
+    if (saveFeedback === null) return;
+    const plan = plans.find((item) => item.id === saveFeedback.planId);
+    if (plan === undefined) return;
+    await changeStatus(plan, "publish");
+    setSaveFeedback(null);
+  }
+
+  return (
+    <div className="backoffice-grid workout-admin-grid">
+      {draft !== null ? (
+        <WorkoutEditorPanel
+          assignedUserIds={assignedUserIds}
+          draft={draft}
+          isAdmin={isAdmin}
+          onAddDay={addDay}
+          onAddExercise={addExercise}
+          onAssignedUserIdsChange={(ids) => setAssignedUserIds(ids)}
+          onClose={() => { setSaveFeedback(null); setDraft(null); }}
+          onMoveItem={moveItem}
+          onRemoveDay={removeDay}
+          onRemoveExercise={removeExercise}
+          onSave={savePlan}
+          onBackToPlans={() => { setSaveFeedback(null); setDraft(null); }}
+          onContinueAfterSave={() => setSaveFeedback(null)}
+          onPublishSaved={() => void publishSavedPlan()}
+          saveFeedback={saveFeedback}
+          isSaving={saving}
+          onUpdateDay={updateDay}
+          onUpdateDraft={updateDraft}
+          onUpdateExercise={updateExercise}
+          users={users}
+        />
+      ) : null}
+      <div className="admin-page-heading admin-panel-wide"><div><p className="eyebrow">Programmazione</p><h2>Allenamento</h2></div><span>Pubblica schede e aggiorna gli esercizi senza perdere lo storico.</span></div>
+      <section className="admin-panel workout-plan-list-panel" aria-labelledby="workout-plan-list-title">
+        <div className="admin-page-heading"><h3 id="workout-plan-list-title">Schede</h3><button className="primary-action" type="button" onClick={startNewPlan}><Plus aria-hidden="true" />Nuova scheda</button></div>
+        {plansLoadState === "loading" ? <ResourceStatePanel compact loading title="Schede" message="Sto caricando le schede." /> : null}
+        {plansLoadState === "error" ? (
+          <ResourceStatePanel
+            actionLabel="Riprova caricamento schede"
+            compact
+            message={plansError ?? "Le schede non sono disponibili in questo momento."}
+            onRetry={onRetryPlans}
+            title="Impossibile caricare le schede"
+          />
+        ) : null}
+        {plansLoadState === "ready" && plans.length === 0 ? <p className="muted">Non ci sono ancora schede.</p> : null}
+        {plansLoadState === "ready" && plans.length > 0 ? <div className="admin-list">{plans.map((plan) => <article className="admin-list-item workout-plan-admin-item" key={plan.id}><div><div className="workout-plan-row-heading"><h3>{plan.title}</h3><span className={`workout-status workout-status-${plan.status}`}>{workoutStatusLabel(plan.status)}</span></div><p>{plan.day_count} giorni · aggiornata {formatDate(plan.updated_at.slice(0, 10))}</p></div><div className="admin-row-actions"><button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={() => void openPlan(plan.id)}><Pencil aria-hidden="true" />Modifica</button><button className="secondary-action" type="button" onClick={() => void duplicatePlan(plan.id)}>Duplica</button>{plan.status === "published" ? <button className="secondary-action" type="button" onClick={() => void changeStatus(plan, "unpublish")}>Depubblica</button> : plan.status !== "archived" ? <button className="primary-action" type="button" onClick={() => void changeStatus(plan, "publish")}>Pubblica</button> : null}{plan.status !== "archived" ? <button className="secondary-action danger-action" type="button" onClick={() => void changeStatus(plan, "archive")}>Archivia</button> : null}</div></article>)}</div> : null}
+      </section>
+    </div>
+  );
+}
+
+type WorkoutEditorPanelProps = {
+  assignedUserIds: string[];
+  draft: WorkoutPlanPayload & { id?: string };
+  isAdmin: boolean;
+  onAddDay: () => void;
+  onAddExercise: (dayIndex: number) => void;
+  onAssignedUserIdsChange: (ids: string[]) => void;
+  onBackToPlans: () => void;
+  onClose: () => void;
+  onContinueAfterSave: () => void;
+  onMoveItem: (dayIndex: number, exerciseIndex: number | null, direction: -1 | 1) => void;
+  onRemoveDay: (dayIndex: number) => void;
+  onRemoveExercise: (dayIndex: number, exerciseIndex: number) => void;
+  onSave: () => Promise<void>;
+  onPublishSaved: () => void;
+  isSaving: boolean;
+  onUpdateDay: (dayIndex: number, next: Partial<WorkoutDayPayload>) => void;
+  onUpdateDraft: (next: Partial<WorkoutPlanPayload>) => void;
+  onUpdateExercise: (
+    dayIndex: number,
+    exerciseIndex: number,
+    next: Partial<WorkoutExercisePayload>,
+  ) => void;
+  saveFeedback: { planId: string; canPublish: boolean } | null;
+  users: AdminUser[];
+};
+
+type WorkoutEditorStep = 1 | 2 | 3 | 4;
+
+function WorkoutEditorPanel({
+  assignedUserIds,
+  draft,
+  isAdmin,
+  onAddDay,
+  onAddExercise,
+  onAssignedUserIdsChange,
+  onBackToPlans,
+  onClose,
+  onContinueAfterSave,
+  onMoveItem,
+  onRemoveDay,
+  onRemoveExercise,
+  onSave,
+  onPublishSaved,
+  isSaving,
+  onUpdateDay,
+  onUpdateDraft,
+  onUpdateExercise,
+  saveFeedback,
+  users,
+}: WorkoutEditorPanelProps) {
+  const [activeDayIndex, setActiveDayIndex] = useState(0);
+  const [assignmentQuery, setAssignmentQuery] = useState("");
+  const [visibleAssignmentCount, setVisibleAssignmentCount] = useState(8);
+  const [activeEditorStep, setActiveEditorStep] = useState<WorkoutEditorStep>(1);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const saveFeedbackRef = useRef<HTMLDivElement>(null);
+  const isCreationFlow = draft.id === undefined;
+  const activeUsers = useMemo(
+    () => users.filter((user) => user.role === "user" && user.status === "active"),
+    [users],
+  );
+  const matchingUsers = useMemo(() => {
+    const query = assignmentQuery.trim().toLowerCase();
+    return activeUsers
+      .filter((user) =>
+        `${user.first_name ?? ""} ${user.last_name ?? ""} ${user.email}`
+          .toLowerCase()
+          .includes(query),
+      );
+  }, [activeUsers, assignmentQuery]);
+  const visibleMatchingUsers = matchingUsers.slice(0, visibleAssignmentCount);
+
+  useEffect(() => {
+    setVisibleAssignmentCount(8);
+  }, [assignmentQuery, activeUsers.length]);
+  useStepperHistory({
+    enabled: isCreationFlow,
+    flowId: "workout-editor",
+    onClose,
+    onStepChange: (nextStep) => {
+      if (nextStep >= 1 && nextStep <= 4) {
+        setActiveEditorStep(nextStep as WorkoutEditorStep);
+      }
+    },
+    step: activeEditorStep,
+  });
+
+  useEffect(() => {
+    setActiveDayIndex((current) => Math.min(current, Math.max(draft.days.length - 1, 0)));
+  }, [draft.days.length]);
+
+  useEffect(() => {
+    if (saveFeedback === null) return;
+    window.requestAnimationFrame(() => saveFeedbackRef.current?.focus());
+  }, [saveFeedback]);
+
+  function toggleAssignment(userId: string): void {
+    onAssignedUserIdsChange(
+      assignedUserIds.includes(userId)
+        ? assignedUserIds.filter((id) => id !== userId)
+        : [...assignedUserIds, userId],
+    );
+  }
+
+  function removeActiveDay(): void {
+    onRemoveDay(activeDayIndex);
+    setActiveDayIndex((current) => Math.max(0, Math.min(current, draft.days.length - 2)));
+  }
+
+  function addNewDay(): void {
+    onAddDay();
+    setActiveDayIndex(draft.days.length);
+  }
+
+  function showEditorStep(step: WorkoutEditorStep): boolean {
+    return !isCreationFlow || activeEditorStep === step;
+  }
+
+  function goToEditorStep(step: WorkoutEditorStep): void {
+    if (step === 4) {
+      if (draft.title.trim() === "") {
+        setValidationMessage("Inserisci un titolo prima di aprire il riepilogo.");
+        return;
+      }
+      if (draft.days.length === 0) {
+        setValidationMessage("Aggiungi almeno un giorno alla scheda prima del riepilogo.");
+        return;
+      }
+      if (draft.days.some((day) => day.exercises.length === 0)) {
+        setValidationMessage("Aggiungi almeno un esercizio a ogni giorno prima del riepilogo.");
+        return;
+      }
+      if (draft.days.some((day) => day.exercises.some((exercise) => exercise.name.trim() === ""))) {
+        setValidationMessage("Completa il nome di ogni esercizio prima del riepilogo.");
+        return;
+      }
+    }
+    setValidationMessage(null);
+    setActiveEditorStep(step);
+    window.requestAnimationFrame(() => {
+      const editor = document.querySelector<HTMLElement>(".workout-editor-panel-v2");
+      editor?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  const editorNextLabel = activeEditorStep === 2
+    ? "Ho finito gli esercizi"
+    : activeEditorStep === 3
+      ? "Vai al riepilogo"
+      : "Continua";
+
+  return (
+    <section className="admin-panel workout-editor-panel workout-editor-panel-v2" aria-labelledby="workout-editor-title-v2">
+      <div className="workout-editor-topbar">
+        <div>
+          <p className="eyebrow">Editor scheda</p>
+          <h3 id="workout-editor-title-v2">{draft.id === undefined ? "Nuova scheda" : draft.title || "Scheda senza titolo"}</h3>
+          <p className="workout-editor-helper">Costruisci il programma per blocchi: prima i giorni, poi gli esercizi, infine i destinatari.</p>
+        </div>
+        <button className="secondary-action" type="button" onClick={onClose}>Chiudi</button>
+      </div>
+
+      {saveFeedback !== null ? <div ref={saveFeedbackRef} className="workout-save-feedback" role="status" tabIndex={-1}>
+        <div>
+          <strong>Scheda salvata.</strong>
+          <p>Scegli se continuare a modificarla, pubblicarla o tornare all’elenco.</p>
+        </div>
+        <div className="workout-save-feedback-actions">
+          <button className={saveFeedback.canPublish ? "secondary-action" : "primary-action"} type="button" onClick={onContinueAfterSave}>Continua modifica</button>
+          {saveFeedback.canPublish ? <button className="primary-action" type="button" onClick={onPublishSaved}>Pubblica scheda</button> : null}
+          <button className="secondary-action" type="button" onClick={onBackToPlans}>Torna alle schede</button>
+        </div>
+      </div> : null}
+
+      <div className="workout-editor-overview" aria-label="Riepilogo scheda">
+        <span><strong>{draft.days.length}</strong> giorni</span>
+        <span><strong>{draft.days.reduce((total, day) => total + day.exercises.length, 0)}</strong> esercizi</span>
+        {isAdmin ? <span><strong>{assignedUserIds.length}</strong> destinatari</span> : null}
+      </div>
+
+      {validationMessage !== null ? <p className="workout-editor-validation" role="alert">{validationMessage}</p> : null}
+
+      {isCreationFlow ? <nav className="admin-stepper workout-stepper" aria-label="Creazione scheda">
+        {(["Dati base", "Giorni ed esercizi", "Destinatari", "Riepilogo"] as const).map((label, index) => { const step = (index + 1) as WorkoutEditorStep; return <button className={activeEditorStep === step ? "is-active" : ""} type="button" aria-current={activeEditorStep === step ? "step" : undefined} onClick={() => goToEditorStep(step)} key={label}><span>{step}</span><strong>{label}</strong></button>; })}
+      </nav> : null}
+
+      <div className="admin-form workout-editor-form" hidden={!showEditorStep(1)}>
+        <label className="field"><span>Titolo scheda</span><input id="workout-title" maxLength={180} value={draft.title} onChange={(event) => onUpdateDraft({ title: event.target.value })} /></label>
+        <label className="field"><span>Descrizione <small>(opzionale)</small></span><textarea maxLength={4000} value={draft.description ?? ""} onChange={(event) => onUpdateDraft({ description: event.target.value || null })} placeholder="Obiettivo, periodo o indicazioni generali" /></label>
+      </div>
+
+      {isAdmin ? (
+        <details className="workout-assignment-panel workout-assignment-panel-v2" hidden={!showEditorStep(3)} open={isCreationFlow ? activeEditorStep === 3 : undefined}>
+          <summary><span><UserRound aria-hidden="true" /> Destinatari</span><strong>{assignedUserIds.length} selezionati</strong></summary>
+          <p className="muted">La scheda sarà visibile solo agli utenti selezionati. Usa “Seleziona tutti” per i programmi standard.</p>
+          <div className="workout-assignment-toolbar">
+            <label className="field"><span>Cerca nome o email</span><input type="search" value={assignmentQuery} onChange={(event) => setAssignmentQuery(event.target.value)} placeholder="Es. Mario o mario@email.it" /></label>
+            <div className="workout-assignment-bulk-actions"><button className="secondary-action" type="button" onClick={() => onAssignedUserIdsChange(activeUsers.map((user) => user.id))}>Seleziona tutti ({activeUsers.length})</button><button className="secondary-action" type="button" onClick={() => onAssignedUserIdsChange([])}>Svuota</button></div>
+          </div>
+          <div className="workout-assignment-list workout-assignment-list-v2" role="group" aria-label="Utenti attivi">
+            {visibleMatchingUsers.map((user) => { const displayName = [user.first_name, user.last_name].filter(Boolean).join(" "); const isSelected = assignedUserIds.includes(user.id); return <label className={`workout-assignment-option${isSelected ? " is-selected" : ""}`} key={user.id}><input checked={isSelected} onChange={() => toggleAssignment(user.id)} type="checkbox" /><span><strong>{displayName || user.email}</strong>{displayName ? <small>{user.email}</small> : null}</span></label>; })}
+          </div>
+          {matchingUsers.length === 0 ? <p className="muted">Nessun utente trovato. Prova con un altro nome o email.</p> : null}
+          {visibleMatchingUsers.length < matchingUsers.length ? <button className="secondary-action workout-assignment-load-more" onClick={() => setVisibleAssignmentCount((current) => current + 8)} type="button">Mostra altri utenti ({matchingUsers.length - visibleMatchingUsers.length})</button> : null}
+          {matchingUsers.length > 0 ? <p className="workout-assignment-hint">{visibleMatchingUsers.length} di {matchingUsers.length} utenti mostrati.</p> : null}
+        </details>
+      ) : <section className="workout-assignment-panel workout-assignment-panel-v2" hidden={!showEditorStep(3)}><h4>Destinatari</h4><p className="muted">La scheda sarà assegnata dall’amministratore dopo la pubblicazione.</p></section>}
+
+      <WorkoutDayBuilder
+        activeDayIndex={activeDayIndex}
+        draft={draft}
+        hidden={!showEditorStep(2)}
+        onAddDay={addNewDay}
+        onAddExercise={onAddExercise}
+        onMoveItem={onMoveItem}
+        onRemoveDay={removeActiveDay}
+        onRemoveExercise={onRemoveExercise}
+        onSelectDay={setActiveDayIndex}
+        onUpdateDay={onUpdateDay}
+        onUpdateExercise={onUpdateExercise}
+      />
+
+
+      {isCreationFlow && activeEditorStep === 4 ? <section className="workout-review-panel" aria-labelledby="workout-review-title"><div className="workout-section-heading"><div><p className="eyebrow">Ultimo controllo</p><h4 id="workout-review-title">Riepilogo scheda</h4></div><span className="muted">Verifica prima di salvare</span></div><dl className="workout-review-summary"><div><dt>Titolo</dt><dd>{draft.title || "Da completare"}</dd></div><div><dt>Giorni</dt><dd>{draft.days.length}</dd></div><div><dt>Esercizi</dt><dd>{draft.days.reduce((total, day) => total + day.exercises.length, 0)}</dd></div>{isAdmin ? <div><dt>Destinatari</dt><dd>{assignedUserIds.length}</dd></div> : null}</dl><div className="workout-review-days">{draft.days.map((day, index) => <div key={day.id ?? `review-${index}`}><strong>{day.label || `Giorno ${index + 1}`}{day.title ? ` · ${day.title}` : ""}</strong><span>{day.exercises.length} esercizi{day.exercises.length > 0 ? ` · ${day.exercises.map((exercise) => exercise.name || "Senza nome").join(", ")}` : ""}</span></div>)}</div></section> : null}
+
+      {isCreationFlow ? <div className="workout-editor-actions workout-editor-actions-v2 workout-stepper-actions">
+        {activeEditorStep > 1 ? <button className="secondary-action" type="button" onClick={() => goToEditorStep((activeEditorStep - 1) as WorkoutEditorStep)}>Indietro</button> : <span />}
+        {activeEditorStep < 4 ? <button className="primary-action" type="button" onClick={() => goToEditorStep((activeEditorStep + 1) as WorkoutEditorStep)}>{editorNextLabel}</button> : <button className="primary-action" disabled={isSaving} type="button" onClick={() => void onSave()}><Save aria-hidden="true" />{isSaving ? "Salvataggio…" : "Salva scheda"}</button>}
+      </div> : <div className="workout-editor-actions workout-editor-actions-v2"><button className="secondary-action" type="button" onClick={addNewDay}><Plus aria-hidden="true" />Aggiungi giorno</button><button className="primary-action" type="button" onClick={() => void onSave()}><Save aria-hidden="true" />Salva scheda</button></div>}
+    </section>
+  );
+}
+
+type WorkoutDayBuilderProps = {
+  activeDayIndex: number;
+  draft: WorkoutPlanPayload & { id?: string };
+  hidden: boolean;
+  onAddDay: () => void;
+  onAddExercise: (dayIndex: number) => void;
+  onMoveItem: (dayIndex: number, exerciseIndex: number | null, direction: -1 | 1) => void;
+  onRemoveDay: () => void;
+  onRemoveExercise: (dayIndex: number, exerciseIndex: number) => void;
+  onSelectDay: (dayIndex: number) => void;
+  onUpdateDay: (dayIndex: number, next: Partial<WorkoutDayPayload>) => void;
+  onUpdateExercise: (
+    dayIndex: number,
+    exerciseIndex: number,
+    next: Partial<WorkoutExercisePayload>,
+  ) => void;
+};
+
+function WorkoutDayBuilder({
+  activeDayIndex,
+  draft,
+  hidden,
+  onAddDay: addDay,
+  onAddExercise: addExercise,
+  onMoveItem,
+  onRemoveDay,
+  onRemoveExercise,
+  onSelectDay,
+  onUpdateDay,
+  onUpdateExercise,
+}: WorkoutDayBuilderProps) {
+  const activeDay = draft.days[activeDayIndex];
+
+  function addNewDayAndFocus(): void {
+    const nextDayIndex = draft.days.length;
+    addDay();
+    window.requestAnimationFrame(() => {
+      const newDay = document.querySelector(`[data-workout-day="${nextDayIndex}"]`);
+      (newDay?.querySelector("input") as HTMLInputElement | null)?.focus();
+    });
+  }
+
+  function addExerciseAndFocus(): void {
+    if (activeDay === undefined) return;
+    const nextExerciseIndex = activeDay.exercises.length;
+    addExercise(activeDayIndex);
+    window.requestAnimationFrame(() => {
+      const newExercise = document.querySelectorAll(".workout-exercise-card-v3")[nextExerciseIndex];
+      (newExercise?.querySelector("input") as HTMLInputElement | null)?.focus();
+    });
+  }
+
+  function onAddDay(): void {
+    addNewDayAndFocus();
+  }
+
+  function onAddExercise(dayIndex: number): void {
+    if (dayIndex !== activeDayIndex) {
+      addExercise(dayIndex);
+      return;
+    }
+    addExerciseAndFocus();
+  }
+
+  return (
+    <section className="workout-editor-days-v3" aria-labelledby="workout-days-title-v3" hidden={hidden}>
+      <div className="workout-structure-heading">
+        <div>
+          <p className="eyebrow">Struttura della scheda</p>
+          <h4 id="workout-days-title-v3">Giorni della scheda</h4>
+          <p className="workout-structure-helper">Ogni giorno è un blocco indipendente: puoi aggiungerlo, riordinarlo e lavorarci senza perdere il contesto.</p>
+        </div>
+        <button className="secondary-action" type="button" onClick={addNewDayAndFocus}><Plus aria-hidden="true" />Nuovo giorno</button>
+      </div>
+
+      <div className="workout-structure-layout">
+        <aside className="workout-day-list" role="tablist" aria-label="Giorni della scheda">
+          <div className="workout-day-list-heading"><span>Giorni</span><strong>{draft.days.length}</strong></div>
+          {draft.days.length === 0 ? <div className="workout-day-list-empty"><CalendarDays aria-hidden="true" /><p>Inizia creando il primo giorno della scheda.</p><button className="primary-action" type="button" onClick={addNewDayAndFocus}><Plus aria-hidden="true" />Crea giorno</button></div> : draft.days.map((day, index) => <button id={`workout-editor-v3-day-tab-${index}`} className={`workout-day-list-item${activeDayIndex === index ? " is-active" : ""}`} type="button" role="tab" aria-controls={`workout-editor-v3-day-panel-${index}`} aria-selected={activeDayIndex === index} onClick={() => onSelectDay(index)} key={day.id ?? `day-${index}`} data-workout-day={index}><span className="workout-day-list-number">{String(index + 1).padStart(2, "0")}</span><span className="workout-day-list-copy"><strong>{day.label || `Giorno ${index + 1}`}</strong><small>{day.title || "Senza obiettivo"}</small><em>{day.exercises.length} {day.exercises.length === 1 ? "esercizio" : "esercizi"}</em></span><ChevronRight aria-hidden="true" /></button>)}
+          {draft.days.length > 0 ? <button className="workout-day-list-add" type="button" onClick={addNewDayAndFocus}><Plus aria-hidden="true" />Aggiungi giorno</button> : null}
+        </aside>
+
+        {activeDay ? <div id={`workout-editor-v3-day-panel-${activeDayIndex}`} className="workout-active-day" role="tabpanel" aria-labelledby={`workout-editor-v3-day-tab-${activeDayIndex}`} tabIndex={0}>
+          <div className="workout-active-day-heading">
+            <div><span className="workout-active-day-kicker">Giorno {activeDayIndex + 1} di {draft.days.length}</span><h5>{activeDay.label || `Giorno ${activeDayIndex + 1}`}{activeDay.title ? <span> · {activeDay.title}</span> : null}</h5><p>Definisci il focus del giorno e aggiungi gli esercizi in ordine.</p></div>
+            <div className="workout-day-actions-v3"><button className="icon-button" aria-label="Sposta giorno su" type="button" onClick={() => onMoveItem(activeDayIndex, null, -1)}><ArrowUp aria-hidden="true" /></button><button className="icon-button" aria-label="Sposta giorno giù" type="button" onClick={() => onMoveItem(activeDayIndex, null, 1)}><ArrowDown aria-hidden="true" /></button><button className="secondary-action danger-action" type="button" onClick={onRemoveDay}>Rimuovi giorno</button></div>
+          </div>
+          <div className="workout-day-fields-v3"><label className="field"><span>Nome breve</span><input maxLength={80} value={activeDay.label} onChange={(event) => onUpdateDay(activeDayIndex, { label: event.target.value })} placeholder="Es. Giorno 1" /></label><label className="field"><span>Focus del giorno</span><input maxLength={180} value={activeDay.title ?? ""} onChange={(event) => onUpdateDay(activeDayIndex, { title: event.target.value || null })} placeholder="Es. Spinta" /></label></div>
+          <div className="workout-exercise-heading-v3"><div><span className="workout-active-day-kicker">Secondo blocco</span><h5>Esercizi <em>{activeDay.exercises.length}</em></h5><p>Inserisci prima i fondamentali, poi completa volume e recuperi.</p></div><button className="primary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi esercizio</button></div>
+          {activeDay.exercises.length === 0 ? <div className="workout-exercise-empty-v3"><Dumbbell aria-hidden="true" /><strong>Nessun esercizio in questo giorno</strong><span>Aggiungi il primo esercizio per iniziare la scheda.</span><button className="secondary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi il primo esercizio</button></div> : <div className="workout-exercise-list-v3">{activeDay.exercises.map((exercise, exerciseIndex) => <article className="workout-exercise-card-v3" key={exercise.id ?? `exercise-${exerciseIndex}`}><div className="workout-exercise-card-top"><span className="workout-exercise-number-v3">{String(exerciseIndex + 1).padStart(2, "0")}</span><div><strong>{exercise.name || "Nuovo esercizio"}</strong><span>{exercise.sets_planned} serie · {exercise.reps_planned || "Ripetizioni da definire"}</span></div><div className="workout-exercise-actions-v3"><button className="icon-button" aria-label="Sposta esercizio su" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, -1)}><ArrowUp aria-hidden="true" /></button><button className="icon-button" aria-label="Sposta esercizio giù" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, 1)}><ArrowDown aria-hidden="true" /></button><button className="icon-button danger-action" aria-label="Rimuovi esercizio" type="button" onClick={() => onRemoveExercise(activeDayIndex, exerciseIndex)}><Trash2 aria-hidden="true" /></button></div></div><div className="workout-exercise-fields-v3"><label className="field workout-exercise-name-v3"><span>Nome esercizio</span><input maxLength={180} value={exercise.name} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { name: event.target.value })} placeholder="Es. Dips" /></label><label className="field"><span>Serie</span><input inputMode="numeric" min="1" max="50" type="number" value={exercise.sets_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { sets_planned: Number(event.target.value) })} /></label><label className="field"><span>Ripetizioni</span><input maxLength={40} value={exercise.reps_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { reps_planned: event.target.value })} placeholder="Es. 8-10" /></label><label className="field"><span>Recupero (sec.)</span><input inputMode="numeric" min="0" type="number" value={exercise.rest_seconds ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { rest_seconds: event.target.value === "" ? null : Number(event.target.value) })} placeholder="60" /></label><label className="field workout-exercise-note-v3"><span>Nota tecnica <small>(opzionale)</small></span><input maxLength={500} value={exercise.notes ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { notes: event.target.value || null })} placeholder="Indicazione tecnica" /></label></div></article>)}</div>}
+        </div> : <div className="workout-active-day-empty"><CalendarDays aria-hidden="true" /><h5>Il primo giorno parte da qui</h5><p>Usa “Nuovo giorno” per impostare il primo blocco della scheda.</p><button className="primary-action" type="button" onClick={onAddDay}><Plus aria-hidden="true" />Crea il primo giorno</button></div>}
+      </div>
+      {activeDay ? <div className="workout-builder-bottom-actions"><button className="secondary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi esercizio in fondo</button><button className="secondary-action" type="button" onClick={onAddDay}><Plus aria-hidden="true" />Aggiungi un altro giorno</button></div> : null}
+    </section>
+  );
+}
+
 function DatePicker({
   dates,
   selectedDate,
@@ -1316,10 +2500,7 @@ function DatePicker({
   const pickerRef = useRef<HTMLDivElement>(null);
 
   function moveDates(direction: number): void {
-    pickerRef.current?.scrollBy({
-      behavior: "smooth",
-      left: direction * 220,
-    });
+    pickerRef.current?.scrollBy({ behavior: "smooth", left: direction * 220 });
   }
 
   return (
@@ -1327,20 +2508,10 @@ function DatePicker({
       <div className="date-picker-toolbar">
         <span>Seleziona una data</span>
         <div className="date-picker-actions">
-          <button
-            aria-label="Date precedenti"
-            className="date-picker-nav"
-            onClick={() => moveDates(-1)}
-            type="button"
-          >
+          <button aria-label="Date precedenti" className="date-picker-nav" onClick={() => moveDates(-1)} type="button">
             <ChevronLeft aria-hidden="true" />
           </button>
-          <button
-            aria-label="Date successive"
-            className="date-picker-nav"
-            onClick={() => moveDates(1)}
-            type="button"
-          >
+          <button aria-label="Date successive" className="date-picker-nav" onClick={() => moveDates(1)} type="button">
             <ChevronRight aria-hidden="true" />
           </button>
         </div>
@@ -1348,20 +2519,19 @@ function DatePicker({
       <div ref={pickerRef} className="date-picker" role="group" aria-label="Data del calendario">
         {dates.map((date) => {
           const parsedDate = dateFromIso(date);
-          const weekday = weekdays[parsedDate.getDay()];
           const month = new Intl.DateTimeFormat("it-IT", { month: "short" })
             .format(parsedDate)
             .replace(".", "");
           return (
             <button
-              aria-label={`${weekday} ${formatDate(date)}`}
+              aria-label={`${weekdays[parsedDate.getDay()]} ${formatDate(date)}`}
               aria-pressed={selectedDate === date}
               className={selectedDate === date ? "is-selected" : ""}
               key={date}
               onClick={() => onChange(date)}
               type="button"
             >
-              <span>{weekday.slice(0, 3)}</span>
+              <span>{weekdays[parsedDate.getDay()].slice(0, 3)}</span>
               <strong>{parsedDate.getDate()}</strong>
               <small>{month}</small>
             </button>
@@ -1369,108 +2539,6 @@ function DatePicker({
         })}
       </div>
     </div>
-  );
-}
-
-function WeeklyCalendar({
-  bookings,
-  courses,
-  pendingSessionId,
-  subscription,
-  onCreateBooking,
-}: {
-  bookings: Booking[];
-  courses: CatalogCourse[];
-  pendingSessionId: string | null;
-  subscription: SubscriptionInfo | null;
-  onCreateBooking: (course: CatalogCourse, courseSession: CatalogSession) => void;
-}) {
-  const dates = useMemo(() => upcomingDates(), []);
-  const firstOccurrenceDate = courses
-    .flatMap((course) => course.sessions.map((session) => session.occurs_on))
-    .sort()[0];
-  const [selectedDate, setSelectedDate] = useState(firstOccurrenceDate ?? dates[0]);
-  const [isAgendaExpanded, setIsAgendaExpanded] = useState(false);
-  const entries = courses
-    .flatMap((course) =>
-      course.sessions
-        .filter((session) => session.occurs_on === selectedDate)
-        .map((session) => ({ course, session })),
-    )
-    .sort((left, right) => left.session.starts_at.localeCompare(right.session.starts_at));
-
-  return (
-    <section className="panel calendar-panel user-calendar" aria-labelledby="weekly-calendar-title">
-      <SectionTitle
-        icon={<CalendarDays aria-hidden="true" />}
-        title="Calendario lezioni"
-        id="weekly-calendar-title"
-      />
-      <DatePicker
-        dates={dates}
-        selectedDate={selectedDate}
-        onChange={(date) => {
-          setSelectedDate(date);
-          setIsAgendaExpanded(false);
-        }}
-      />
-      <div
-        className={isAgendaExpanded ? "calendar-agenda is-expanded" : "calendar-agenda"}
-        id="user-calendar-agenda"
-      >
-        {entries.length === 0 ? (
-          <p className="muted">Nessuna lezione programmata per il {formatDate(selectedDate)}.</p>
-        ) : (
-          entries.map(({ course, session }) => {
-            const existingBooking = bookingForOccurrence(bookings, session);
-            const hasValidSubscription = canBookOccurrence(
-              subscription,
-              session,
-              course.requires_active_subscription,
-            );
-            const canBook = existingBooking === undefined && hasValidSubscription;
-            return (
-              <article className="calendar-entry" key={occurrenceKey(session)}>
-                <time>{formatTime(session.starts_at)}</time>
-                <div>
-                  <h3>{course.title}</h3>
-                  <p>
-                    {course.location_name} · {formatTime(session.starts_at)} -{" "}
-                    {formatTime(session.ends_at)}
-                  </p>
-                </div>
-                <button
-                  className="primary-action"
-                  disabled={!canBook || pendingSessionId === occurrenceKey(session)}
-                  onClick={() => onCreateBooking(course, session)}
-                  type="button"
-                >
-                  {!canBook
-                    ? existingBooking !== undefined
-                      ? bookedActionLabel(existingBooking)
-                      : "Iscrizione richiesta"
-                    : session.available_spots > 0
-                      ? "Prenota"
-                      : "Lista attesa"}
-                </button>
-              </article>
-            );
-          })
-        )}
-        {entries.length > 5 ? (
-          <button
-            aria-controls="user-calendar-agenda"
-            aria-expanded={isAgendaExpanded}
-            className="secondary-action calendar-more-toggle"
-            onClick={() => setIsAgendaExpanded((current) => !current)}
-            type="button"
-          >
-            <ChevronDown aria-hidden="true" />
-            {isAgendaExpanded ? "Mostra meno" : `Mostra altre ${entries.length - 5} lezioni`}
-          </button>
-        ) : null}
-      </div>
-    </section>
   );
 }
 
@@ -1486,11 +2554,9 @@ function AdminCalendarPanel({
   const dates = useMemo(() => {
     const visibleDates = upcomingDates(28);
     const today = visibleDates[0];
-    const singleDates = courses.flatMap((course) =>
-      course.sessions
-        .map((session) => session.occurs_on)
-        .filter((occursOn): occursOn is string => occursOn !== null && occursOn >= today),
-    );
+    const singleDates = courses
+      .flatMap((course) => course.sessions.map((session) => session.occurs_on))
+      .filter((occursOn): occursOn is string => occursOn !== null && occursOn >= today);
     return [...new Set([...visibleDates, ...singleDates])].sort();
   }, [courses]);
   const firstScheduledDate = dates.find((date) => {
@@ -1501,27 +2567,20 @@ function AdminCalendarPanel({
         course.sessions.some(
           (session) =>
             session.is_active &&
-            (session.occurs_on === date ||
-              (session.occurs_on === null && session.weekday === weekday)),
+            (session.occurs_on === date || (session.occurs_on === null && session.weekday === weekday)),
         ),
     );
   });
-  const [selectedDate, setSelectedDate] = useState(firstScheduledDate ?? dates[0]);
+  const [selectedDate, setSelectedDate] = useState(firstScheduledDate ?? dates[0] ?? localIsoDate());
   const [isAgendaExpanded, setIsAgendaExpanded] = useState(false);
-  const selectedWeekday = dateFromIso(selectedDate).getDay();
   const [expandedOccurrenceKey, setExpandedOccurrenceKey] = useState<string | null>(null);
   const [loadingOccurrenceKey, setLoadingOccurrenceKey] = useState<string | null>(null);
-  const [attendeesBySession, setAttendeesBySession] = useState<
-    Record<string, AdminCourseSessionAttendee[]>
-  >({});
+  const [attendeesBySession, setAttendeesBySession] = useState<Record<string, AdminCourseSessionAttendee[]>>({});
   const [attendeeErrors, setAttendeeErrors] = useState<Record<string, string>>({});
-  const [availabilityBySession, setAvailabilityBySession] = useState<
-    Record<string, AdminCourseSessionAvailability>
-  >({});
-  const [availabilityState, setAvailabilityState] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [availabilityBySession, setAvailabilityBySession] = useState<Record<string, AdminCourseSessionAvailability>>({});
+  const [availabilityState, setAvailabilityState] = useState<"loading" | "ready" | "error">("loading");
   const locationNames = new Map(locations.map((location) => [location.id, location.name]));
+  const selectedWeekday = dateFromIso(selectedDate).getDay();
   const entries = courses
     .filter((course) => course.status !== "archived")
     .flatMap((course) =>
@@ -1539,48 +2598,32 @@ function AdminCalendarPanel({
   useEffect(() => {
     let ignore = false;
     setAvailabilityState("loading");
-
     api
       .adminCalendarAvailability(token, selectedDate)
       .then((availability) => {
-        if (ignore) {
-          return;
-        }
+        if (ignore) return;
         setAvailabilityBySession(
-          Object.fromEntries(
-            availability.map((item) => [
-              `${item.course_session_id}:${item.occurs_on}`,
-              item,
-            ]),
-          ),
+          Object.fromEntries(availability.map((item) => [`${item.course_session_id}:${item.occurs_on}`, item])),
         );
         setAvailabilityState("ready");
       })
       .catch(() => {
-        if (!ignore) {
-          setAvailabilityState("error");
-        }
+        if (!ignore) setAvailabilityState("error");
       });
-
     return () => {
       ignore = true;
     };
   }, [selectedDate, token]);
 
-  async function loadAttendees(
-    sessionId: string,
-    occursOn: string,
-    entryKey: string,
-  ): Promise<void> {
+  async function loadAttendees(sessionId: string, entryKey: string): Promise<void> {
     setLoadingOccurrenceKey(entryKey);
     setAttendeeErrors((current) => {
       const next = { ...current };
       delete next[entryKey];
       return next;
     });
-
     try {
-      const attendees = await api.courseSessionAttendees(token, sessionId, occursOn);
+      const attendees = await api.courseSessionAttendees(token, sessionId, selectedDate);
       setAttendeesBySession((current) => ({ ...current, [entryKey]: attendees }));
     } catch (error) {
       setAttendeeErrors((current) => ({ ...current, [entryKey]: describeError(error) }));
@@ -1594,17 +2637,8 @@ function AdminCalendarPanel({
       setExpandedOccurrenceKey(null);
       return;
     }
-
     setExpandedOccurrenceKey(entryKey);
-    if (attendeesBySession[entryKey] === undefined) {
-      void loadAttendees(sessionId, selectedDate, entryKey);
-    }
-  }
-
-  function selectDate(date: string): void {
-    setSelectedDate(date);
-    setExpandedOccurrenceKey(null);
-    setIsAgendaExpanded(false);
+    if (attendeesBySession[entryKey] === undefined) void loadAttendees(sessionId, entryKey);
   }
 
   return (
@@ -1616,11 +2650,16 @@ function AdminCalendarPanel({
         </div>
         <span>{entries.length} lezioni nel giorno selezionato</span>
       </div>
-      <DatePicker dates={dates} selectedDate={selectedDate} onChange={selectDate} />
-      <div
-        className={isAgendaExpanded ? "calendar-agenda is-expanded" : "calendar-agenda"}
-        id="admin-calendar-agenda"
-      >
+      <DatePicker
+        dates={dates}
+        selectedDate={selectedDate}
+        onChange={(date) => {
+          setSelectedDate(date);
+          setExpandedOccurrenceKey(null);
+          setIsAgendaExpanded(false);
+        }}
+      />
+      <div className={isAgendaExpanded ? "calendar-agenda is-expanded" : "calendar-agenda"} id="admin-calendar-agenda">
         {entries.length === 0 ? (
           <p className="muted">Nessuna lezione attiva per il {formatDate(selectedDate)}.</p>
         ) : (
@@ -1632,16 +2671,12 @@ function AdminCalendarPanel({
             const confirmedCount = attendees?.filter((item) => item.status === "confirmed").length ?? 0;
             const waitlistedCount = attendees?.filter((item) => item.status === "waitlisted").length ?? 0;
             const panelId = `session-attendees-${session.id}-${selectedDate}`;
-
             return (
               <article className="calendar-entry admin-calendar-entry" key={entryKey}>
                 <time>{formatTime(session.starts_at)}</time>
                 <div>
                   <h3>{course.title}</h3>
-                  <p>
-                    {locationNames.get(course.location_id) ?? "Sede non disponibile"} ·{" "}
-                    {formatTime(session.starts_at)} - {formatTime(session.ends_at)}
-                  </p>
+                  <p>{locationNames.get(course.location_id) ?? "Sede non disponibile"} · {formatTime(session.starts_at)} - {formatTime(session.ends_at)}</p>
                 </div>
                 <div className="calendar-entry-actions">
                   <span className="calendar-capacity" aria-live="polite">
@@ -1652,66 +2687,21 @@ function AdminCalendarPanel({
                         ? `${session.capacity} posti totali`
                         : `– su ${session.capacity} posti liberi`}
                   </span>
-                  <button
-                    aria-controls={panelId}
-                    aria-expanded={isExpanded}
-                    className="secondary-action attendee-toggle"
-                    onClick={() => toggleAttendees(session.id, entryKey)}
-                    type="button"
-                  >
-                    Prenotati
-                    <ChevronDown aria-hidden="true" />
+                  <button aria-controls={panelId} aria-expanded={isExpanded} className="secondary-action attendee-toggle" onClick={() => toggleAttendees(session.id, entryKey)} type="button">
+                    Prenotati <ChevronDown aria-hidden="true" />
                   </button>
                 </div>
-
                 {isExpanded ? (
                   <div className="attendee-panel" id={panelId} aria-live="polite">
                     {loadingOccurrenceKey === entryKey ? <p>Carico i partecipanti...</p> : null}
                     {attendeeErrors[entryKey] !== undefined ? (
-                      <div className="attendee-error">
-                        <p>{attendeeErrors[entryKey]}</p>
-                        <button
-                          className="secondary-action"
-                          onClick={() => void loadAttendees(session.id, selectedDate, entryKey)}
-                          type="button"
-                        >
-                          Riprova
-                        </button>
-                      </div>
+                      <div className="attendee-error"><p>{attendeeErrors[entryKey]}</p><button className="secondary-action" onClick={() => void loadAttendees(session.id, entryKey)} type="button">Riprova</button></div>
                     ) : null}
-                    {attendees !== undefined && attendees.length === 0 ? (
-                      <p>Nessuna prenotazione attiva per questa lezione.</p>
-                    ) : null}
+                    {attendees !== undefined && attendees.length === 0 ? <p>Nessuna prenotazione attiva per questa lezione.</p> : null}
                     {attendees !== undefined && attendees.length > 0 ? (
                       <>
-                        <div className="attendee-summary">
-                          <strong>{confirmedCount} confermati</strong>
-                          {waitlistedCount > 0 ? <span>{waitlistedCount} in lista d'attesa</span> : null}
-                        </div>
-                        <ul className="attendee-list">
-                          {attendees.map((attendee) => {
-                            const fullName = [attendee.first_name, attendee.last_name]
-                              .filter(Boolean)
-                              .join(" ");
-                            return (
-                              <li key={attendee.booking_id}>
-                                <div>
-                                  <strong>{fullName || attendee.email}</strong>
-                                  {fullName ? <span>{attendee.email}</span> : null}
-                                </div>
-                                <span
-                                  className={
-                                    attendee.status === "waitlisted"
-                                      ? "booking-status waitlisted"
-                                      : "booking-status"
-                                  }
-                                >
-                                  {attendee.status === "waitlisted" ? "Lista attesa" : "Confermato"}
-                                </span>
-                              </li>
-                            );
-                          })}
-                        </ul>
+                        <div className="attendee-summary"><strong>{confirmedCount} confermati</strong>{waitlistedCount > 0 ? <span>{waitlistedCount} in lista d'attesa</span> : null}</div>
+                        <ul className="attendee-list">{attendees.map((attendee) => { const fullName = [attendee.first_name, attendee.last_name].filter(Boolean).join(" "); return <li key={attendee.booking_id}><div><strong>{fullName || attendee.email}</strong>{fullName ? <span>{attendee.email}</span> : null}</div><span className={attendee.status === "waitlisted" ? "booking-status waitlisted" : "booking-status"}>{attendee.status === "waitlisted" ? "Lista attesa" : "Confermato"}</span></li>; })}</ul>
                       </>
                     ) : null}
                   </div>
@@ -1720,18 +2710,7 @@ function AdminCalendarPanel({
             );
           })
         )}
-        {entries.length > 5 ? (
-          <button
-            aria-controls="admin-calendar-agenda"
-            aria-expanded={isAgendaExpanded}
-            className="secondary-action calendar-more-toggle"
-            onClick={() => setIsAgendaExpanded((current) => !current)}
-            type="button"
-          >
-            <ChevronDown aria-hidden="true" />
-            {isAgendaExpanded ? "Mostra meno" : `Mostra altre ${entries.length - 5} lezioni`}
-          </button>
-        ) : null}
+        {entries.length > 5 ? <button aria-controls="admin-calendar-agenda" aria-expanded={isAgendaExpanded} className="secondary-action calendar-more-toggle" onClick={() => setIsAgendaExpanded((current) => !current)} type="button"><ChevronDown aria-hidden="true" />{isAgendaExpanded ? "Mostra meno" : `Mostra altre ${entries.length - 5} lezioni`}</button> : null}
       </div>
     </section>
   );
@@ -1741,15 +2720,30 @@ function AdminDashboardPanel({
   activeLocations,
   activeMembers,
   accountSettings,
+  onNavigate,
   publishedCourses,
   stats,
 }: {
   activeLocations: number;
   activeMembers: number;
   accountSettings: ReactNode;
+  onNavigate: (tab: AdminTab) => void;
   publishedCourses: number;
   stats: AdminStats | null;
 }) {
+  const hasCoursePerformance = (stats?.courses.length ?? 0) > 0;
+  const recommendedAction = hasCoursePerformance
+      ? {
+        description: "Verifica gli iscritti e gli orari delle prossime sessioni.",
+        label: "Apri calendario e iscritti",
+        title: "Controlla la prossima attività",
+      }
+    : {
+        description: "Crea un corso e pianifica la prima lezione per iniziare.",
+        label: "Configura un corso",
+        title: "Completa la configurazione",
+      };
+
   return (
     <div className="backoffice-grid">
       <div className="admin-page-heading admin-panel-wide">
@@ -1759,6 +2753,17 @@ function AdminDashboardPanel({
         </div>
         <span>Aggiornata dai dati di corsi e iscrizioni</span>
       </div>
+      <section className="admin-recommended-action admin-panel-wide" aria-labelledby="admin-recommended-action-title">
+        <div>
+          <p className="eyebrow">Azione consigliata</p>
+          <h3 id="admin-recommended-action-title">{recommendedAction.title}</h3>
+          <p>{recommendedAction.description}</p>
+        </div>
+        <button className="primary-action" onClick={() => onNavigate("calendar")} type="button">
+          <CalendarDays aria-hidden="true" />
+          {recommendedAction.label}
+        </button>
+      </section>
       <section className="admin-overview admin-panel-wide" aria-label="Riepilogo backoffice">
         <article>
           <UsersIcon />
@@ -2603,6 +3608,8 @@ function LocationsManager({
   );
 }
 
+type CourseCreateStep = 1 | 2 | 3;
+
 function CoursesManager({
   courses,
   disciplines,
@@ -2649,6 +3656,7 @@ function CoursesManager({
   const [confirmingDeleteCourseId, setConfirmingDeleteCourseId] = useState<string | null>(null);
   const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [courseCreateStep, setCourseCreateStep] = useState<CourseCreateStep>(1);
   const [courseQuery, setCourseQuery] = useState("");
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
 
@@ -2677,6 +3685,18 @@ function CoursesManager({
     });
   }, [courseQuery, courses, locations]);
 
+  useStepperHistory({
+    enabled: isCreateFormOpen,
+    flowId: "course-create",
+    onClose: () => setIsCreateFormOpen(false),
+    onStepChange: (nextStep) => {
+      if (nextStep >= 1 && nextStep <= 3) {
+        setCourseCreateStep(nextStep as CourseCreateStep);
+      }
+    },
+    step: courseCreateStep,
+  });
+
   function toggleCourseManagement(courseId: string): void {
     const nextCourseId = expandedCourseId === courseId ? null : courseId;
     setExpandedCourseId(nextCourseId);
@@ -2686,6 +3706,20 @@ function CoursesManager({
     setEditingSessionId(null);
     setSessionDraft(null);
     setConfirmingDeleteCourseId(null);
+  }
+
+  function toggleCourseCreateForm(): void {
+    setIsCreateFormOpen((current) => !current);
+    setCourseCreateStep(1);
+    setShowDisciplineCreator(false);
+  }
+
+  function goToCourseCreateStep(step: CourseCreateStep): void {
+    setCourseCreateStep(step);
+    window.requestAnimationFrame(() => {
+      const courseForm = document.querySelector<HTMLElement>(".admin-course-create-form");
+      courseForm?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    });
   }
 
   async function handleCreateDiscipline(): Promise<void> {
@@ -2711,6 +3745,11 @@ function CoursesManager({
 
   async function handleCreateCourse(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (title.trim() === "") {
+      onNotice({ tone: "error", message: "Inserisci il titolo del corso." });
+      setCourseCreateStep(1);
+      return;
+    }
     if (selectedLocationId === "") {
       onNotice({ tone: "error", message: "Crea prima una sede attiva." });
       return;
@@ -2734,6 +3773,13 @@ function CoursesManager({
       setCourseImage(null);
       setIsCreateFormOpen(false);
       setExpandedCourseId(savedCourse.id);
+      setSchedulingCourseId(savedCourse.id);
+      window.requestAnimationFrame(() => {
+        const scheduleForm = document.querySelector(`[data-schedule-course="${savedCourse.id}"]`);
+        if (typeof scheduleForm?.scrollIntoView === "function") {
+          scheduleForm.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
       onNotice({ tone: "success", message: "Corso creato." });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
@@ -2938,7 +3984,7 @@ function CoursesManager({
         <button
           aria-expanded={isCreateFormOpen}
           className="primary-action admin-new-course-trigger"
-          onClick={() => setIsCreateFormOpen((current) => !current)}
+          onClick={toggleCourseCreateForm}
           type="button"
         >
           {isCreateFormOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
@@ -2947,15 +3993,18 @@ function CoursesManager({
       </div>
       {isCreateFormOpen ? (
         <form className="admin-form admin-course-create-form" onSubmit={handleCreateCourse}>
-        <label className="field">
+        <nav className="admin-stepper course-stepper" aria-label="Creazione corso">
+          {(["Dati del corso", "Sede e accesso", "Riepilogo"] as const).map((label, index) => { const step = (index + 1) as CourseCreateStep; return <button className={courseCreateStep === step ? "is-active" : ""} type="button" aria-current={courseCreateStep === step ? "step" : undefined} onClick={() => goToCourseCreateStep(step)} key={label}><span>{step}</span><strong>{label}</strong></button>; })}
+        </nav>
+        <label className="field" hidden={courseCreateStep !== 1}>
           <span>Titolo corso</span>
-          <input required value={title} onChange={(event) => setTitle(event.target.value)} />
+          <input value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
-        <label className="field">
+        <label className="field" hidden={courseCreateStep !== 1}>
           <span>Descrizione corso</span>
           <input value={description} onChange={(event) => setDescription(event.target.value)} />
         </label>
-        <label className="field">
+        <label className="field" hidden={courseCreateStep !== 2}>
           <span>Sede corso</span>
           <select value={selectedLocationId} onChange={(event) => setLocationId(event.target.value)}>
             {locations.map((location) => (
@@ -2965,14 +4014,14 @@ function CoursesManager({
             ))}
           </select>
         </label>
-        <label className="field">
+        <label className="field" hidden={courseCreateStep !== 2}>
           <span>Stato corso</span>
           <select value={status} onChange={(event) => setStatus(event.target.value as CourseStatus)}>
             <option value="published">Pubblicato</option>
             <option value="draft">Bozza</option>
           </select>
         </label>
-        <div className="discipline-control">
+        <div className="discipline-control" hidden={courseCreateStep !== 1}>
           <label className="field">
             <span>Disciplina</span>
             <select
@@ -2997,7 +4046,7 @@ function CoursesManager({
           ) : null}
         </div>
         {isAdmin && showDisciplineCreator ? (
-          <div className="discipline-create-row">
+          <div className="discipline-create-row" hidden={courseCreateStep !== 1}>
             <label className="field">
               <span>Nome nuova disciplina</span>
               <input
@@ -3037,7 +4086,7 @@ function CoursesManager({
             </button>
           </div>
         ) : null}
-        <label className="course-access-toggle">
+        <label className="course-access-toggle" hidden={courseCreateStep !== 2}>
           <input
             checked={requiresActiveSubscription}
             onChange={(event) => setRequiresActiveSubscription(event.target.checked)}
@@ -3048,7 +4097,7 @@ function CoursesManager({
             <small>Disattiva per aprire le prenotazioni anche a chi non e iscritto.</small>
           </span>
         </label>
-        <label className="field file-field">
+        <label className="field file-field" hidden={courseCreateStep !== 3}>
           <span>Foto corso</span>
           <input
             accept="image/jpeg,image/png,image/webp"
@@ -3056,10 +4105,11 @@ function CoursesManager({
             type="file"
           />
         </label>
-        <button className="primary-action" type="submit">
-          <Plus aria-hidden="true" />
-          Crea corso
-        </button>
+        {courseCreateStep === 3 ? <div className="course-create-review"><p className="eyebrow">Ultimo controllo</p><strong>{title || "Corso senza titolo"}</strong><span>{discipline} · {locations.find((location) => location.id === selectedLocationId)?.name ?? "Sede da scegliere"} · {status === "published" ? "Pubblicato" : "Bozza"}</span></div> : null}
+        <div className="course-stepper-actions">
+          {courseCreateStep > 1 ? <button className="secondary-action" type="button" onClick={() => goToCourseCreateStep((courseCreateStep - 1) as CourseCreateStep)}>Indietro</button> : <span />}
+          {courseCreateStep < 3 ? <button className="primary-action" type="button" onClick={() => goToCourseCreateStep((courseCreateStep + 1) as CourseCreateStep)}>Continua</button> : <button className="primary-action" type="submit"><Plus aria-hidden="true" />Crea corso</button>}
+        </div>
         </form>
       ) : null}
 
@@ -3300,7 +4350,12 @@ function CoursesManager({
                 </div>
               ) : null}
               {schedulingCourseId === course.id ? (
-                <form className="schedule-form" onSubmit={(event) => handleCreateSchedule(event, course)}>
+                <form
+                  className="schedule-form"
+                  data-schedule-course={course.id}
+                  onSubmit={(event) => handleCreateSchedule(event, course)}
+                >
+                  <p className="schedule-next-step">Ora pianifica la prima lezione.</p>
                   <fieldset className="schedule-mode-selector">
                     <legend>Tipo di pianificazione</legend>
                     <div>
@@ -3887,33 +4942,27 @@ function LoginScreen({
           verificationState === null &&
           mode !== "forgot" &&
           !resetComplete ? (
-            <label className="field">
-              <span>Password</span>
-              <input
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                minLength={mode === "register" || mode === "reset" ? 12 : undefined}
-                name="password"
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                type="password"
-                value={password}
-              />
-            </label>
+            <PasswordField
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              id="auth-password"
+              label="Password"
+              minLength={mode === "register" || mode === "reset" ? 12 : undefined}
+              name="password"
+              onChange={setPassword}
+              value={password}
+            />
           ) : null}
 
           {mode === "reset" && !resetComplete ? (
-            <label className="field">
-              <span>Conferma password</span>
-              <input
-                autoComplete="new-password"
-                minLength={12}
-                name="confirmPassword"
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                required
-                type="password"
-                value={confirmPassword}
-              />
-            </label>
+            <PasswordField
+              autoComplete="new-password"
+              id="auth-confirm-password"
+              label="Conferma password"
+              minLength={12}
+              name="confirmPassword"
+              onChange={setConfirmPassword}
+              value={confirmPassword}
+            />
           ) : null}
 
           {twoFactorStep?.kind === "setup" ? (
@@ -4095,6 +5144,54 @@ function BrandHeading({
         <p className="eyebrow">{context}</p>
         <h1 id={titleId}>MAKA</h1>
         <p className="brand-tagline">Martial Arts &amp; Calisthenics</p>
+      </div>
+    </div>
+  );
+}
+
+function PasswordField({
+  autoComplete,
+  id,
+  label,
+  minLength,
+  name,
+  onChange,
+  value,
+}: {
+  autoComplete: string;
+  id: string;
+  label: string;
+  minLength?: number;
+  name?: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  const toggleLabel = visible ? `Nascondi ${label.toLowerCase()}` : `Mostra ${label.toLowerCase()}`;
+
+  return (
+    <div className="field password-field">
+      <label htmlFor={id}>{label}</label>
+      <div className="password-input-wrap">
+        <input
+          autoComplete={autoComplete}
+          id={id}
+          minLength={minLength}
+          name={name}
+          onChange={(event) => onChange(event.target.value)}
+          required
+          type={visible ? "text" : "password"}
+          value={value}
+        />
+        <button
+          aria-label={toggleLabel}
+          aria-pressed={visible}
+          className="password-visibility-toggle"
+          onClick={() => setVisible((current) => !current)}
+          type="button"
+        >
+          {visible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+        </button>
       </div>
     </div>
   );
@@ -4405,7 +5502,15 @@ function CourseBookingCard({
         </div>
       </div>
 
-      <div className="session-booking-control">
+      <details className="course-booking-disclosure">
+        <summary aria-label={`Apri menu Prenota per ${course.title}`}>
+          <CalendarCheck aria-hidden="true" />
+          <span>Prenota</span>
+          <small>Scegli data e orario</small>
+          <ChevronDown aria-hidden="true" />
+        </summary>
+        <div className="course-booking-panel">
+        <div className="session-booking-control">
         <label className="session-picker session-picker-native">
           <span>
             <CalendarDays aria-hidden="true" />
@@ -4574,7 +5679,9 @@ function CourseBookingCard({
                   : "Prenota"}
           </button>
         </div>
-      </div>
+        </div>
+        </div>
+      </details>
     </article>
   );
 }
@@ -4725,16 +5832,13 @@ function AccountSettingsPanel({
               value={newEmail}
             />
           </label>
-          <label className="field">
-            <span>Password attuale</span>
-            <input
-              autoComplete="current-password"
-              onChange={(event) => setEmailPassword(event.target.value)}
-              required
-              type="password"
-              value={emailPassword}
-            />
-          </label>
+          <PasswordField
+            autoComplete="current-password"
+            id="account-email-password"
+            label="Password attuale"
+            onChange={setEmailPassword}
+            value={emailPassword}
+          />
           <button className="primary-action" disabled={sending !== null} type="submit">
             <MailCheck aria-hidden="true" />
             {sending === "email" ? "Invio in corso" : "Conferma nuovo indirizzo"}
@@ -4745,38 +5849,29 @@ function AccountSettingsPanel({
       <details className="account-settings-disclosure">
         <summary>Modifica password</summary>
         <form onSubmit={handlePasswordChange}>
-          <label className="field">
-            <span>Password attuale</span>
-            <input
-              autoComplete="current-password"
-              onChange={(event) => setCurrentPassword(event.target.value)}
-              required
-              type="password"
-              value={currentPassword}
-            />
-          </label>
-          <label className="field">
-            <span>Nuova password</span>
-            <input
-              autoComplete="new-password"
-              minLength={12}
-              onChange={(event) => setNewPassword(event.target.value)}
-              required
-              type="password"
-              value={newPassword}
-            />
-          </label>
-          <label className="field">
-            <span>Conferma nuova password</span>
-            <input
-              autoComplete="new-password"
-              minLength={12}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              required
-              type="password"
-              value={confirmPassword}
-            />
-          </label>
+          <PasswordField
+            autoComplete="current-password"
+            id="account-current-password"
+            label="Password attuale"
+            onChange={setCurrentPassword}
+            value={currentPassword}
+          />
+          <PasswordField
+            autoComplete="new-password"
+            id="account-new-password"
+            label="Nuova password"
+            minLength={12}
+            onChange={setNewPassword}
+            value={newPassword}
+          />
+          <PasswordField
+            autoComplete="new-password"
+            id="account-confirm-password"
+            label="Conferma nuova password"
+            minLength={12}
+            onChange={setConfirmPassword}
+            value={confirmPassword}
+          />
           <button className="primary-action" disabled={sending !== null} type="submit">
             <LockKeyhole aria-hidden="true" />
             {sending === "password" ? "Aggiornamento in corso" : "Aggiorna password"}
@@ -4879,12 +5974,12 @@ function MobileTabBar({
         <span>Corsi</span>
       </button>
       <button
-        aria-current={activeView === "calendar" ? "page" : undefined}
-        onClick={() => onChange("calendar")}
+        aria-current={activeView === "training" ? "page" : undefined}
+        onClick={() => onChange("training")}
         type="button"
       >
-        <CalendarDays aria-hidden="true" />
-        <span>Calendario</span>
+        <Dumbbell aria-hidden="true" />
+        <span>Allenamento</span>
       </button>
       <button
         aria-current={activeView === "bookings" ? "page" : undefined}

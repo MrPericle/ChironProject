@@ -12,6 +12,7 @@ from chiron_api.config import Settings, get_settings
 from chiron_api.courses.router import router as courses_router
 from chiron_api.email import build_email_sender
 from chiron_api.subscriptions.router import router as subscriptions_router
+from chiron_api.workouts.router import router as workouts_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -45,7 +46,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if request.url.path.startswith(("/auth", "/admin", "/bookings", "/subscriptions")):
+        if request.url.path.startswith(
+            ("/auth", "/admin", "/bookings", "/subscriptions", "/workouts")
+        ):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -62,6 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(courses_router)
     app.include_router(subscriptions_router)
     app.include_router(admin_router)
+    app.include_router(workouts_router)
 
     return app
 

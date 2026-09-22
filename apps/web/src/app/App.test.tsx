@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Booking } from "../lib/api";
+import type { AdminUser, Booking, WorkoutLog, WorkoutPlan } from "../lib/api";
 import { accessTokenRefreshDelay } from "../lib/session";
 import { App } from "./App";
 
@@ -220,6 +221,15 @@ function jsonResponse(payload: unknown, init?: ResponseInit): Response {
   });
 }
 
+type WorkoutMockOptions = {
+  adminUsers?: AdminUser[];
+  adminWorkoutPlansError?: boolean;
+  workoutLogs?: WorkoutLog[];
+  workoutPlans?: WorkoutPlan[];
+  workoutLogsError?: boolean;
+  workoutPlansError?: boolean;
+};
+
 function accessTokenExpiringAt(expiresAt: number): string {
   const encode = (value: string) =>
     btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -230,6 +240,7 @@ function installFetchMock(
   subscription = subscriptionResponse,
   bookings = bookingsResponse,
   catalog = catalogResponse,
+  workoutOptions: WorkoutMockOptions = {},
 ) {
   let bookingState = bookings.map((booking) => ({ ...booking }));
   let catalogState = catalog.map((course) => ({
@@ -402,11 +413,29 @@ function installFetchMock(
     }
 
     if (url.endsWith("/admin/users") && method === "GET") {
-      return jsonResponse(adminUsersResponse);
+      return jsonResponse(workoutOptions.adminUsers ?? adminUsersResponse);
     }
 
     if (url.endsWith("/admin/stats") && method === "GET") {
       return jsonResponse(adminStatsResponse);
+    }
+
+    if (url.endsWith("/admin/workout-plans") && method === "GET") {
+      return workoutOptions.adminWorkoutPlansError
+        ? jsonResponse({ detail: "Servizio schede non disponibile" }, { status: 503 })
+        : jsonResponse([]);
+    }
+
+    if (url.endsWith("/workouts/plans") && method === "GET") {
+      return workoutOptions.workoutPlansError
+        ? jsonResponse({ detail: "Servizio schede non disponibile" }, { status: 503 })
+        : jsonResponse(workoutOptions.workoutPlans ?? []);
+    }
+
+    if (url.includes("/workouts/logs?") && method === "GET") {
+      return workoutOptions.workoutLogsError
+        ? jsonResponse({ detail: "Servizio storico non disponibile" }, { status: 503 })
+        : jsonResponse(workoutOptions.workoutLogs ?? []);
     }
 
     if (url.includes("/admin/calendar/availability?occurs_on=") && method === "GET") {
@@ -707,6 +736,12 @@ async function login() {
   await screen.findByRole("heading", { level: 1, name: "MAKA" });
 }
 
+function openCourseBooking(card: HTMLElement): void {
+  const trigger = card.querySelector<HTMLElement>('summary[aria-label^="Apri menu Prenota"]');
+  expect(trigger).not.toBeNull();
+  fireEvent.click(trigger as HTMLElement);
+}
+
 async function loginAdmin() {
   fireEvent.change(screen.getByLabelText("Email"), {
     target: { value: "admin@example.com" },
@@ -781,6 +816,149 @@ describe("App", () => {
     expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "email");
     expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "current-password");
     expect(screen.queryByLabelText("Codice 2FA")).not.toBeInTheDocument();
+  });
+
+  it("allows toggling password visibility while typing", () => {
+    installFetchMock();
+    render(<App />);
+
+    const password = screen.getByLabelText("Password");
+    fireEvent.change(password, { target: { value: "password-segreta" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mostra password" }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(screen.getByRole("button", { name: "Nascondi password" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Nascondi password" }));
+    expect(password).toHaveAttribute("type", "password");
+  });
+
+  it("keeps the user workout sheet consultation-first", async () => {
+    const workoutPlan: WorkoutPlan = {
+      id: "plan-strength",
+      title: "Forza base",
+      description: "Progressione per il primo mese.",
+      status: "published",
+      created_at: "2026-08-20T10:00:00Z",
+      updated_at: "2026-08-20T10:00:00Z",
+      days: [
+        {
+          id: "day-a",
+          label: "Giorno A",
+          title: "Parte inferiore",
+          position: 0,
+          exercises: [
+            {
+              id: "exercise-squat",
+              name: "Squat",
+              sets_planned: 3,
+              reps_planned: "8-10",
+              rest_seconds: 90,
+              notes: "Mantieni il movimento controllato.",
+              position: 0,
+            },
+          ],
+        },
+      ],
+    };
+    installFetchMock(subscriptionResponse, bookingsResponse, catalogResponse, {
+      workoutPlans: [workoutPlan],
+    });
+
+    render(<App />);
+    await login();
+    fireEvent.click(screen.getByRole("button", { name: "Allenamento" }));
+
+    expect(await screen.findByRole("heading", { name: "Squat" })).toBeInTheDocument();
+    expect(screen.getByText("Consulta scheda")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Squat, serie 1, ripetizioni")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Nota (facoltativa)")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Registra allenamento (opzionale)" }));
+
+    expect(screen.getByLabelText("Squat, serie 1, ripetizioni")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nota (facoltativa)")).toBeInTheDocument();
+  });
+
+  it("organizes workout history with popup filters and closable sessions", async () => {
+    const workoutPlan: WorkoutPlan = {
+      id: "plan-history",
+      title: "Forza base",
+      description: null,
+      status: "published",
+      created_at: "2026-08-20T10:00:00Z",
+      updated_at: "2026-08-20T10:00:00Z",
+      days: [
+        {
+          id: "day-a-history",
+          label: "Giorno A",
+          title: "Parte inferiore",
+          position: 0,
+          exercises: [],
+        },
+        {
+          id: "day-b-history",
+          label: "Giorno B",
+          title: "Parte superiore",
+          position: 1,
+          exercises: [],
+        },
+      ],
+    };
+    const historyLogs: WorkoutLog[] = [
+      {
+        id: "log-latest",
+        user_id: "user-1",
+        plan_id: "plan-history",
+        day_id: "day-a-history",
+        workout_date: "2026-09-20",
+        general_note: "Buona energia",
+        rating: 4,
+        created_at: "2026-09-20T10:00:00Z",
+        updated_at: "2026-09-20T10:00:00Z",
+        entries: [{ id: "entry-latest", exercise_id: "squat", exercise_name_snapshot: "Squat", set_number: 1, repetitions: 8, load_kg: 80, note: null }],
+      },
+      {
+        id: "log-previous",
+        user_id: "user-1",
+        plan_id: "plan-history",
+        day_id: "day-a-history",
+        workout_date: "2026-09-13",
+        general_note: null,
+        rating: null,
+        created_at: "2026-09-13T10:00:00Z",
+        updated_at: "2026-09-13T10:00:00Z",
+        entries: [{ id: "entry-previous", exercise_id: "squat", exercise_name_snapshot: "Squat", set_number: 1, repetitions: 8, load_kg: 75, note: null }],
+      },
+    ];
+    installFetchMock(subscriptionResponse, bookingsResponse, catalogResponse, {
+      workoutLogs: historyLogs,
+      workoutPlans: [workoutPlan],
+    });
+
+    render(<App />);
+    await login();
+    fireEvent.click(screen.getByRole("button", { name: "Profilo" }));
+
+    const historyHeading = await screen.findByRole("heading", { name: "Storico allenamenti" });
+    const historyMenu = historyHeading.closest("details");
+    expect(historyMenu).not.toBeNull();
+    expect(historyMenu).toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("Filtri storico"));
+    const filterMenu = screen.getByText("Filtri storico").closest("details");
+    expect(filterMenu).not.toBeNull();
+    fireEvent.change(within(filterMenu as HTMLElement).getByLabelText("Giorno della scheda"), { target: { value: "day-a-history" } });
+    expect(screen.getByText("2 sessioni")).toBeInTheDocument();
+    fireEvent.change(within(filterMenu as HTMLElement).getByLabelText("Scheda"), { target: { value: "plan-history" } });
+    expect(screen.getByText("2 sessioni")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Nascondi filtri" }));
+    expect(filterMenu).not.toHaveAttribute("open");
+    fireEvent.click(historyHeading);
+    expect(historyMenu).not.toHaveAttribute("open");
+    fireEvent.click(historyHeading);
+    expect(historyMenu).toHaveAttribute("open");
   });
 
   it("lets a new user register from the auth panel", async () => {
@@ -950,6 +1128,10 @@ describe("App", () => {
     expect(screen.getAllByText("mattia@example.com").length).toBeGreaterThan(0);
     expect(within(catalog).getByText("Calisthenics Foundation")).toBeInTheDocument();
     expect(within(catalog).getByText("Pole Flow")).toBeInTheDocument();
+    const calisthenicsCard = within(catalog).getByRole("article", { name: "Calisthenics Foundation" });
+    const bookingMenu = calisthenicsCard.querySelector("details");
+    expect(bookingMenu).not.toBeNull();
+    expect(bookingMenu).not.toHaveAttribute("open");
     expect(screen.getByText("Scade il 31/08/2026")).toBeInTheDocument();
     const overview = screen.getByRole("region", { name: "Riepilogo personale" });
     expect(within(overview).getByText("Prenotazioni")).toBeInTheDocument();
@@ -962,6 +1144,7 @@ describe("App", () => {
     await login();
 
     const course = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    openCourseBooking(course);
     const picker = within(course).getByRole("group", {
       name: "Scegli la lezione Calisthenics Foundation",
     });
@@ -1005,6 +1188,7 @@ describe("App", () => {
     await login();
 
     const course = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    openCourseBooking(course);
     const picker = within(course).getByRole("group", {
       name: "Scegli la lezione Calisthenics Foundation",
     });
@@ -1036,6 +1220,7 @@ describe("App", () => {
     await login();
 
     const course = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    openCourseBooking(course);
     const picker = within(course).getByRole("group", {
       name: "Scegli la lezione Calisthenics Foundation",
     });
@@ -1055,6 +1240,90 @@ describe("App", () => {
     expect(within(overview).getByText("Iscritti attivi")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Corsi migliori" })).toBeInTheDocument();
     expect(screen.getAllByText("8 iscritti collegati")).toHaveLength(2);
+  });
+
+  it("keeps attendee inspection in the admin calendar", async () => {
+    installFetchMock();
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Gestisci Calisthenics Foundation" }));
+    expect(screen.queryByRole("button", { name: /Vedi iscritti/i })).not.toBeInTheDocument();
+  });
+
+  it("uses the phone Back event to return to the previous workout editor step", async () => {
+    const manyUsers: AdminUser[] = Array.from({ length: 10 }, (_, index) => ({
+      ...adminUsersResponse[0],
+      email: `member-${index + 1}@example.com`,
+      first_name: `Mario${index + 1}`,
+      id: `user-${index + 1}`,
+    })) as AdminUser[];
+    installFetchMock(subscriptionResponse, bookingsResponse, catalogResponse, {
+      adminUsers: manyUsers,
+    });
+
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Allenamento" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuova scheda" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 Giorni ed esercizi" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 Destinatari" }));
+    expect(screen.getByRole("button", { name: "3 Destinatari" })).toHaveClass("is-active");
+    const assignmentGroup = screen.getByRole("group", { name: "Utenti attivi" });
+    expect(assignmentGroup).toBeInTheDocument();
+    expect(within(assignmentGroup).getAllByRole("checkbox")).toHaveLength(8);
+    fireEvent.click(screen.getByRole("button", { name: "Mostra altri utenti (2)" }));
+    expect(within(assignmentGroup).getAllByRole("checkbox")).toHaveLength(10);
+
+    act(() => {
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: { makaStepper: { flowId: "workout-editor", step: 2 } },
+        }),
+      );
+    });
+
+    expect(screen.getByRole("button", { name: "2 Giorni ed esercizi" })).toHaveClass("is-active");
+    expect(screen.getByRole("heading", { name: "Giorni della scheda" })).toBeInTheDocument();
+  });
+
+  it("keeps workout network errors distinct from empty states", async () => {
+    installFetchMock(subscriptionResponse, bookingsResponse, catalogResponse, {
+      workoutLogsError: true,
+      workoutPlansError: true,
+    });
+
+    render(<App />);
+    await login();
+
+    expect(await screen.findByRole("heading", { name: "Impossibile caricare la scheda" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Impossibile caricare lo storico" })).toBeInTheDocument();
+    expect(screen.queryByText("Nessuna scheda assegnata")).not.toBeInTheDocument();
+  });
+
+  it("shows an explicit error when admin workout plans cannot load", async () => {
+    installFetchMock(subscriptionResponse, bookingsResponse, catalogResponse, {
+      adminWorkoutPlansError: true,
+    });
+
+    render(<App />);
+    await loginAdmin();
+    fireEvent.click(screen.getByRole("button", { name: "Allenamento" }));
+
+    expect(await screen.findByRole("heading", { name: "Impossibile caricare le schede" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Riprova caricamento schede" })).toBeInTheDocument();
+    expect(screen.queryByText("Non ci sono ancora schede.")).not.toBeInTheDocument();
+  });
+
+  it("shows a contextual action on the admin dashboard", async () => {
+    installFetchMock();
+
+    render(<App />);
+    await loginAdmin();
+
+    expect(screen.getByRole("heading", { name: "Controlla la prossima attività" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apri calendario e iscritti" }));
+    expect(screen.getByRole("heading", { name: "Calendario corsi" })).toBeInTheDocument();
   });
 
   it("keeps collaborators in course management without loading user data", async () => {
@@ -1082,7 +1351,7 @@ describe("App", () => {
       expect.anything(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
     expect(screen.getByRole("heading", { name: "Corsi e sessioni" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Nuova disciplina" })).not.toBeInTheDocument();
   });
@@ -1109,7 +1378,9 @@ describe("App", () => {
     const catalog = await screen.findByRole("region", { name: "Prenota una lezione" });
     expect(screen.getByText("Area utente")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Vai al backoffice" })).toBeInTheDocument();
-    fireEvent.click(within(catalog).getByRole("button", { name: "Prenota" }));
+    const courseCard = within(catalog).getByRole("article", { name: "Calisthenics Foundation" });
+    openCourseBooking(courseCard);
+    fireEvent.click(within(courseCard).getByRole("button", { name: /^Prenota$/ }));
 
     expect(await screen.findByText("Prenotazione confermata.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1122,13 +1393,13 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Utenti" })).not.toBeInTheDocument();
   });
 
-  it("shows course session attendees from the admin calendar", async () => {
+  it("restores the admin calendar alongside workout plan management", async () => {
     const fetchMock = installFetchMock();
-
     render(<App />);
     await loginAdmin();
 
     fireEvent.click(screen.getByRole("button", { name: "Calendario" }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Calendario corsi" })).toBeInTheDocument();
     expect(await screen.findByText("9 su 10 posti liberi")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Prenotati" }));
 
@@ -1142,6 +1413,36 @@ describe("App", () => {
       ),
       expect.objectContaining({ method: "GET" }),
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Corsi e sessioni" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Sedi" })).toBeInTheDocument();
+  });
+
+  it("keeps workout plan management in its own admin tab", async () => {
+    installFetchMock();
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await loginAdmin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Allenamento" }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Allenamento" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nuova scheda" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Nuova scheda" }));
+    expect(screen.getByRole("navigation", { name: "Creazione scheda" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Titolo scheda")).toHaveFocus());
+    fireEvent.change(screen.getByLabelText("Titolo scheda"), { target: { value: "Forza base" } });
+    fireEvent.click(screen.getByRole("button", { name: "2 Giorni ed esercizi" }));
+    expect(screen.getByRole("heading", { name: "Giorni della scheda" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Crea giorno" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Aggiungi esercizio$/ }));
+    fireEvent.change(screen.getByLabelText("Nome esercizio"), { target: { value: "Squat" } });
+    expect(screen.getByRole("button", { name: "Ho finito gli esercizi" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "4 Riepilogo" }));
+    expect(screen.getByRole("heading", { name: "Riepilogo scheda" })).toBeInTheDocument();
   });
 
   it("keeps regular users out of the backoffice shell", async () => {
@@ -1161,7 +1462,7 @@ describe("App", () => {
     render(<App />);
     await loginAdmin();
 
-    fireEvent.click(screen.getByRole("button", { name: "Sedi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
     fireEvent.click(screen.getByRole("button", { name: "Nuova sede" }));
     fireEvent.change(screen.getByLabelText("Nome sede"), { target: { value: "Chiron Milano" } });
     fireEvent.change(screen.getByLabelText("Indirizzo"), { target: { value: "Via Milano 2" } });
@@ -1204,7 +1505,7 @@ describe("App", () => {
       expect.objectContaining({ method: "POST" }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
     expect(screen.queryByRole("heading", { name: "Calisthenics Foundation" })).not.toBeInTheDocument();
   });
 
@@ -1213,7 +1514,7 @@ describe("App", () => {
 
     render(<App />);
     await loginAdmin();
-    fireEvent.click(screen.getByRole("button", { name: "Sedi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
     fireEvent.click(
       screen.getByRole("button", { name: /elimina definitivamente sede Chiron Roma/i }),
     );
@@ -1237,19 +1538,22 @@ describe("App", () => {
     render(<App />);
     await loginAdmin();
 
-    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
     fireEvent.click(screen.getByRole("button", { name: "Nuovo corso" }));
     fireEvent.change(screen.getByLabelText("Titolo corso"), { target: { value: "Martial Flow" } });
     fireEvent.change(screen.getByLabelText("Descrizione corso"), {
       target: { value: "Tecnica e mobilita." },
     });
+    fireEvent.click(screen.getByRole("button", { name: "2 Sede e accesso" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /richiede iscrizione attiva/i }));
+    fireEvent.click(screen.getByRole("button", { name: "3 Riepilogo" }));
     fireEvent.change(screen.getByLabelText("Foto corso"), {
       target: { files: [new File(["image"], "martial-flow.jpg", { type: "image/jpeg" })] },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: /richiede iscrizione attiva/i }));
     fireEvent.click(screen.getByRole("button", { name: "Crea corso" }));
 
     await screen.findByText("Corso creato.");
+    expect(screen.getByText("Ora pianifica la prima lezione.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/courses",
       expect.objectContaining({
@@ -1328,7 +1632,7 @@ describe("App", () => {
 
     render(<App />);
     await loginAdmin();
-    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
     fireEvent.click(screen.getByRole("button", { name: "Nuovo corso" }));
     fireEvent.click(screen.getByRole("button", { name: "Nuova disciplina" }));
     fireEvent.change(screen.getByLabelText("Nome nuova disciplina"), {
@@ -1352,7 +1656,7 @@ describe("App", () => {
 
     render(<App />);
     await loginAdmin();
-    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
     fireEvent.click(screen.getByRole("button", { name: "Gestisci Calisthenics Foundation" }));
 
     fireEvent.click(
@@ -1385,7 +1689,7 @@ describe("App", () => {
 
     render(<App />);
     await loginAdmin();
-    fireEvent.click(screen.getByRole("button", { name: "Corsi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Corsi e sedi" }));
 
     expect(screen.queryByRole("button", { name: /modifica Calisthenics/i })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Cerca corsi da gestire"), {
@@ -1627,6 +1931,7 @@ describe("App", () => {
     await login();
 
     const courseCard = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    openCourseBooking(courseCard);
     expect(within(courseCard).getAllByRole("button", { name: "Prenota" })).toHaveLength(1);
 
     fireEvent.change(within(courseCard).getByLabelText("Lezione Calisthenics Foundation"), {
@@ -1666,6 +1971,7 @@ describe("App", () => {
     await login();
 
     const calisthenicsCard = screen.getByRole("article", { name: "Calisthenics Foundation" });
+    openCourseBooking(calisthenicsCard);
     const bookingButton = within(calisthenicsCard).getByRole("button", {
       name: "Iscrizione richiesta",
     });
@@ -1695,7 +2001,8 @@ describe("App", () => {
 
     const calisthenicsCard = screen.getByRole("article", { name: "Calisthenics Foundation" });
     expect(within(calisthenicsCard).getByText("Aperto a tutti")).toBeInTheDocument();
-    expect(within(calisthenicsCard).getByRole("button", { name: "Prenota" })).toBeEnabled();
+    openCourseBooking(calisthenicsCard);
+    expect(within(calisthenicsCard).getByRole("button", { name: /^Prenota$/ })).toBeEnabled();
   });
 
   it("disables lessons scheduled after the membership expires", async () => {
@@ -1705,6 +2012,7 @@ describe("App", () => {
     await login();
 
     const poleCard = screen.getByRole("article", { name: "Pole Flow" });
+    openCourseBooking(poleCard);
     expect(
       within(poleCard).getByRole("button", { name: "Iscrizione richiesta" }),
     ).toBeDisabled();

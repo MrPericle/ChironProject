@@ -38,3 +38,7 @@ apps/api/uploads/*
 # IDE
 .idea/
 .vscode/
+
+.agents
+ui-audit/
+ux-audit/
