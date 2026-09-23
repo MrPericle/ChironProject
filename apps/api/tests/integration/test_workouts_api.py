@@ -82,6 +82,15 @@ def test_user_cannot_write_workout_plans_and_published_plan_is_visible_only_when
     assert created.status_code == 201
     plan = created.json()
     assert plan["status"] == "draft"
+    second_created = client.post(
+        "/admin/workout-plans",
+        json=plan_payload("Forza avanzata"),
+        headers=headers_for(admin),
+    )
+    assert second_created.status_code == 201
+    listed = client.get("/admin/workout-plans", headers=headers_for(admin))
+    assert listed.status_code == 200
+    assert {item["title"] for item in listed.json()} == {"Forza base", "Forza avanzata"}
     assert client.get("/workouts/plans", headers=headers_for(user)).json() == []
 
     published = client.post(
@@ -222,6 +231,68 @@ def test_assigned_plan_cannot_be_used_by_another_user() -> None:
         client.post("/workouts/logs", json=payload, headers=headers_for(other_user)).status_code
         == 404
     )
+
+
+def test_admin_can_permanently_delete_plan_and_keep_completed_history() -> None:
+    client, session_factory = make_client()
+    admin = create_user(session_factory, UserRole.ADMIN, "admin-delete-workout@example.com")
+    staff = create_user(session_factory, UserRole.STAFF, "staff-delete-workout@example.com")
+    user = create_user(session_factory, UserRole.USER, "member-delete-workout@example.com")
+
+    plan = client.post(
+        "/admin/workout-plans", json=plan_payload(), headers=headers_for(admin)
+    ).json()
+    published = client.post(
+        f"/admin/workout-plans/{plan['id']}/publish", headers=headers_for(admin)
+    )
+    assert published.status_code == 200
+    assignment = client.post(
+        f"/admin/workout-plans/{plan['id']}/assignments",
+        json={"user_id": str(user.id)},
+        headers=headers_for(admin),
+    )
+    assert assignment.status_code == 201
+
+    day = plan["days"][0]
+    exercise = day["exercises"][0]
+    workout_log = client.post(
+        "/workouts/logs",
+        json={
+            "plan_id": plan["id"],
+            "day_id": day["id"],
+            "workout_date": date.today().isoformat(),
+            "entries": [
+                {
+                    "exercise_id": exercise["id"],
+                    "exercise_name_snapshot": exercise["name"],
+                    "set_number": 1,
+                    "repetitions": 8,
+                    "load_kg": 20,
+                }
+            ],
+        },
+        headers=headers_for(user),
+    )
+    assert workout_log.status_code == 201
+
+    forbidden = client.delete(
+        f"/admin/workout-plans/{plan['id']}", headers=headers_for(staff)
+    )
+    assert forbidden.status_code == 403
+    deleted = client.delete(f"/admin/workout-plans/{plan['id']}", headers=headers_for(admin))
+    assert deleted.status_code == 204
+    deleted_plan = client.get(
+        f"/admin/workout-plans/{plan['id']}", headers=headers_for(admin)
+    )
+    assert deleted_plan.status_code == 404
+    assert client.get("/admin/workout-plans", headers=headers_for(admin)).json() == []
+    assert client.get("/workouts/plans", headers=headers_for(user)).json() == []
+
+    history = client.get(f"/workouts/logs/{workout_log.json()['id']}", headers=headers_for(user))
+    assert history.status_code == 200
+    assert history.json()["plan_id"] is None
+    assert history.json()["day_id"] is None
+    assert history.json()["entries"][0]["exercise_id"] is None
 
 
 def test_workout_log_validation_rejects_sensible_limits() -> None:

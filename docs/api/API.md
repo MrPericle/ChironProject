@@ -105,6 +105,14 @@ amministrativa rimuove fisicamente utente, profilo, tutte le prenotazioni anche
 storiche, iscrizioni, sessioni, 2FA e token email. La cancellazione di corsi o
 sedi elimina a cascata sessioni e prenotazioni collegate.
 
+### Schede allenamento
+
+Admin e staff possono creare, modificare, pubblicare, archiviare e duplicare
+schede tramite `/admin/workout-plans`. Solo l'admin puo usare
+`DELETE /admin/workout-plans/{plan_id}`: rimuove definitivamente la scheda,
+giorni, esercizi e assegnazioni. Le sessioni gia registrate dagli utenti restano
+nello storico, senza riferimenti alla scheda eliminata.
+
 ## Esempio rapido
 
 ```bash

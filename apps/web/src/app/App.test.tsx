@@ -1604,8 +1604,9 @@ describe("App", () => {
     );
 
     fireEvent.click(screen.getByRole("radio", { name: "Data singola" }));
+    const futureLessonDate = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
     fireEvent.change(screen.getByLabelText("Data della lezione"), {
-      target: { value: "2026-09-22" },
+      target: { value: futureLessonDate },
     });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi lezione" }));
 
@@ -1613,7 +1614,7 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/admin/courses/course-calisthenics/sessions",
       expect.objectContaining({
-        body: expect.stringContaining('"occurs_on":"2026-09-22"'),
+        body: expect.stringContaining(`"occurs_on":"${futureLessonDate}"`),
         method: "POST",
       }),
     );

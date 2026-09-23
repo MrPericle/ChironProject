@@ -2,7 +2,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from chiron_api.auth.dependencies import get_current_user, require_roles
@@ -648,3 +648,29 @@ def archive_admin_plan(
             exercise.is_archived = True
     db.commit()
     return plan_response(get_plan(db, plan.id))
+
+
+@router.delete("/admin/workout-plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_admin_plan(
+    plan_id: UUID,
+    _: User = admin_user,
+    db: Session = Depends(get_db_session),
+) -> None:
+    plan = get_plan(db, plan_id)
+    day_ids = [day.id for day in plan.days]
+    exercise_ids = [exercise.id for day in plan.days for exercise in day.exercises]
+
+    # Preserve completed training history, but detach it from the deleted programme.
+    if exercise_ids:
+        db.execute(
+            update(WorkoutLogEntry)
+            .where(WorkoutLogEntry.exercise_id.in_(exercise_ids))
+            .values(exercise_id=None)
+        )
+    if day_ids:
+        db.execute(update(WorkoutLog).where(WorkoutLog.day_id.in_(day_ids)).values(day_id=None))
+    db.execute(update(WorkoutLog).where(WorkoutLog.plan_id == plan.id).values(plan_id=None))
+    db.execute(delete(WorkoutPlanAssignment).where(WorkoutPlanAssignment.plan_id == plan.id))
+
+    db.delete(plan)
+    db.commit()

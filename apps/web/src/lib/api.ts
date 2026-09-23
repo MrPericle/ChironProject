@@ -860,6 +860,13 @@ export class ChironApi {
     });
   }
 
+  async deleteAdminWorkoutPlan(token: string, planId: string): Promise<void> {
+    return this.request<void>(`/admin/workout-plans/${planId}`, {
+      method: "DELETE",
+      token,
+    });
+  }
+
   async uploadCourseImage(token: string, courseId: string, image: File): Promise<AdminCourse> {
     const body = new FormData();
     body.append("file", image);

@@ -2089,6 +2089,29 @@ function WorkoutPlansManager({
     }
   }
 
+  async function deletePlan(plan: WorkoutPlanSummary): Promise<void> {
+    const confirmed = window.confirm(
+      "Eliminare definitivamente questa scheda? Verranno rimossi giorni, esercizi e assegnazioni. Lo storico degli allenamenti già compilati resterà disponibile senza collegamento alla scheda.",
+    );
+    if (!confirmed) return;
+
+    setLoadingId(plan.id);
+    try {
+      await api.deleteAdminWorkoutPlan(token, plan.id);
+      onPlansChange(plans.filter((item) => item.id !== plan.id));
+      if (draft?.id === plan.id) {
+        setSaveFeedback(null);
+        setDraft(null);
+        setAssignedUserIds([]);
+      }
+      onNotice({ tone: "success", message: "Scheda eliminata definitivamente." });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error) });
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
   async function duplicatePlan(planId: string): Promise<void> {
     try {
       const duplicate = await api.duplicateAdminWorkoutPlan(token, planId);
@@ -2122,6 +2145,7 @@ function WorkoutPlansManager({
           onAddExercise={addExercise}
           onAssignedUserIdsChange={(ids) => setAssignedUserIds(ids)}
           onClose={() => { setSaveFeedback(null); setDraft(null); }}
+          onCreateAnother={startNewPlan}
           onMoveItem={moveItem}
           onRemoveDay={removeDay}
           onRemoveExercise={removeExercise}
@@ -2151,7 +2175,7 @@ function WorkoutPlansManager({
           />
         ) : null}
         {plansLoadState === "ready" && plans.length === 0 ? <p className="muted">Non ci sono ancora schede.</p> : null}
-        {plansLoadState === "ready" && plans.length > 0 ? <div className="admin-list">{plans.map((plan) => <article className="admin-list-item workout-plan-admin-item" key={plan.id}><div><div className="workout-plan-row-heading"><h3>{plan.title}</h3><span className={`workout-status workout-status-${plan.status}`}>{workoutStatusLabel(plan.status)}</span></div><p>{plan.day_count} giorni · aggiornata {formatDate(plan.updated_at.slice(0, 10))}</p></div><div className="admin-row-actions"><button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={() => void openPlan(plan.id)}><Pencil aria-hidden="true" />Modifica</button><button className="secondary-action" type="button" onClick={() => void duplicatePlan(plan.id)}>Duplica</button>{plan.status === "published" ? <button className="secondary-action" type="button" onClick={() => void changeStatus(plan, "unpublish")}>Depubblica</button> : plan.status !== "archived" ? <button className="primary-action" type="button" onClick={() => void changeStatus(plan, "publish")}>Pubblica</button> : null}{plan.status !== "archived" ? <button className="secondary-action danger-action" type="button" onClick={() => void changeStatus(plan, "archive")}>Archivia</button> : null}</div></article>)}</div> : null}
+        {plansLoadState === "ready" && plans.length > 0 ? <div className="admin-list">{plans.map((plan) => <article className="admin-list-item workout-plan-admin-item" key={plan.id}><div><div className="workout-plan-row-heading"><h3>{plan.title}</h3><span className={`workout-status workout-status-${plan.status}`}>{workoutStatusLabel(plan.status)}</span></div><p>{plan.day_count} giorni · aggiornata {formatDate(plan.updated_at.slice(0, 10))}</p></div><div className="admin-row-actions"><button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={() => void openPlan(plan.id)}><Pencil aria-hidden="true" />Modifica</button><button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={() => void duplicatePlan(plan.id)}>Duplica</button>{plan.status === "published" ? <button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={() => void changeStatus(plan, "unpublish")}>Depubblica</button> : plan.status !== "archived" ? <button className="primary-action" type="button" disabled={loadingId === plan.id} onClick={() => void changeStatus(plan, "publish")}>Pubblica</button> : null}{plan.status !== "archived" ? <button className="secondary-action danger-action" type="button" disabled={loadingId === plan.id} onClick={() => void changeStatus(plan, "archive")}>Archivia</button> : null}{isAdmin ? <button className="secondary-action danger-action" type="button" disabled={loadingId === plan.id} onClick={() => void deletePlan(plan)}>Elimina</button> : null}</div></article>)}</div> : null}
       </section>
     </div>
   );
@@ -2166,6 +2190,7 @@ type WorkoutEditorPanelProps = {
   onAssignedUserIdsChange: (ids: string[]) => void;
   onBackToPlans: () => void;
   onClose: () => void;
+  onCreateAnother: () => void;
   onContinueAfterSave: () => void;
   onMoveItem: (dayIndex: number, exerciseIndex: number | null, direction: -1 | 1) => void;
   onRemoveDay: (dayIndex: number) => void;
@@ -2195,6 +2220,7 @@ function WorkoutEditorPanel({
   onAssignedUserIdsChange,
   onBackToPlans,
   onClose,
+  onCreateAnother,
   onContinueAfterSave,
   onMoveItem,
   onRemoveDay,
@@ -2328,6 +2354,7 @@ function WorkoutEditorPanel({
         <div className="workout-save-feedback-actions">
           <button className={saveFeedback.canPublish ? "secondary-action" : "primary-action"} type="button" onClick={onContinueAfterSave}>Continua modifica</button>
           {saveFeedback.canPublish ? <button className="primary-action" type="button" onClick={onPublishSaved}>Pubblica scheda</button> : null}
+          <button className="secondary-action" type="button" onClick={onCreateAnother}>Crea un'altra scheda</button>
           <button className="secondary-action" type="button" onClick={onBackToPlans}>Torna alle schede</button>
         </div>
       </div> : null}
