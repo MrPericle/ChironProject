@@ -53,9 +53,47 @@ Non risultano Blocker confermati e non viene applicato alcun cap. Il report conf
 - [x] Layout mobile dedicato: filtri a colonna singola, storico richiudibile e superfici dark coerenti.
 - [x] Test web: **45/45** passati; lint, build e `git diff --check` verificati.
 
+## Aggiornamento — gestione Admin di molte schede
+
+- [x] **UX-UI-12** — ricerca client-side per titolo con conteggio dei risultati.
+- [x] Filtri per stato con conteggi: tutte, pubblicate, bozze e archiviate.
+- [x] Ordinamento per ultima modifica, nome alfabetico o data di creazione.
+- [x] Azioni secondarie spostate in un menu `…`; ogni riga mantiene una sola azione primaria: **Modifica**.
+- [x] Layout mobile adattato con toolbar a colonna singola e menu azioni touch-friendly.
+- [x] Elenco schede contenuto in una regione scrollabile, con un massimo visivo di circa tre schede alla volta e focus da tastiera.
+- [x] Test web: **47/47** passati; lint, build e `git diff --check` verificati.
+
 **File coinvolti:** `apps/web/src/app/App.tsx`, `apps/web/src/styles/global.css`, `apps/web/src/app/App.test.tsx`.
 
 **Nota di prodotto:** lo storico resta focalizzato sulla consultazione delle sessioni; non è stato introdotto un nuovo endpoint né una superficie progressi sempre visibile.
+
+## Aggiornamento — menu azioni e creazione schede più sicura
+
+- [x] Il menu `…` delle schede resta dentro il viewport: ha una larghezza massima, uno scroll verticale interno e si apre verso l’alto quando è vicino al bordo inferiore.
+- [x] **UX-UI-13 P0 — Guardrail prima del salvataggio:** bloccare l’avanzamento quando mancano titolo, giorni o esercizi validi; mostrare errori inline collegati ai campi e portare il focus sul primo errore.
+- [ ] **UX-UI-14 P1 — Revisione prima della pubblicazione:** aggiungere un quarto step di riepilogo esplicito con giorni, numero esercizi, destinatari, stato e differenza tra “Salva bozza” e “Pubblica”. La pubblicazione deve sempre richiedere un’azione separata.
+- [ ] **UX-UI-15 P1 — Protezione dal lavoro perso:** salvare la bozza a ogni cambio step e prima di chiudere, mostrare lo stato “Salvato/Non salvato” e chiedere conferma se si abbandonano modifiche non salvate.
+- [ ] **UX-UI-16 P2 — Azioni distruttive e destinatari:** preferire duplica/archivia, richiedere una conferma specifica per eliminare e mostrare un’anteprima dei destinatari con avviso per zero destinatari o selezione troppo ampia.
+
+**Stato UX-UI-13:** implementato in `WorkoutEditorPanel` e `WorkoutDayBuilder`; test web aggiornati (**48/48** passati). La validazione completa resta attiva anche al salvataggio come protezione finale.
+
+- [x] Dopo la pubblicazione dalla schermata di riepilogo, l’editor viene chiuso e l’elenco mostra la scheda nello stato **Pubblicata**; in caso di errore l’editor resta aperto.
+- [x] Le notifiche globali dell’admin restano visibili nel viewport mobile, con chiusura esplicita tramite `X`; gli errori non vengono rimossi automaticamente.
+
+### Piano operativo per ridurre gli errori nella creazione
+
+1. **P0 — Validazione guidata:** titolo obbligatorio, almeno un giorno e almeno un esercizio per giorno; nome esercizio, serie/ripetizioni e valori numerici controllati prima di avanzare. Ogni errore deve comparire vicino al campo, con `aria-describedby`, e il primo campo invalido riceve il focus.
+2. **P1 — Stepper con riepilogo:** mantenere il flusso a passi già presente, ma rendere visibile lo stato di completamento. Prima del salvataggio mostrare una review compatta con struttura della scheda, destinatari e stato; “Pubblica” non deve essere implicito nel salvataggio.
+3. **P1 — Recupero e abbandono sicuri:** persistere la bozza durante il flusso, ripristinarla dopo refresh e segnalare chiaramente modifiche pendenti. Chiudi/indietro deve chiedere conferma solo quando esistono modifiche non salvate.
+4. **P2 — Errori irreversibili sotto controllo:** duplicazione come percorso preferito per varianti, archiviazione come default al posto dell’eliminazione, conferma distruttiva con nome/titolo della scheda e feedback di successo con possibilità di tornare all’elenco.
+
+### Criteri di accettazione
+
+- Non è possibile arrivare alla review o salvare una scheda strutturalmente invalida.
+- Il primo errore è annunciato e raggiungibile da tastiera; i target touch restano almeno 44×44 px.
+- Un refresh o una chiusura accidentale non cancella una bozza già salvata.
+- Pubblicazione, archiviazione ed eliminazione sono azioni distinguibili, confermate e con feedback.
+- Il menu `…` non produce overflow orizzontale e resta interamente utilizzabile a 320, 360, 390, 412 e 768 px di altezza viewport.
 
 ## Aggiornamento post-P2 — prenotazioni corso
 

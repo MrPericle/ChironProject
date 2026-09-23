@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AdminUser, Booking, WorkoutLog, WorkoutPlan } from "../lib/api";
+import type { AdminUser, Booking, WorkoutLog, WorkoutPlan, WorkoutPlanSummary } from "../lib/api";
 import { accessTokenRefreshDelay } from "../lib/session";
 import { App } from "./App";
 
@@ -222,6 +222,7 @@ function jsonResponse(payload: unknown, init?: ResponseInit): Response {
 }
 
 type WorkoutMockOptions = {
+  adminWorkoutPlans?: WorkoutPlanSummary[];
   adminUsers?: AdminUser[];
   adminWorkoutPlansError?: boolean;
   workoutLogs?: WorkoutLog[];
@@ -423,7 +424,64 @@ function installFetchMock(
     if (url.endsWith("/admin/workout-plans") && method === "GET") {
       return workoutOptions.adminWorkoutPlansError
         ? jsonResponse({ detail: "Servizio schede non disponibile" }, { status: 503 })
-        : jsonResponse([]);
+        : jsonResponse(workoutOptions.adminWorkoutPlans ?? []);
+    }
+
+    if (url.endsWith("/admin/workout-plans/plan-new/assignments") && method === "GET") {
+      return jsonResponse([]);
+    }
+
+    if (url.endsWith("/admin/workout-plans") && method === "POST") {
+      const body = JSON.parse(init?.body?.toString() ?? "{}") as {
+        title?: string;
+        description?: string | null;
+        status?: string;
+        days?: Array<{ label: string; title: string | null; exercises: Array<Record<string, unknown>> }>;
+      };
+      return jsonResponse({
+        id: "plan-new",
+        title: body.title ?? "Nuova scheda",
+        description: body.description ?? null,
+        status: body.status ?? "draft",
+        created_at: "2026-09-23T10:00:00Z",
+        updated_at: "2026-09-23T10:00:00Z",
+        days: (body.days ?? []).map((day, dayIndex) => ({
+          ...day,
+          id: `day-${dayIndex}`,
+          position: dayIndex,
+          exercises: day.exercises.map((exercise, exerciseIndex) => ({
+            ...exercise,
+            id: `exercise-${dayIndex}-${exerciseIndex}`,
+            position: exerciseIndex,
+          })),
+        })),
+      });
+    }
+
+    if (url.endsWith("/admin/workout-plans/plan-new/publish") && method === "POST") {
+      return jsonResponse({
+        id: "plan-new",
+        title: "Forza base",
+        description: null,
+        status: "published",
+        created_at: "2026-09-23T10:00:00Z",
+        updated_at: "2026-09-23T10:05:00Z",
+        days: [{
+          id: "day-0",
+          label: "Giorno A",
+          title: null,
+          position: 0,
+          exercises: [{
+            id: "exercise-0-0",
+            name: "Squat",
+            sets_planned: 3,
+            reps_planned: "8-10",
+            rest_seconds: null,
+            notes: null,
+            position: 0,
+          }],
+        }],
+      });
     }
 
     if (url.endsWith("/workouts/plans") && method === "GET") {
@@ -1266,7 +1324,12 @@ describe("App", () => {
     await loginAdmin();
     fireEvent.click(screen.getByRole("button", { name: "Allenamento" }));
     fireEvent.click(screen.getByRole("button", { name: "Nuova scheda" }));
+    fireEvent.change(screen.getByLabelText("Titolo scheda"), { target: { value: "Mobilità mattina" } });
     fireEvent.click(screen.getByRole("button", { name: "2 Giorni ed esercizi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Crea giorno" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Aggiungi esercizio$/ }));
+    fireEvent.change(screen.getByLabelText("Nome esercizio"), { target: { value: "Mobilità anche" } });
+    fireEvent.change(screen.getByLabelText("Ripetizioni"), { target: { value: "8-10" } });
     fireEvent.click(screen.getByRole("button", { name: "3 Destinatari" }));
     expect(screen.getByRole("button", { name: "3 Destinatari" })).toHaveClass("is-active");
     const assignmentGroup = screen.getByRole("group", { name: "Utenti attivi" });
@@ -1445,7 +1508,39 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Riepilogo scheda" })).toBeInTheDocument();
   });
 
-  it("validates workout plan fields before submitting them", async () => {
+  it("helps admins find workout plans with search, status filters and an action menu", async () => {
+    const adminPlans: WorkoutPlanSummary[] = [
+      { id: "plan-force", title: "Forza base", description: null, status: "published", created_at: "2026-08-01T10:00:00Z", updated_at: "2026-09-20T10:00:00Z", day_count: 3 },
+      { id: "plan-mobility", title: "Tecnica mobilità", description: null, status: "draft", created_at: "2026-09-01T10:00:00Z", updated_at: "2026-09-22T10:00:00Z", day_count: 2 },
+      { id: "plan-archive", title: "Vecchia scheda", description: null, status: "archived", created_at: "2026-06-01T10:00:00Z", updated_at: "2026-07-01T10:00:00Z", day_count: 4 },
+    ];
+    installFetchMock(subscriptionResponse, bookingsResponse, catalogResponse, { adminWorkoutPlans: adminPlans });
+    render(<App />);
+    await loginAdmin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Allenamento" }));
+    expect(await screen.findByText("3 di 3 schede visualizzate")).toBeInTheDocument();
+    expect(screen.getByText("Forza base")).toBeInTheDocument();
+    expect(screen.getByText("Tecnica mobilità")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Cerca schede"), { target: { value: "mobilità" } });
+    expect(screen.getByText("1 di 3 schede visualizzate")).toBeInTheDocument();
+    expect(screen.getByText("Tecnica mobilità")).toBeInTheDocument();
+    expect(screen.queryByText("Forza base")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Bozze 1" }));
+    expect(screen.getByText("1 di 3 schede visualizzate")).toBeInTheDocument();
+    const planCard = screen.getByText("Tecnica mobilità").closest("article");
+    expect(planCard).not.toBeNull();
+    expect(planCard?.parentElement).toHaveClass("workout-plan-scroll-list");
+    const actionsMenu = planCard?.querySelector<HTMLElement>("summary[aria-label^='Altre azioni']");
+    expect(actionsMenu).not.toBeNull();
+    fireEvent.click(actionsMenu as HTMLElement);
+    expect(within(planCard as HTMLElement).getByRole("button", { name: "Duplica" })).toBeInTheDocument();
+    expect(within(planCard as HTMLElement).getByRole("button", { name: "Pubblica" })).toBeInTheDocument();
+  });
+
+  it("blocks progression and focuses the first invalid workout field", async () => {
     const fetchMock = installFetchMock();
     render(<App />);
     await loginAdmin();
@@ -1459,13 +1554,36 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Nome esercizio"), { target: { value: "Squat" } });
     fireEvent.change(screen.getByLabelText("Ripetizioni"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "4 Riepilogo" }));
-    fireEvent.click(screen.getByRole("button", { name: "Salva scheda" }));
 
     await screen.findByText("Inserisci le ripetizioni (giorno 1, esercizio 1).");
+    expect(screen.getByRole("textbox", { name: /Ripetizioni/ })).toHaveFocus();
     expect(fetchMock).not.toHaveBeenCalledWith(
       "http://localhost:8000/admin/workout-plans",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("closes the workout editor after publishing a saved plan", async () => {
+    installFetchMock();
+    render(<App />);
+    await loginAdmin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Allenamento" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuova scheda" }));
+    fireEvent.change(screen.getByLabelText("Titolo scheda"), { target: { value: "Forza base" } });
+    fireEvent.click(screen.getByRole("button", { name: "2 Giorni ed esercizi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Crea giorno" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Aggiungi esercizio$/ }));
+    fireEvent.change(screen.getByLabelText("Nome esercizio"), { target: { value: "Squat" } });
+    fireEvent.change(screen.getByLabelText("Ripetizioni"), { target: { value: "8-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "4 Riepilogo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salva scheda" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Pubblica scheda" }));
+
+    await waitFor(() => expect(screen.queryByRole("navigation", { name: "Creazione scheda" })).not.toBeInTheDocument());
+    expect(screen.getByText("Forza base")).toBeInTheDocument();
+    expect(screen.getByText("Pubblicata")).toBeInTheDocument();
   });
 
   it("keeps regular users out of the backoffice shell", async () => {

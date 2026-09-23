@@ -24,6 +24,7 @@ import {
   LogOut,
   MailCheck,
   MapPin,
+  MoreHorizontal,
   Pencil,
   Plus,
   Power,
@@ -40,7 +41,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, SyntheticEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AdminCourse,
@@ -104,6 +105,7 @@ type MobileView = "courses" | "training" | "bookings" | "profile";
 type AdminTab = "dashboard" | "workouts" | "calendar" | "users" | "courses";
 type ScheduleMode = "weekly" | "single";
 type WorkspaceMode = "backoffice" | "personal";
+type WorkoutPlanSort = "updated" | "title" | "created";
 
 const legacyDisciplineLabels: Record<string, string> = {
   calisthenics: "Sala",
@@ -1547,33 +1549,57 @@ function emptyWorkoutPlanPayload(): WorkoutPlanPayload {
   return { title: "", description: null, status: "draft", days: [] };
 }
 
-function workoutPlanValidationMessage(draft: WorkoutPlanPayload): string | null {
-  if (draft.title.trim() === "") return "Inserisci il titolo della scheda.";
-  if (draft.days.length === 0) return "Aggiungi almeno un giorno alla scheda.";
+type WorkoutValidationStage = 2 | 3 | 4;
+type WorkoutValidationIssue = { fieldId: string; message: string };
+
+function workoutPlanValidationIssues(
+  draft: WorkoutPlanPayload,
+  stage: WorkoutValidationStage = 4,
+): WorkoutValidationIssue[] {
+  const issues: WorkoutValidationIssue[] = [];
+  if (draft.title.trim() === "") issues.push({ fieldId: "workout-title", message: "Inserisci il titolo della scheda." });
+  if (stage === 2) return issues;
+  if (draft.days.length === 0) {
+    issues.push({ fieldId: "workout-add-day", message: "Aggiungi almeno un giorno alla scheda." });
+    return issues;
+  }
 
   for (const [dayIndex, day] of draft.days.entries()) {
     const dayNumber = dayIndex + 1;
-    if (day.label.trim() === "") return `Inserisci il nome breve del giorno ${dayNumber}.`;
-    if (day.exercises.length === 0) return `Aggiungi almeno un esercizio al giorno ${dayNumber}.`;
+    if (day.label.trim() === "") issues.push({ fieldId: `workout-day-${dayIndex}-label`, message: `Inserisci il nome breve del giorno ${dayNumber}.` });
+    if (day.exercises.length === 0) {
+      issues.push({ fieldId: `workout-day-${dayIndex}-add-exercise`, message: `Aggiungi almeno un esercizio al giorno ${dayNumber}.` });
+      continue;
+    }
 
     for (const [exerciseIndex, exercise] of day.exercises.entries()) {
       const exerciseNumber = exerciseIndex + 1;
       const reference = `giorno ${dayNumber}, esercizio ${exerciseNumber}`;
-      if (exercise.name.trim() === "") return `Inserisci il nome dell'esercizio (${reference}).`;
+      if (exercise.name.trim() === "") issues.push({ fieldId: `workout-day-${dayIndex}-exercise-${exerciseIndex}-name`, message: `Inserisci il nome dell'esercizio (${reference}).` });
       if (!Number.isInteger(exercise.sets_planned) || exercise.sets_planned < 1 || exercise.sets_planned > 50) {
-        return `Inserisci da 1 a 50 serie (${reference}).`;
+        issues.push({ fieldId: `workout-day-${dayIndex}-exercise-${exerciseIndex}-sets`, message: `Inserisci da 1 a 50 serie (${reference}).` });
       }
-      if (exercise.reps_planned.trim() === "") return `Inserisci le ripetizioni (${reference}).`;
+      if (exercise.reps_planned.trim() === "") issues.push({ fieldId: `workout-day-${dayIndex}-exercise-${exerciseIndex}-reps`, message: `Inserisci le ripetizioni (${reference}).` });
       if (
+        stage === 4 &&
         exercise.rest_seconds !== null &&
         (!Number.isInteger(exercise.rest_seconds) || exercise.rest_seconds < 0 || exercise.rest_seconds > 3600)
       ) {
-        return `Il recupero deve essere compreso tra 0 e 3600 secondi (${reference}).`;
+        issues.push({ fieldId: `workout-day-${dayIndex}-exercise-${exerciseIndex}-rest`, message: `Il recupero deve essere compreso tra 0 e 3600 secondi (${reference}).` });
       }
     }
   }
 
-  return null;
+  return issues;
+}
+
+function workoutPlanValidationMessage(draft: WorkoutPlanPayload): string | null {
+  return workoutPlanValidationIssues(draft)[0]?.message ?? null;
+}
+
+function focusWorkoutValidationIssue(issue: WorkoutValidationIssue | undefined): void {
+  if (issue === undefined) return;
+  window.requestAnimationFrame(() => document.getElementById(issue.fieldId)?.focus());
 }
 
 function planPayloadFromPlan(plan: WorkoutPlan): WorkoutPlanPayload {
@@ -1925,6 +1951,20 @@ function workoutSummaryFromPlan(plan: WorkoutPlan): WorkoutPlanSummary {
   };
 }
 
+function positionWorkoutPlanActionsMenu(event: SyntheticEvent<HTMLDetailsElement>): void {
+  const menu = event.currentTarget;
+  if (!menu.open) {
+    menu.removeAttribute("data-placement");
+    return;
+  }
+
+  const menuHeight = 240;
+  const menuRect = menu.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - menuRect.bottom;
+  const spaceAbove = menuRect.top;
+  menu.dataset.placement = spaceBelow < menuHeight && spaceAbove > spaceBelow ? "up" : "down";
+}
+
 function WorkoutPlansManager({
   isAdmin,
   onNotice,
@@ -1951,6 +1991,28 @@ function WorkoutPlansManager({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<{ planId: string; canPublish: boolean } | null>(null);
+  const [planQuery, setPlanQuery] = useState("");
+  const [planStatusFilter, setPlanStatusFilter] = useState<WorkoutPlanStatus | "all">("all");
+  const [planSort, setPlanSort] = useState<WorkoutPlanSort>("updated");
+
+  const planCounts = useMemo(() => ({
+    all: plans.length,
+    draft: plans.filter((plan) => plan.status === "draft").length,
+    published: plans.filter((plan) => plan.status === "published").length,
+    archived: plans.filter((plan) => plan.status === "archived").length,
+  }), [plans]);
+  const visiblePlans = useMemo(() => {
+    const query = planQuery.trim().toLocaleLowerCase("it-IT");
+    return plans
+      .filter((plan) => planStatusFilter === "all" || plan.status === planStatusFilter)
+      .filter((plan) => query === "" || plan.title.toLocaleLowerCase("it-IT").includes(query))
+      .sort((left, right) => {
+        if (planSort === "title") return left.title.localeCompare(right.title, "it");
+        const leftValue = planSort === "created" ? left.created_at : left.updated_at;
+        const rightValue = planSort === "created" ? right.created_at : right.updated_at;
+        return rightValue.localeCompare(leftValue);
+      });
+  }, [planQuery, planSort, planStatusFilter, plans]);
 
   function revealEditor(): void {
     window.requestAnimationFrame(() => {
@@ -2114,8 +2176,8 @@ function WorkoutPlansManager({
     }
   }
 
-  async function changeStatus(plan: WorkoutPlanSummary, action: "publish" | "unpublish" | "archive"): Promise<void> {
-    if (action === "archive" && !window.confirm("Archiviare la scheda? Lo storico degli utenti resterà disponibile.")) return;
+  async function changeStatus(plan: WorkoutPlanSummary, action: "publish" | "unpublish" | "archive"): Promise<boolean> {
+    if (action === "archive" && !window.confirm("Archiviare la scheda? Lo storico degli utenti resterà disponibile.")) return false;
     try {
       const saved = action === "publish"
         ? await api.publishAdminWorkoutPlan(token, plan.id)
@@ -2125,8 +2187,10 @@ function WorkoutPlansManager({
       onPlansChange(plans.map((item) => item.id === saved.id ? workoutSummaryFromPlan(saved) : item));
       if (draft?.id === saved.id) setDraft({ ...planPayloadFromPlan(saved), id: saved.id });
       onNotice({ tone: "success", message: `Scheda ${action === "archive" ? "archiviata" : action === "publish" ? "pubblicata" : "riportata in bozza"}.` });
+      return true;
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error) });
+      return false;
     }
   }
 
@@ -2171,8 +2235,11 @@ function WorkoutPlansManager({
     if (saveFeedback === null) return;
     const plan = plans.find((item) => item.id === saveFeedback.planId);
     if (plan === undefined) return;
-    await changeStatus(plan, "publish");
+    const published = await changeStatus(plan, "publish");
+    if (!published) return;
     setSaveFeedback(null);
+    setDraft(null);
+    setAssignedUserIds([]);
   }
 
   return (
@@ -2204,7 +2271,7 @@ function WorkoutPlansManager({
       ) : null}
       <div className="admin-page-heading admin-panel-wide"><div><p className="eyebrow">Programmazione</p><h2>Allenamento</h2></div><span>Pubblica schede e aggiorna gli esercizi senza perdere lo storico.</span></div>
       <section className="admin-panel workout-plan-list-panel" aria-labelledby="workout-plan-list-title">
-        <div className="admin-page-heading"><h3 id="workout-plan-list-title">Schede</h3><button className="primary-action" type="button" onClick={startNewPlan}><Plus aria-hidden="true" />Nuova scheda</button></div>
+        <div className="admin-page-heading"><div><h3 id="workout-plan-list-title">Schede</h3>{plansLoadState === "ready" && plans.length > 0 ? <p className="workout-plan-results" aria-live="polite">{visiblePlans.length} di {plans.length} schede visualizzate</p> : null}</div><button className="primary-action" type="button" onClick={startNewPlan}><Plus aria-hidden="true" />Nuova scheda</button></div>
         {plansLoadState === "loading" ? <ResourceStatePanel compact loading title="Schede" message="Sto caricando le schede." /> : null}
         {plansLoadState === "error" ? (
           <ResourceStatePanel
@@ -2216,7 +2283,16 @@ function WorkoutPlansManager({
           />
         ) : null}
         {plansLoadState === "ready" && plans.length === 0 ? <p className="muted">Non ci sono ancora schede.</p> : null}
-        {plansLoadState === "ready" && plans.length > 0 ? <div className="admin-list">{plans.map((plan) => <article className="admin-list-item workout-plan-admin-item" key={plan.id}><div><div className="workout-plan-row-heading"><h3>{plan.title}</h3><span className={`workout-status workout-status-${plan.status}`}>{workoutStatusLabel(plan.status)}</span></div><p>{plan.day_count} giorni · aggiornata {formatDate(plan.updated_at.slice(0, 10))}</p></div><div className="admin-row-actions"><button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={() => void openPlan(plan.id)}><Pencil aria-hidden="true" />Modifica</button><button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={() => void duplicatePlan(plan.id)}>Duplica</button>{plan.status === "published" ? <button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={() => void changeStatus(plan, "unpublish")}>Depubblica</button> : plan.status !== "archived" ? <button className="primary-action" type="button" disabled={loadingId === plan.id} onClick={() => void changeStatus(plan, "publish")}>Pubblica</button> : null}{plan.status !== "archived" ? <button className="secondary-action danger-action" type="button" disabled={loadingId === plan.id} onClick={() => void changeStatus(plan, "archive")}>Archivia</button> : null}{isAdmin ? <button className="secondary-action danger-action" type="button" disabled={loadingId === plan.id} onClick={() => void deletePlan(plan)}>Elimina</button> : null}</div></article>)}</div> : null}
+        {plansLoadState === "ready" && plans.length > 0 ? <>
+          <div className="workout-plan-toolbar">
+            <label className="field workout-plan-search"><span>Cerca schede</span><div><Search aria-hidden="true" /><input aria-label="Cerca schede" onChange={(event) => setPlanQuery(event.target.value)} placeholder="Cerca per nome" type="search" value={planQuery} />{planQuery !== "" ? <button aria-label="Cancella ricerca schede" onClick={() => setPlanQuery("")} type="button"><X aria-hidden="true" /></button> : null}</div></label>
+            <div className="workout-plan-status-filters" role="group" aria-label="Filtra schede per stato">
+              {(["all", "published", "draft", "archived"] as const).map((status) => <button aria-pressed={planStatusFilter === status} className={planStatusFilter === status ? "is-selected" : ""} key={status} onClick={() => setPlanStatusFilter(status)} type="button">{status === "all" ? "Tutte" : status === "published" ? "Pubblicate" : status === "draft" ? "Bozze" : "Archiviate"} <span>{planCounts[status]}</span></button>)}
+            </div>
+            <label className="field workout-plan-sort"><span>Ordina</span><select aria-label="Ordina schede" onChange={(event) => setPlanSort(event.target.value as WorkoutPlanSort)} value={planSort}><option value="updated">Ultima modifica</option><option value="title">Nome A-Z</option><option value="created">Data creazione</option></select></label>
+          </div>
+          {visiblePlans.length === 0 ? <div className="workout-plan-empty-filter"><Search aria-hidden="true" /><strong>Nessuna scheda corrisponde ai filtri</strong><p>Prova a cambiare la ricerca o lo stato selezionato.</p><button className="secondary-action" onClick={() => { setPlanQuery(""); setPlanStatusFilter("all"); }} type="button">Azzera filtri</button></div> : <div aria-label="Elenco schede, scorri per vedere le altre" className="admin-list workout-plan-scroll-list" role="region" tabIndex={0}>{visiblePlans.map((plan) => <article className="admin-list-item workout-plan-admin-item" key={plan.id}><div className="workout-plan-row-content"><div className="workout-plan-row-heading"><h3>{plan.title}</h3><span className={`workout-status workout-status-${plan.status}`}>{workoutStatusLabel(plan.status)}</span></div><p>{plan.day_count} giorni · aggiornata {formatDate(plan.updated_at.slice(0, 10))}</p></div><div className="workout-plan-row-actions"><button className="primary-action" type="button" disabled={loadingId === plan.id} onClick={() => void openPlan(plan.id)}><Pencil aria-hidden="true" />Modifica</button><details className="workout-plan-actions-menu" onToggle={positionWorkoutPlanActionsMenu}><summary aria-label={`Altre azioni per ${plan.title}`}><MoreHorizontal aria-hidden="true" /><span className="sr-only">Altre azioni</span></summary><div className="workout-plan-actions-panel"><button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void duplicatePlan(plan.id); }}>Duplica</button>{plan.status === "published" ? <button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void changeStatus(plan, "unpublish"); }}>Depubblica</button> : plan.status !== "archived" ? <button className="secondary-action" type="button" disabled={loadingId === plan.id} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void changeStatus(plan, "publish"); }}>Pubblica</button> : null}{plan.status !== "archived" ? <button className="secondary-action danger-action" type="button" disabled={loadingId === plan.id} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void changeStatus(plan, "archive"); }}>Archivia</button> : null}{isAdmin ? <button className="secondary-action danger-action" type="button" disabled={loadingId === plan.id} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void deletePlan(plan); }}>Elimina</button> : null}</div></details></div></article>)}</div>}
+        </> : null}
       </section>
     </div>
   );
@@ -2279,7 +2355,7 @@ function WorkoutEditorPanel({
   const [assignmentQuery, setAssignmentQuery] = useState("");
   const [visibleAssignmentCount, setVisibleAssignmentCount] = useState(8);
   const [activeEditorStep, setActiveEditorStep] = useState<WorkoutEditorStep>(1);
-  const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const [validationStage, setValidationStage] = useState<WorkoutValidationStage | null>(null);
   const saveFeedbackRef = useRef<HTMLDivElement>(null);
   const isCreationFlow = draft.id === undefined;
   const activeUsers = useMemo(
@@ -2343,31 +2419,42 @@ function WorkoutEditorPanel({
     return !isCreationFlow || activeEditorStep === step;
   }
 
+  const validationIssues = validationStage === null ? [] : workoutPlanValidationIssues(draft, validationStage);
+  const validationIssueByField = new Map(validationIssues.map((issue) => [issue.fieldId, issue]));
+  const firstValidationIssue = validationIssues[0];
+
+  function focusEditorValidationIssue(issue: WorkoutValidationIssue | undefined): void {
+    const dayMatch = issue?.fieldId.match(/^workout-day-(\d+)/);
+    if (dayMatch !== undefined && dayMatch !== null) setActiveDayIndex(Number(dayMatch[1]));
+    focusWorkoutValidationIssue(issue);
+  }
+
   function goToEditorStep(step: WorkoutEditorStep): void {
-    if (step === 4) {
-      if (draft.title.trim() === "") {
-        setValidationMessage("Inserisci un titolo prima di aprire il riepilogo.");
-        return;
-      }
-      if (draft.days.length === 0) {
-        setValidationMessage("Aggiungi almeno un giorno alla scheda prima del riepilogo.");
-        return;
-      }
-      if (draft.days.some((day) => day.exercises.length === 0)) {
-        setValidationMessage("Aggiungi almeno un esercizio a ogni giorno prima del riepilogo.");
-        return;
-      }
-      if (draft.days.some((day) => day.exercises.some((exercise) => exercise.name.trim() === ""))) {
-        setValidationMessage("Completa il nome di ogni esercizio prima del riepilogo.");
+    const targetStage: WorkoutValidationStage | null = step === 2 ? 2 : step === 3 ? 3 : step === 4 ? 4 : null;
+    if (targetStage !== null && step > activeEditorStep) {
+      const issues = workoutPlanValidationIssues(draft, targetStage);
+      if (issues.length > 0) {
+        setValidationStage(targetStage);
+        focusEditorValidationIssue(issues[0]);
         return;
       }
     }
-    setValidationMessage(null);
+    setValidationStage(null);
     setActiveEditorStep(step);
     window.requestAnimationFrame(() => {
       const editor = document.querySelector<HTMLElement>(".workout-editor-panel-v2");
       editor?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     });
+  }
+
+  function saveFromEditor(): void {
+    const issues = workoutPlanValidationIssues(draft);
+    if (issues.length > 0) {
+      setValidationStage(4);
+      focusEditorValidationIssue(issues[0]);
+      return;
+    }
+    void onSave();
   }
 
   const editorNextLabel = activeEditorStep === 2
@@ -2406,14 +2493,14 @@ function WorkoutEditorPanel({
         {isAdmin ? <span><strong>{assignedUserIds.length}</strong> destinatari</span> : null}
       </div>
 
-      {validationMessage !== null ? <p className="workout-editor-validation" role="alert">{validationMessage}</p> : null}
+      {firstValidationIssue !== undefined ? <p className="workout-editor-validation" role="alert">Completa i campi evidenziati prima di continuare: {firstValidationIssue.message}</p> : null}
 
       {isCreationFlow ? <nav className="admin-stepper workout-stepper" aria-label="Creazione scheda">
         {(["Dati base", "Giorni ed esercizi", "Destinatari", "Riepilogo"] as const).map((label, index) => { const step = (index + 1) as WorkoutEditorStep; return <button className={activeEditorStep === step ? "is-active" : ""} type="button" aria-current={activeEditorStep === step ? "step" : undefined} onClick={() => goToEditorStep(step)} key={label}><span>{step}</span><strong>{label}</strong></button>; })}
       </nav> : null}
 
       <div className="admin-form workout-editor-form" hidden={!showEditorStep(1)}>
-        <label className="field"><span>Titolo scheda</span><input id="workout-title" maxLength={180} value={draft.title} onChange={(event) => onUpdateDraft({ title: event.target.value })} /></label>
+        <label className={`field${validationIssueByField.has("workout-title") ? " has-error" : ""}`}><span>Titolo scheda</span><input aria-describedby={validationIssueByField.has("workout-title") ? "workout-title-error" : undefined} aria-invalid={validationIssueByField.has("workout-title")} id="workout-title" maxLength={180} value={draft.title} onChange={(event) => onUpdateDraft({ title: event.target.value })} />{validationIssueByField.has("workout-title") ? <span className="workout-field-error" id="workout-title-error">{validationIssueByField.get("workout-title")?.message}</span> : null}</label>
         <label className="field"><span>Descrizione <small>(opzionale)</small></span><textarea maxLength={4000} value={draft.description ?? ""} onChange={(event) => onUpdateDraft({ description: event.target.value || null })} placeholder="Obiettivo, periodo o indicazioni generali" /></label>
       </div>
 
@@ -2438,6 +2525,7 @@ function WorkoutEditorPanel({
         activeDayIndex={activeDayIndex}
         draft={draft}
         hidden={!showEditorStep(2)}
+        validationIssues={validationIssues}
         onAddDay={addNewDay}
         onAddExercise={onAddExercise}
         onMoveItem={onMoveItem}
@@ -2453,8 +2541,8 @@ function WorkoutEditorPanel({
 
       {isCreationFlow ? <div className="workout-editor-actions workout-editor-actions-v2 workout-stepper-actions">
         {activeEditorStep > 1 ? <button className="secondary-action" type="button" onClick={() => goToEditorStep((activeEditorStep - 1) as WorkoutEditorStep)}>Indietro</button> : <span />}
-        {activeEditorStep < 4 ? <button className="primary-action" type="button" onClick={() => goToEditorStep((activeEditorStep + 1) as WorkoutEditorStep)}>{editorNextLabel}</button> : <button className="primary-action" disabled={isSaving} type="button" onClick={() => void onSave()}><Save aria-hidden="true" />{isSaving ? "Salvataggio…" : "Salva scheda"}</button>}
-      </div> : <div className="workout-editor-actions workout-editor-actions-v2"><button className="secondary-action" type="button" onClick={addNewDay}><Plus aria-hidden="true" />Aggiungi giorno</button><button className="primary-action" type="button" onClick={() => void onSave()}><Save aria-hidden="true" />Salva scheda</button></div>}
+        {activeEditorStep < 4 ? <button className="primary-action" type="button" onClick={() => goToEditorStep((activeEditorStep + 1) as WorkoutEditorStep)}>{editorNextLabel}</button> : <button className="primary-action" disabled={isSaving} type="button" onClick={saveFromEditor}><Save aria-hidden="true" />{isSaving ? "Salvataggio…" : "Salva scheda"}</button>}
+      </div> : <div className="workout-editor-actions workout-editor-actions-v2"><button className="secondary-action" type="button" onClick={addNewDay}><Plus aria-hidden="true" />Aggiungi giorno</button><button className="primary-action" type="button" onClick={saveFromEditor}><Save aria-hidden="true" />Salva scheda</button></div>}
     </section>
   );
 }
@@ -2463,6 +2551,7 @@ type WorkoutDayBuilderProps = {
   activeDayIndex: number;
   draft: WorkoutPlanPayload & { id?: string };
   hidden: boolean;
+  validationIssues: WorkoutValidationIssue[];
   onAddDay: () => void;
   onAddExercise: (dayIndex: number) => void;
   onMoveItem: (dayIndex: number, exerciseIndex: number | null, direction: -1 | 1) => void;
@@ -2481,6 +2570,7 @@ function WorkoutDayBuilder({
   activeDayIndex,
   draft,
   hidden,
+  validationIssues,
   onAddDay: addDay,
   onAddExercise: addExercise,
   onMoveItem,
@@ -2491,6 +2581,7 @@ function WorkoutDayBuilder({
   onUpdateExercise,
 }: WorkoutDayBuilderProps) {
   const activeDay = draft.days[activeDayIndex];
+  const validationIssueByField = new Map(validationIssues.map((issue) => [issue.fieldId, issue]));
 
   function addNewDayAndFocus(): void {
     const nextDayIndex = draft.days.length;
@@ -2537,7 +2628,7 @@ function WorkoutDayBuilder({
       <div className="workout-structure-layout">
         <aside className="workout-day-list" role="tablist" aria-label="Giorni della scheda">
           <div className="workout-day-list-heading"><span>Giorni</span><strong>{draft.days.length}</strong></div>
-          {draft.days.length === 0 ? <div className="workout-day-list-empty"><CalendarDays aria-hidden="true" /><p>Inizia creando il primo giorno della scheda.</p><button className="primary-action" type="button" onClick={addNewDayAndFocus}><Plus aria-hidden="true" />Crea giorno</button></div> : draft.days.map((day, index) => <button id={`workout-editor-v3-day-tab-${index}`} className={`workout-day-list-item${activeDayIndex === index ? " is-active" : ""}`} type="button" role="tab" aria-controls={`workout-editor-v3-day-panel-${index}`} aria-selected={activeDayIndex === index} onClick={() => onSelectDay(index)} key={day.id ?? `day-${index}`} data-workout-day={index}><span className="workout-day-list-number">{String(index + 1).padStart(2, "0")}</span><span className="workout-day-list-copy"><strong>{day.label || `Giorno ${index + 1}`}</strong><small>{day.title || "Senza obiettivo"}</small><em>{day.exercises.length} {day.exercises.length === 1 ? "esercizio" : "esercizi"}</em></span><ChevronRight aria-hidden="true" /></button>)}
+          {draft.days.length === 0 ? <div className="workout-day-list-empty"><CalendarDays aria-hidden="true" /><p>Inizia creando il primo giorno della scheda.</p><button id="workout-add-day" className="primary-action" type="button" onClick={addNewDayAndFocus}><Plus aria-hidden="true" />Crea giorno</button></div> : draft.days.map((day, index) => <button id={`workout-editor-v3-day-tab-${index}`} className={`workout-day-list-item${activeDayIndex === index ? " is-active" : ""}`} type="button" role="tab" aria-controls={`workout-editor-v3-day-panel-${index}`} aria-selected={activeDayIndex === index} onClick={() => onSelectDay(index)} key={day.id ?? `day-${index}`} data-workout-day={index}><span className="workout-day-list-number">{String(index + 1).padStart(2, "0")}</span><span className="workout-day-list-copy"><strong>{day.label || `Giorno ${index + 1}`}</strong><small>{day.title || "Senza obiettivo"}</small><em>{day.exercises.length} {day.exercises.length === 1 ? "esercizio" : "esercizi"}</em></span><ChevronRight aria-hidden="true" /></button>)}
           {draft.days.length > 0 ? <button className="workout-day-list-add" type="button" onClick={addNewDayAndFocus}><Plus aria-hidden="true" />Aggiungi giorno</button> : null}
         </aside>
 
@@ -2546,9 +2637,9 @@ function WorkoutDayBuilder({
             <div><span className="workout-active-day-kicker">Giorno {activeDayIndex + 1} di {draft.days.length}</span><h5>{activeDay.label || `Giorno ${activeDayIndex + 1}`}{activeDay.title ? <span> · {activeDay.title}</span> : null}</h5><p>Definisci il focus del giorno e aggiungi gli esercizi in ordine.</p></div>
             <div className="workout-day-actions-v3"><button className="icon-button" aria-label="Sposta giorno su" type="button" onClick={() => onMoveItem(activeDayIndex, null, -1)}><ArrowUp aria-hidden="true" /></button><button className="icon-button" aria-label="Sposta giorno giù" type="button" onClick={() => onMoveItem(activeDayIndex, null, 1)}><ArrowDown aria-hidden="true" /></button><button className="secondary-action danger-action" type="button" onClick={onRemoveDay}>Rimuovi giorno</button></div>
           </div>
-          <div className="workout-day-fields-v3"><label className="field"><span>Nome breve</span><input maxLength={80} value={activeDay.label} onChange={(event) => onUpdateDay(activeDayIndex, { label: event.target.value })} placeholder="Es. Giorno 1" /></label><label className="field"><span>Focus del giorno</span><input maxLength={180} value={activeDay.title ?? ""} onChange={(event) => onUpdateDay(activeDayIndex, { title: event.target.value || null })} placeholder="Es. Spinta" /></label></div>
+          <div className="workout-day-fields-v3"><label className={`field${validationIssueByField.has(`workout-day-${activeDayIndex}-label`) ? " has-error" : ""}`}><span>Nome breve</span><input aria-describedby={validationIssueByField.has(`workout-day-${activeDayIndex}-label`) ? `workout-day-${activeDayIndex}-label-error` : undefined} aria-invalid={validationIssueByField.has(`workout-day-${activeDayIndex}-label`)} id={`workout-day-${activeDayIndex}-label`} maxLength={80} value={activeDay.label} onChange={(event) => onUpdateDay(activeDayIndex, { label: event.target.value })} placeholder="Es. Giorno 1" />{validationIssueByField.has(`workout-day-${activeDayIndex}-label`) ? <span className="workout-field-error" id={`workout-day-${activeDayIndex}-label-error`}>{validationIssueByField.get(`workout-day-${activeDayIndex}-label`)?.message}</span> : null}</label><label className="field"><span>Focus del giorno</span><input maxLength={180} value={activeDay.title ?? ""} onChange={(event) => onUpdateDay(activeDayIndex, { title: event.target.value || null })} placeholder="Es. Spinta" /></label></div>
           <div className="workout-exercise-heading-v3"><div><span className="workout-active-day-kicker">Secondo blocco</span><h5>Esercizi <em>{activeDay.exercises.length}</em></h5><p>Inserisci prima i fondamentali, poi completa volume e recuperi.</p></div><button className="primary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi esercizio</button></div>
-          {activeDay.exercises.length === 0 ? <div className="workout-exercise-empty-v3"><Dumbbell aria-hidden="true" /><strong>Nessun esercizio in questo giorno</strong><span>Aggiungi il primo esercizio per iniziare la scheda.</span><button className="secondary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi il primo esercizio</button></div> : <div className="workout-exercise-list-v3">{activeDay.exercises.map((exercise, exerciseIndex) => <article className="workout-exercise-card-v3" key={exercise.id ?? `exercise-${exerciseIndex}`}><div className="workout-exercise-card-top"><span className="workout-exercise-number-v3">{String(exerciseIndex + 1).padStart(2, "0")}</span><div><strong>{exercise.name || "Nuovo esercizio"}</strong><span>{exercise.sets_planned} serie · {exercise.reps_planned || "Ripetizioni da definire"}</span></div><div className="workout-exercise-actions-v3"><button className="icon-button" aria-label="Sposta esercizio su" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, -1)}><ArrowUp aria-hidden="true" /></button><button className="icon-button" aria-label="Sposta esercizio giù" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, 1)}><ArrowDown aria-hidden="true" /></button><button className="icon-button danger-action" aria-label="Rimuovi esercizio" type="button" onClick={() => onRemoveExercise(activeDayIndex, exerciseIndex)}><Trash2 aria-hidden="true" /></button></div></div><div className="workout-exercise-fields-v3"><label className="field workout-exercise-name-v3"><span>Nome esercizio</span><input maxLength={180} value={exercise.name} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { name: event.target.value })} placeholder="Es. Dips" /></label><label className="field"><span>Serie</span><input inputMode="numeric" min="1" max="50" type="number" value={exercise.sets_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { sets_planned: Number(event.target.value) })} /></label><label className="field"><span>Ripetizioni</span><input maxLength={40} value={exercise.reps_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { reps_planned: event.target.value })} placeholder="Es. 8-10" /></label><label className="field"><span>Recupero (sec.)</span><input inputMode="numeric" min="0" max="3600" type="number" value={exercise.rest_seconds ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { rest_seconds: event.target.value === "" ? null : Number(event.target.value) })} placeholder="60" /></label><label className="field workout-exercise-note-v3"><span>Nota tecnica <small>(opzionale)</small></span><input maxLength={500} value={exercise.notes ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { notes: event.target.value || null })} placeholder="Indicazione tecnica" /></label></div></article>)}</div>}
+          {activeDay.exercises.length === 0 ? <div className="workout-exercise-empty-v3"><Dumbbell aria-hidden="true" /><strong>Nessun esercizio in questo giorno</strong><span>Aggiungi il primo esercizio per iniziare la scheda.</span><button id={`workout-day-${activeDayIndex}-add-exercise`} className={`secondary-action${validationIssueByField.has(`workout-day-${activeDayIndex}-add-exercise`) ? " has-error" : ""}`} type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi il primo esercizio</button>{validationIssueByField.has(`workout-day-${activeDayIndex}-add-exercise`) ? <span className="workout-field-error">{validationIssueByField.get(`workout-day-${activeDayIndex}-add-exercise`)?.message}</span> : null}</div> : <div className="workout-exercise-list-v3">{activeDay.exercises.map((exercise, exerciseIndex) => { const nameFieldId = `workout-day-${activeDayIndex}-exercise-${exerciseIndex}-name`; const setsFieldId = `workout-day-${activeDayIndex}-exercise-${exerciseIndex}-sets`; const repsFieldId = `workout-day-${activeDayIndex}-exercise-${exerciseIndex}-reps`; const restFieldId = `workout-day-${activeDayIndex}-exercise-${exerciseIndex}-rest`; return <article className="workout-exercise-card-v3" key={exercise.id ?? `exercise-${exerciseIndex}`}><div className="workout-exercise-card-top"><span className="workout-exercise-number-v3">{String(exerciseIndex + 1).padStart(2, "0")}</span><div><strong>{exercise.name || "Nuovo esercizio"}</strong><span>{exercise.sets_planned} serie · {exercise.reps_planned || "Ripetizioni da definire"}</span></div><div className="workout-exercise-actions-v3"><button className="icon-button" aria-label="Sposta esercizio su" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, -1)}><ArrowUp aria-hidden="true" /></button><button className="icon-button" aria-label="Sposta esercizio giù" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, 1)}><ArrowDown aria-hidden="true" /></button><button className="icon-button danger-action" aria-label="Rimuovi esercizio" type="button" onClick={() => onRemoveExercise(activeDayIndex, exerciseIndex)}><Trash2 aria-hidden="true" /></button></div></div><div className="workout-exercise-fields-v3"><label className={`field workout-exercise-name-v3${validationIssueByField.has(nameFieldId) ? " has-error" : ""}`}><span>Nome esercizio</span><input aria-describedby={validationIssueByField.has(nameFieldId) ? `${nameFieldId}-error` : undefined} aria-invalid={validationIssueByField.has(nameFieldId)} id={nameFieldId} maxLength={180} value={exercise.name} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { name: event.target.value })} placeholder="Es. Dips" />{validationIssueByField.has(nameFieldId) ? <span className="workout-field-error" id={`${nameFieldId}-error`}>{validationIssueByField.get(nameFieldId)?.message}</span> : null}</label><label className={`field${validationIssueByField.has(setsFieldId) ? " has-error" : ""}`}><span>Serie</span><input aria-describedby={validationIssueByField.has(setsFieldId) ? `${setsFieldId}-error` : undefined} aria-invalid={validationIssueByField.has(setsFieldId)} id={setsFieldId} inputMode="numeric" min="1" max="50" type="number" value={exercise.sets_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { sets_planned: Number(event.target.value) })} />{validationIssueByField.has(setsFieldId) ? <span className="workout-field-error" id={`${setsFieldId}-error`}>{validationIssueByField.get(setsFieldId)?.message}</span> : null}</label><label className={`field${validationIssueByField.has(repsFieldId) ? " has-error" : ""}`}><span>Ripetizioni</span><input aria-describedby={validationIssueByField.has(repsFieldId) ? `${repsFieldId}-error` : undefined} aria-invalid={validationIssueByField.has(repsFieldId)} id={repsFieldId} maxLength={40} value={exercise.reps_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { reps_planned: event.target.value })} placeholder="Es. 8-10" />{validationIssueByField.has(repsFieldId) ? <span className="workout-field-error" id={`${repsFieldId}-error`}>{validationIssueByField.get(repsFieldId)?.message}</span> : null}</label><label className={`field${validationIssueByField.has(restFieldId) ? " has-error" : ""}`}><span>Recupero (sec.)</span><input aria-describedby={validationIssueByField.has(restFieldId) ? `${restFieldId}-error` : undefined} aria-invalid={validationIssueByField.has(restFieldId)} id={restFieldId} inputMode="numeric" min="0" max="3600" type="number" value={exercise.rest_seconds ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { rest_seconds: event.target.value === "" ? null : Number(event.target.value) })} placeholder="60" />{validationIssueByField.has(restFieldId) ? <span className="workout-field-error" id={`${restFieldId}-error`}>{validationIssueByField.get(restFieldId)?.message}</span> : null}</label><label className="field workout-exercise-note-v3"><span>Nota tecnica <small>(opzionale)</small></span><input maxLength={500} value={exercise.notes ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { notes: event.target.value || null })} placeholder="Indicazione tecnica" /></label></div></article>; })}</div>}
         </div> : <div className="workout-active-day-empty"><CalendarDays aria-hidden="true" /><h5>Il primo giorno parte da qui</h5><p>Usa “Nuovo giorno” per impostare il primo blocco della scheda.</p><button className="primary-action" type="button" onClick={onAddDay}><Plus aria-hidden="true" />Crea il primo giorno</button></div>}
       </div>
       {activeDay ? <div className="workout-builder-bottom-actions"><button className="secondary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi esercizio in fondo</button><button className="secondary-action" type="button" onClick={onAddDay}><Plus aria-hidden="true" />Aggiungi un altro giorno</button></div> : null}
