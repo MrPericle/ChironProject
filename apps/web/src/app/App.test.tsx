@@ -1445,6 +1445,29 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Riepilogo scheda" })).toBeInTheDocument();
   });
 
+  it("validates workout plan fields before submitting them", async () => {
+    const fetchMock = installFetchMock();
+    render(<App />);
+    await loginAdmin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Allenamento" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuova scheda" }));
+    fireEvent.change(screen.getByLabelText("Titolo scheda"), { target: { value: "Forza base" } });
+    fireEvent.click(screen.getByRole("button", { name: "2 Giorni ed esercizi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Crea giorno" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Aggiungi esercizio$/ }));
+    fireEvent.change(screen.getByLabelText("Nome esercizio"), { target: { value: "Squat" } });
+    fireEvent.change(screen.getByLabelText("Ripetizioni"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "4 Riepilogo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salva scheda" }));
+
+    await screen.findByText("Inserisci le ripetizioni (giorno 1, esercizio 1).");
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "http://localhost:8000/admin/workout-plans",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("keeps regular users out of the backoffice shell", async () => {
     installFetchMock();
 

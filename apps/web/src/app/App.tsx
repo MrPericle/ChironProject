@@ -1547,6 +1547,35 @@ function emptyWorkoutPlanPayload(): WorkoutPlanPayload {
   return { title: "", description: null, status: "draft", days: [] };
 }
 
+function workoutPlanValidationMessage(draft: WorkoutPlanPayload): string | null {
+  if (draft.title.trim() === "") return "Inserisci il titolo della scheda.";
+  if (draft.days.length === 0) return "Aggiungi almeno un giorno alla scheda.";
+
+  for (const [dayIndex, day] of draft.days.entries()) {
+    const dayNumber = dayIndex + 1;
+    if (day.label.trim() === "") return `Inserisci il nome breve del giorno ${dayNumber}.`;
+    if (day.exercises.length === 0) return `Aggiungi almeno un esercizio al giorno ${dayNumber}.`;
+
+    for (const [exerciseIndex, exercise] of day.exercises.entries()) {
+      const exerciseNumber = exerciseIndex + 1;
+      const reference = `giorno ${dayNumber}, esercizio ${exerciseNumber}`;
+      if (exercise.name.trim() === "") return `Inserisci il nome dell'esercizio (${reference}).`;
+      if (!Number.isInteger(exercise.sets_planned) || exercise.sets_planned < 1 || exercise.sets_planned > 50) {
+        return `Inserisci da 1 a 50 serie (${reference}).`;
+      }
+      if (exercise.reps_planned.trim() === "") return `Inserisci le ripetizioni (${reference}).`;
+      if (
+        exercise.rest_seconds !== null &&
+        (!Number.isInteger(exercise.rest_seconds) || exercise.rest_seconds < 0 || exercise.rest_seconds > 3600)
+      ) {
+        return `Il recupero deve essere compreso tra 0 e 3600 secondi (${reference}).`;
+      }
+    }
+  }
+
+  return null;
+}
+
 function planPayloadFromPlan(plan: WorkoutPlan): WorkoutPlanPayload {
   return {
     title: plan.title,
@@ -2026,20 +2055,32 @@ function WorkoutPlansManager({
 
   async function savePlan(): Promise<void> {
     if (saving) return;
-    if (
-      draft === null ||
-      draft.title.trim() === "" ||
-      draft.days.length === 0 ||
-      draft.days.some((day) => day.exercises.length === 0 || day.exercises.some((exercise) => exercise.name.trim() === ""))
-    ) {
-      onNotice({ tone: "error", message: "Inserisci il titolo e il nome di ogni esercizio." });
+    if (draft === null) {
+      onNotice({ tone: "error", message: "Apri una scheda prima di salvarla." });
+      return;
+    }
+    const validationMessage = workoutPlanValidationMessage(draft);
+    if (validationMessage !== null) {
+      onNotice({ tone: "error", message: validationMessage });
       return;
     }
     const payload: WorkoutPlanPayload = {
-      title: draft.title,
-      description: draft.description,
+      title: draft.title.trim(),
+      description: draft.description?.trim() || null,
       status: draft.status,
-      days: draft.days.map((day, position) => ({ ...day, position, exercises: day.exercises.map((exercise, exercisePosition) => ({ ...exercise, position: exercisePosition })) })),
+      days: draft.days.map((day, position) => ({
+        ...day,
+        label: day.label.trim(),
+        title: day.title?.trim() || null,
+        position,
+        exercises: day.exercises.map((exercise, exercisePosition) => ({
+          ...exercise,
+          name: exercise.name.trim(),
+          reps_planned: exercise.reps_planned.trim(),
+          notes: exercise.notes?.trim() || null,
+          position: exercisePosition,
+        })),
+      })),
     };
     setSaving(true);
     try {
@@ -2507,7 +2548,7 @@ function WorkoutDayBuilder({
           </div>
           <div className="workout-day-fields-v3"><label className="field"><span>Nome breve</span><input maxLength={80} value={activeDay.label} onChange={(event) => onUpdateDay(activeDayIndex, { label: event.target.value })} placeholder="Es. Giorno 1" /></label><label className="field"><span>Focus del giorno</span><input maxLength={180} value={activeDay.title ?? ""} onChange={(event) => onUpdateDay(activeDayIndex, { title: event.target.value || null })} placeholder="Es. Spinta" /></label></div>
           <div className="workout-exercise-heading-v3"><div><span className="workout-active-day-kicker">Secondo blocco</span><h5>Esercizi <em>{activeDay.exercises.length}</em></h5><p>Inserisci prima i fondamentali, poi completa volume e recuperi.</p></div><button className="primary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi esercizio</button></div>
-          {activeDay.exercises.length === 0 ? <div className="workout-exercise-empty-v3"><Dumbbell aria-hidden="true" /><strong>Nessun esercizio in questo giorno</strong><span>Aggiungi il primo esercizio per iniziare la scheda.</span><button className="secondary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi il primo esercizio</button></div> : <div className="workout-exercise-list-v3">{activeDay.exercises.map((exercise, exerciseIndex) => <article className="workout-exercise-card-v3" key={exercise.id ?? `exercise-${exerciseIndex}`}><div className="workout-exercise-card-top"><span className="workout-exercise-number-v3">{String(exerciseIndex + 1).padStart(2, "0")}</span><div><strong>{exercise.name || "Nuovo esercizio"}</strong><span>{exercise.sets_planned} serie · {exercise.reps_planned || "Ripetizioni da definire"}</span></div><div className="workout-exercise-actions-v3"><button className="icon-button" aria-label="Sposta esercizio su" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, -1)}><ArrowUp aria-hidden="true" /></button><button className="icon-button" aria-label="Sposta esercizio giù" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, 1)}><ArrowDown aria-hidden="true" /></button><button className="icon-button danger-action" aria-label="Rimuovi esercizio" type="button" onClick={() => onRemoveExercise(activeDayIndex, exerciseIndex)}><Trash2 aria-hidden="true" /></button></div></div><div className="workout-exercise-fields-v3"><label className="field workout-exercise-name-v3"><span>Nome esercizio</span><input maxLength={180} value={exercise.name} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { name: event.target.value })} placeholder="Es. Dips" /></label><label className="field"><span>Serie</span><input inputMode="numeric" min="1" max="50" type="number" value={exercise.sets_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { sets_planned: Number(event.target.value) })} /></label><label className="field"><span>Ripetizioni</span><input maxLength={40} value={exercise.reps_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { reps_planned: event.target.value })} placeholder="Es. 8-10" /></label><label className="field"><span>Recupero (sec.)</span><input inputMode="numeric" min="0" type="number" value={exercise.rest_seconds ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { rest_seconds: event.target.value === "" ? null : Number(event.target.value) })} placeholder="60" /></label><label className="field workout-exercise-note-v3"><span>Nota tecnica <small>(opzionale)</small></span><input maxLength={500} value={exercise.notes ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { notes: event.target.value || null })} placeholder="Indicazione tecnica" /></label></div></article>)}</div>}
+          {activeDay.exercises.length === 0 ? <div className="workout-exercise-empty-v3"><Dumbbell aria-hidden="true" /><strong>Nessun esercizio in questo giorno</strong><span>Aggiungi il primo esercizio per iniziare la scheda.</span><button className="secondary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi il primo esercizio</button></div> : <div className="workout-exercise-list-v3">{activeDay.exercises.map((exercise, exerciseIndex) => <article className="workout-exercise-card-v3" key={exercise.id ?? `exercise-${exerciseIndex}`}><div className="workout-exercise-card-top"><span className="workout-exercise-number-v3">{String(exerciseIndex + 1).padStart(2, "0")}</span><div><strong>{exercise.name || "Nuovo esercizio"}</strong><span>{exercise.sets_planned} serie · {exercise.reps_planned || "Ripetizioni da definire"}</span></div><div className="workout-exercise-actions-v3"><button className="icon-button" aria-label="Sposta esercizio su" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, -1)}><ArrowUp aria-hidden="true" /></button><button className="icon-button" aria-label="Sposta esercizio giù" type="button" onClick={() => onMoveItem(activeDayIndex, exerciseIndex, 1)}><ArrowDown aria-hidden="true" /></button><button className="icon-button danger-action" aria-label="Rimuovi esercizio" type="button" onClick={() => onRemoveExercise(activeDayIndex, exerciseIndex)}><Trash2 aria-hidden="true" /></button></div></div><div className="workout-exercise-fields-v3"><label className="field workout-exercise-name-v3"><span>Nome esercizio</span><input maxLength={180} value={exercise.name} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { name: event.target.value })} placeholder="Es. Dips" /></label><label className="field"><span>Serie</span><input inputMode="numeric" min="1" max="50" type="number" value={exercise.sets_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { sets_planned: Number(event.target.value) })} /></label><label className="field"><span>Ripetizioni</span><input maxLength={40} value={exercise.reps_planned} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { reps_planned: event.target.value })} placeholder="Es. 8-10" /></label><label className="field"><span>Recupero (sec.)</span><input inputMode="numeric" min="0" max="3600" type="number" value={exercise.rest_seconds ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { rest_seconds: event.target.value === "" ? null : Number(event.target.value) })} placeholder="60" /></label><label className="field workout-exercise-note-v3"><span>Nota tecnica <small>(opzionale)</small></span><input maxLength={500} value={exercise.notes ?? ""} onChange={(event) => onUpdateExercise(activeDayIndex, exerciseIndex, { notes: event.target.value || null })} placeholder="Indicazione tecnica" /></label></div></article>)}</div>}
         </div> : <div className="workout-active-day-empty"><CalendarDays aria-hidden="true" /><h5>Il primo giorno parte da qui</h5><p>Usa “Nuovo giorno” per impostare il primo blocco della scheda.</p><button className="primary-action" type="button" onClick={onAddDay}><Plus aria-hidden="true" />Crea il primo giorno</button></div>}
       </div>
       {activeDay ? <div className="workout-builder-bottom-actions"><button className="secondary-action" type="button" onClick={() => onAddExercise(activeDayIndex)}><Plus aria-hidden="true" />Aggiungi esercizio in fondo</button><button className="secondary-action" type="button" onClick={onAddDay}><Plus aria-hidden="true" />Aggiungi un altro giorno</button></div> : null}
